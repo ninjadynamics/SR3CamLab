@@ -1,5 +1,5 @@
 <#
-  SEGA Rally 3 - "SR2-style" chase camera, in-memory edition
+  SEGA Rally 3 - SR3CamLab chase camera, in-memory edition
   -----------------------------------------------------------
   Rally.exe on disk is never modified. This script launches the game through
   TeknoParrot as usual, waits until it has finished booting (and TeknoParrot's
@@ -149,7 +149,7 @@ $MultOff = 0x50                          # the spring multiplier (1.0; the game'
 $LoadedFlagVA = 0x9EB81C       # game's settings pointer: non-zero once system data is loaded
 
 $Patches = @(
-    @{ VA = 0x673C80; Orig = '00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'; New = '53523243010000003333333f000080400000003e00000040000090410000f041000010c1000000000000803f17b7d1380000003f000000000000000000000000000000000000000000000000000000000000803fc3f5484017b7d13800401c46ffffff7f00000080000000000000e04033331340000070420000a03f3333933f00000000000000000000000000000000ff05b83c6700ff742408ff742408e8dde0d8ff83c4088b442404f30f1000f30f1105c43c6700f30f104008f30f1105c83c6700f30f10442430f30f104c24380f28d0f30f59d00f28d9f30f59d9f30f58d3f30f51d20f2f15b03c67000f86b80000000f28daf30f5c1d8c3c6700f30f591d903c6700f30f5f1da43c6700f30f5d1da83c6700f30f5ec2f30f5ecaf30f1020f30f1068080f28f4f30f59f00f28fdf30f59f9f30f58f7f30f5935943c6700f30f5f35a43c6700f30f5d35a83c6700f30f59def30f591d883c6700f30f5cc4f30f59c3f30f58c4f30f5ccdf30f59cbf30f58cd0f28d0f30f59d00f28d9f30f59d9f30f58d3f30f51d20f2f15ac3c67007617f30f5ec2f30f5ecaf30f1100f30f114808ff05bc3c6700833db43c670000741d8b442404f30f1000f30f1048080f57d2f30f5cd1f30f1110f30f1140088b442404f30f1000f30f5905c83c6700f30f104808f30f590dc43c6700f30f5cc1f30f1105c03c6700f30f1000f30f5905c43c6700f30f104808f30f590dc83c6700f30f58c1f30f1105cc3c6700d905c03c6700d905cc3c6700d9f3d91dc03c6700c3ccccccccccccccccccccccccccd9059c3c6700c3ccccccccccccccccccd905983c6700c3ccccccccccccccccccf30f10442408f30f1105003d6700f30f1044240cf30f1105043d6700f30f1081b0030000f30f1105083d6700833de83c6700007461f30f100da83c6700f30f1015a83c67008139b8b86e007510f30f100df83c6700f30f1015fc3c6700f30f1005ec3c6700f30f59c1f30f584130f30f11442408f30f1005f03c6700f30f59c2f30f1144240cf30f1005f43c6700f30f1181b0030000f30f10442404f30f5805c03c67000f2ec07b030f57c0f30f1015e03c67000f28c80f54caf30f101de43c67000f54d80f2f0dd43c6700763df30f5c0dd43c6700f30f590ddc3c67000f28e1f30f59e1f30f5825a83c6700f30f51e4f30f5eccf30f590dd83c6700f30f580dd43c67000f56cb0f28c1f30f11442404e90ae6f7ff'; Desc = 'code cave: tuning constants + hook + stiffness getters'; OrigB = $null; NewB = $null },
+    @{ VA = 0x673C80; Orig = '00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'; New = '53523343010000003333333f000080400000003e00000040000090410000f041000010c1000000000000803f17b7d1380000003f000000000000000000000000000000000000000000000000000000000000803fc3f5484017b7d13800401c46ffffff7f00000080000000000000e04033331340000070420000a03f3333933f00000000000000000000000000000000ff05b83c6700ff742408ff742408e8dde0d8ff83c4088b442404f30f1000f30f1105c43c6700f30f104008f30f1105c83c6700f30f10442430f30f104c24380f28d0f30f59d00f28d9f30f59d9f30f58d3f30f51d20f2f15b03c67000f86b80000000f28daf30f5c1d8c3c6700f30f591d903c6700f30f5f1da43c6700f30f5d1da83c6700f30f5ec2f30f5ecaf30f1020f30f1068080f28f4f30f59f00f28fdf30f59f9f30f58f7f30f5935943c6700f30f5f35a43c6700f30f5d35a83c6700f30f59def30f591d883c6700f30f5cc4f30f59c3f30f58c4f30f5ccdf30f59cbf30f58cd0f28d0f30f59d00f28d9f30f59d9f30f58d3f30f51d20f2f15ac3c67007617f30f5ec2f30f5ecaf30f1100f30f114808ff05bc3c6700833db43c670000741d8b442404f30f1000f30f1048080f57d2f30f5cd1f30f1110f30f1140088b442404f30f1000f30f5905c83c6700f30f104808f30f590dc43c6700f30f5cc1f30f1105c03c6700f30f1000f30f5905c43c6700f30f104808f30f590dc83c6700f30f58c1f30f1105cc3c6700d905c03c6700d905cc3c6700d9f3d91dc03c6700c3ccccccccccccccccccccccccccd9059c3c6700c3ccccccccccccccccccd905983c6700c3ccccccccccccccccccf30f10442408f30f1105003d6700f30f1044240cf30f1105043d6700f30f1081b0030000f30f1105083d6700833de83c6700007461f30f100da83c6700f30f1015a83c67008139b8b86e007510f30f100df83c6700f30f1015fc3c6700f30f1005ec3c6700f30f59c1f30f584130f30f11442408f30f1005f03c6700f30f59c2f30f1144240cf30f1005f43c6700f30f1181b0030000f30f10442404f30f5805c03c67000f2ec07b030f57c0f30f1015e03c67000f28c80f54caf30f101de43c67000f54d80f2f0dd43c6700763df30f5c0dd43c6700f30f590ddc3c67000f28e1f30f59e1f30f5825a83c6700f30f51e4f30f5eccf30f590dd83c6700f30f580dd43c67000f56cb0f28c1f30f11442404e90ae6f7ff'; Desc = 'code cave: tuning constants + hook + stiffness getters'; OrigB = $null; NewB = $null },
     @{ VA = 0x5F72DD; Orig = 'e81eabe0ff'; New = 'e82eca0700'; Desc = 'chase cam: target-direction hook'; OrigB = $null; NewB = $null },
     @{ VA = 0x5F7E29; Orig = 'e8d2a7ffff'; New = 'e8b2c00700'; Desc = 'chase cam: eye placement uses bent heading'; OrigB = $null; NewB = $null },
     @{ VA = 0x5F724D; Orig = 'e4ff6e00'; New = 'd03c6700'; Desc = 'chase cam: stiffness multiplier x7.5 -> cave (1.0)'; OrigB = $null; NewB = $null },
@@ -162,7 +162,7 @@ $Patches = @(
 
 Add-Type -TypeDefinition @'
 using System; using System.Runtime.InteropServices;
-public static class Sr2Mem {
+public static class Sr3Mem {
     [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr OpenProcess(int a, bool i, int pid);
     [DllImport("kernel32.dll", SetLastError=true)] static extern bool CloseHandle(IntPtr h);
     [DllImport("kernel32.dll", SetLastError=true)] static extern bool ReadProcessMemory(IntPtr h, IntPtr a, byte[] b, IntPtr n, out IntPtr r);
@@ -295,10 +295,10 @@ function Put([byte[]]$buf, [int]$off, [byte[]]$src) { [Array]::Copy($src, 0, $bu
 function Str([string]$t, [int]$n) { $b = New-Object byte[] $n; $a = [Text.Encoding]::ASCII.GetBytes($t); [Array]::Copy($a, 0, $b, 0, [Math]::Min($a.Length, $n - 1)); return ,$b }
 function CallTo([long]$from, [long]$to) { $b = New-Object byte[] 5; $b[0] = 0xE8; [Array]::Copy([BitConverter]::GetBytes([int]($to - ($from + 5))), 0, $b, 1, 4); return ,$b }
 function Find-Cycle($h) {
-    $b = [Sr2Mem]::Read($h, $HookDrawVA, 5)
+    $b = [Sr3Mem]::Read($h, $HookDrawVA, 5)
     if (-not $b -or $b[0] -ne 0xE8) { return 0 }
     $base = $HookDrawVA + 5 + [BitConverter]::ToInt32($b, 1) - $CycleDraw
-    $m = [Sr2Mem]::Read($h, $base, 4)
+    $m = [Sr3Mem]::Read($h, $base, 4)
     if ($m -and [Text.Encoding]::ASCII.GetString($m) -eq 'SR3V') { return $base }
     return 0
 }
@@ -307,22 +307,22 @@ function Install-Cycle($h) {
     $code = HexToBytes $CycleCode
     $base = Find-Cycle $h
     if (-not $base) {
-        if (-not (Same ([Sr2Mem]::Read($h, $HookDrawVA, 5)) $HookDrawOrig) -or -not (Same ([Sr2Mem]::Read($h, $HookLostVA, 5)) $HookLostOrig)) {
+        if (-not (Same ([Sr3Mem]::Read($h, $HookDrawVA, 5)) $HookDrawOrig) -or -not (Same ([Sr3Mem]::Read($h, $HookLostVA, 5)) $HookLostOrig)) {
             Log 'Camera cycle not installed: unexpected bytes at its hook sites.'; return
         }
-        $base = [Sr2Mem]::Alloc($h, $CycleSize)
-        [Sr2Mem]::Write($h, $base + $CycleDraw, $code, $true)
+        $base = [Sr3Mem]::Alloc($h, $CycleSize)
+        [Sr3Mem]::Write($h, $base + $CycleDraw, $code, $true)
     }
-    elseif (-not (Same ([Sr2Mem]::Read($h, $base + $CycleDraw, $code.Length)) $code)) {
+    elseif (-not (Same ([Sr3Mem]::Read($h, $base + $CycleDraw, $code.Length)) $code)) {
         # a newer build: never rewrite code the game may be running; move to a fresh block,
         # keeping the state (font, camera list) and leaving the old one as it is
         $old = $base
         Restore-CockpitSeat $h $old
-        $base = [Sr2Mem]::Alloc($h, $CycleSize)
-        [Sr2Mem]::Write($h, $base, ([Sr2Mem]::Read($h, $old, $CycleDraw)), $true)
-        [Sr2Mem]::Write($h, $base + 0xF98, (New-Object byte[] 0x10), $true)   # hint font, hint flag, text: start empty
-        [Sr2Mem]::Write($h, $base + 0x2180, ([Sr2Mem]::Read($h, $old + 0x2180, 4 * $CycleGameCams)), $true)   # the game's list entries
-        [Sr2Mem]::Write($h, $base + $CycleDraw, $code, $true)
+        $base = [Sr3Mem]::Alloc($h, $CycleSize)
+        [Sr3Mem]::Write($h, $base, ([Sr3Mem]::Read($h, $old, $CycleDraw)), $true)
+        [Sr3Mem]::Write($h, $base + 0xF98, (New-Object byte[] 0x10), $true)   # hint font, hint flag, text: start empty
+        [Sr3Mem]::Write($h, $base + 0x2180, ([Sr3Mem]::Read($h, $old + 0x2180, 4 * $CycleGameCams)), $true)   # the game's list entries
+        [Sr3Mem]::Write($h, $base + $CycleDraw, $code, $true)
     }
     $settings = New-Object byte[] 0x18                                 # 0x14..0x2C
     Put $settings 0x00 ([BitConverter]::GetBytes([int]120))             # frames shown (2 s at 60 fps)
@@ -331,13 +331,13 @@ function Install-Cycle($h) {
     Put $settings 0x0C ([BitConverter]::GetBytes([int]$slots.Count))
     Put $settings 0x10 ([BitConverter]::GetBytes([int]$startSlot))
     Put $settings 0x14 ([BitConverter]::GetBytes([int]0))               # extended count: re-extend
-    [Sr2Mem]::Write($h, $base + 0x14, $settings, $true)
-    [Sr2Mem]::Write($h, $base + 0xB0, ([BitConverter]::GetBytes([int]1)), $true)   # quiet: no popup for this
+    [Sr3Mem]::Write($h, $base + 0x14, $settings, $true)
+    [Sr3Mem]::Write($h, $base + 0xB0, ([BitConverter]::GetBytes([int]1)), $true)   # quiet: no popup for this
     $strings = New-Object byte[] 0x40
     Put $strings 0x00 (Str 'd3dx9_41.dll' 16); Put $strings 0x10 (Str 'D3DXCreateFontA' 16); Put $strings 0x20 (Str 'Arial' 32)
-    [Sr2Mem]::Write($h, $base + 0x60, $strings, $true)
-    [Sr2Mem]::Write($h, $base, ([Text.Encoding]::ASCII.GetBytes('SR3V')), $true)
-    [Sr2Mem]::Write($h, $base + 0xE0, (Str 'Camera' 16), $true)        # 0xE0: name of an unknown camera
+    [Sr3Mem]::Write($h, $base + 0x60, $strings, $true)
+    [Sr3Mem]::Write($h, $base, ([Text.Encoding]::ASCII.GetBytes('SR3V')), $true)
+    [Sr3Mem]::Write($h, $base + 0xE0, (Str 'Camera' 16), $true)        # 0xE0: name of an unknown camera
     $gc = New-Object byte[] 0x240                                      # 0x2000: names, 0x21B0: offsets, 0x21E0: extras, 0x2210: colours
     for ($i = 0; $i -lt $CycleGameCams; $i++) {
         $known = $i -lt $GameCams.Count
@@ -345,78 +345,78 @@ function Install-Cycle($h) {
         Put $gc (0x1B0 + 4 * $i) ([BitConverter]::GetBytes([int]$(if ($known) { $GameCams[$i][0] } else { -1 })))
         Put $gc (0x1E0 + 4 * $i) ([BitConverter]::GetBytes([int]$(if ($showHidden -and $i -lt $HiddenCams.Count) { $HiddenCams[$i] } else { -1 })))
     }
-    [Sr2Mem]::Write($h, $base + 0x2000, $gc[0..0x17F], $true)
-    [Sr2Mem]::Write($h, $base + 0x21B0, $gc[0x1B0..0x23F], $true)
+    [Sr3Mem]::Write($h, $base + 0x2000, $gc[0..0x17F], $true)
+    [Sr3Mem]::Write($h, $base + 0x21B0, $gc[0x1B0..0x23F], $true)
     $scol = New-Object byte[] ($CycleMaxSlots * 4)                     # 0xE00: colour per slot
     for ($i = 0; $i -lt $slots.Count; $i++) { Put $scol ($i * 4) ([BitConverter]::GetBytes([int]$slots[$i].Color)) }
-    [Sr2Mem]::Write($h, $base + 0xE00, $scol, $true)
+    [Sr3Mem]::Write($h, $base + 0xE00, $scol, $true)
     $u = New-Object byte[] 0x70                                        # 0xEA0: user32 functions for the free-cam controls
     Put $u 0x00 (Str 'user32.dll' 16); Put $u 0x10 (Str 'GetCursorPos' 16); Put $u 0x20 (Str 'SetCursorPos' 16)
     Put $u 0x30 (Str 'GetAsyncKeyState' 32); Put $u 0x50 (Str 'GetForegroundWindow' 32)
-    [Sr2Mem]::Write($h, $base + 0xEA0, $u, $true)
+    [Sr3Mem]::Write($h, $base + 0xEA0, $u, $true)
     $u2 = New-Object byte[] 0x50                                       # 0xF40: to check the game is in front
     Put $u2 0x00 (Str 'GetWindowThreadProcessId' 32); Put $u2 0x20 (Str 'kernel32.dll' 16); Put $u2 0x30 (Str 'GetCurrentProcessId' 32)
-    [Sr2Mem]::Write($h, $base + 0xF40, $u2, $true)
-    [Sr2Mem]::Write($h, $base + 0xFD0, ([BitConverter]::GetBytes([single]-0.01)), $true)   # car rotate tilt per mouse pixel
+    [Sr3Mem]::Write($h, $base + 0xF40, $u2, $true)
+    [Sr3Mem]::Write($h, $base + 0xFD0, ([BitConverter]::GetBytes([single]-0.01)), $true)   # car rotate tilt per mouse pixel
     $pitch = New-Object byte[] 8                                       # 0xF90: free cams look at most this far up / down (rad, just under 90 deg)
     Put $pitch 0 ([BitConverter]::GetBytes([single]1.5706)); Put $pitch 4 ([BitConverter]::GetBytes([single]-1.5706))
-    [Sr2Mem]::Write($h, $base + 0xF90, $pitch, $true)
+    [Sr3Mem]::Write($h, $base + 0xF90, $pitch, $true)
     $rot = New-Object byte[] 16                                        # 0xFE0: car rotate cam limits: distance, height (m)
     Put $rot 0 ([BitConverter]::GetBytes([single]3)); Put $rot 4 ([BitConverter]::GetBytes([single]30))
     Put $rot 8 ([BitConverter]::GetBytes([single]0.5)); Put $rot 12 ([BitConverter]::GetBytes([single]20))
-    [Sr2Mem]::Write($h, $base + 0xFE0, $rot, $true)
-    [Sr2Mem]::Write($h, $base + 0xFB0, (Str 'Use mouse/WASD to navigate' 32), $true)   # 0xFB0: the hint under a steerable camera's name
+    [Sr3Mem]::Write($h, $base + 0xFE0, $rot, $true)
+    [Sr3Mem]::Write($h, $base + 0xFB0, (Str 'Use mouse/WASD to navigate' 32), $true)   # 0xFB0: the hint under a steerable camera's name
     $k = New-Object byte[] 0x10                                        # 0xF10: mouse radians per pixel, the game's rates
     Put $k 0x0 ([BitConverter]::GetBytes([single]0.0025)); Put $k 0x4 ([BitConverter]::GetBytes([single]([Math]::PI / 2)))
     Put $k 0x8 ([BitConverter]::GetBytes([single]10)); Put $k 0xC ([BitConverter]::GetBytes([single]1))
-    [Sr2Mem]::Write($h, $base + 0xF10, $k, $true)
+    [Sr3Mem]::Write($h, $base + 0xF10, $k, $true)
     $names = New-Object byte[] ($CycleMaxSlots * 32); $params = New-Object byte[] ($CycleMaxSlots * $CycleSlotBytes)
     for ($i = 0; $i -lt $slots.Count; $i++) {
         Put $names ($i * 32) (Str $slots[$i].Name 32)
         [Array]::Copy($slots[$i].Image, 0x08, $params, $i * $CycleSlotBytes, 0x2C)
         [Array]::Copy($slots[$i].Image, 0x50, $params, $i * $CycleSlotBytes + 0x2C, 0x30)
     }
-    [Sr2Mem]::Write($h, $base + 0x100, $names, $true)
-    [Sr2Mem]::Write($h, $base + 0x500, $params, $true)
+    [Sr3Mem]::Write($h, $base + 0x100, $names, $true)
+    [Sr3Mem]::Write($h, $base + 0x500, $params, $true)
     foreach ($v in $CamUpdateHooks) {                                  # the original method, or a wrapper of ours
-        $cur = [BitConverter]::ToUInt32([Sr2Mem]::Read($h, $v[0], 4), 0)
-        $sig = [Sr2Mem]::Read($h, ($cur -band 0xFFFF0000), 4)               # our blocks start on a 64 KB boundary with "SR3V"
+        $cur = [BitConverter]::ToUInt32([Sr3Mem]::Read($h, $v[0], 4), 0)
+        $sig = [Sr3Mem]::Read($h, ($cur -band 0xFFFF0000), 4)               # our blocks start on a 64 KB boundary with "SR3V"
         $ours = $sig -and [Text.Encoding]::ASCII.GetString($sig) -eq 'SR3V'
         if ($cur -eq $v[1] -or $ours) {
             $to = $base + $(if ($v[2] -eq 'rot') { $CycleRot } else { $CycleFree })
-            [Sr2Mem]::Write($h, $v[0], ([BitConverter]::GetBytes([int]$to)), $false)
+            [Sr3Mem]::Write($h, $v[0], ([BitConverter]::GetBytes([int]$to)), $false)
         }
     }
-    [Sr2Mem]::Write($h, $HookLostVA, (CallTo $HookLostVA ($base + $CycleLost)), $false)
-    [Sr2Mem]::Write($h, $HookDrawVA, (CallTo $HookDrawVA ($base + $CycleDraw)), $false)
+    [Sr3Mem]::Write($h, $HookLostVA, (CallTo $HookLostVA ($base + $CycleLost)), $false)
+    [Sr3Mem]::Write($h, $HookDrawVA, (CallTo $HookDrawVA ($base + $CycleDraw)), $false)
 }
 # unhooks the block and puts the game's camera list back; call with the game suspended
 # Points the cockpit cam's eye back at the game's data if it uses this block's driver-seat copy.
 function Restore-CockpitSeat($h, $base) {
-    $mgr = [BitConverter]::ToUInt32([Sr2Mem]::Read($h, $base + 0x58, 4), 0)
+    $mgr = [BitConverter]::ToUInt32([Sr3Mem]::Read($h, $base + 0x58, 4), 0)
     if (-not $mgr) { return }
-    $cam = $mgr + 0x1A38; $vt = [Sr2Mem]::Read($h, $cam, 4); $p = [Sr2Mem]::Read($h, $cam + 0x194, 4)
+    $cam = $mgr + 0x1A38; $vt = [Sr3Mem]::Read($h, $cam, 4); $p = [Sr3Mem]::Read($h, $cam + 0x194, 4)
     if ($vt -and $p -and [BitConverter]::ToUInt32($vt, 0) -eq 0x6EBDF0 -and [BitConverter]::ToUInt32($p, 0) -eq $base + $CockpitSeat) {
-        [Sr2Mem]::Write($h, $cam + 0x194, ([Sr2Mem]::Read($h, $base + $CockpitSeat + 0x18, 4)), $false)
+        [Sr3Mem]::Write($h, $cam + 0x194, ([Sr3Mem]::Read($h, $base + $CockpitSeat + 0x18, 4)), $false)
     }
 }
 function Remove-Cycle($h) {
     $base = Find-Cycle $h
     if (-not $base) { return }
     Restore-CockpitSeat $h $base
-    [Sr2Mem]::Write($h, 0xA65794, ([BitConverter]::GetBytes([int]0)), $false)   # the game's visibility (PVS) back on
-    [Sr2Mem]::Write($h, $HookDrawVA, $HookDrawOrig, $false)
-    [Sr2Mem]::Write($h, $HookLostVA, $HookLostOrig, $false)
-    foreach ($v in $CamUpdateHooks) { [Sr2Mem]::Write($h, $v[0], ([BitConverter]::GetBytes([int]$v[1])), $false) }
-    $st = [Sr2Mem]::Read($h, $base + 0x2180 - 4, 4 + 4 * $CycleGameCams)  # the list entries the block found
-    $mgr = [BitConverter]::ToUInt32([Sr2Mem]::Read($h, $base + 0x58, 4), 0); $n = [BitConverter]::ToInt32([Sr2Mem]::Read($h, $base + 0xBC, 4), 0)   # the game's own entries
+    [Sr3Mem]::Write($h, 0xA65794, ([BitConverter]::GetBytes([int]0)), $false)   # the game's visibility (PVS) back on
+    [Sr3Mem]::Write($h, $HookDrawVA, $HookDrawOrig, $false)
+    [Sr3Mem]::Write($h, $HookLostVA, $HookLostOrig, $false)
+    foreach ($v in $CamUpdateHooks) { [Sr3Mem]::Write($h, $v[0], ([BitConverter]::GetBytes([int]$v[1])), $false) }
+    $st = [Sr3Mem]::Read($h, $base + 0x2180 - 4, 4 + 4 * $CycleGameCams)  # the list entries the block found
+    $mgr = [BitConverter]::ToUInt32([Sr3Mem]::Read($h, $base + 0x58, 4), 0); $n = [BitConverter]::ToInt32([Sr3Mem]::Read($h, $base + 0xBC, 4), 0)   # the game's own entries
     if ($mgr -and $n -ge 0 -and $n -le $CycleGameCams) {
-        $hdr = [Sr2Mem]::Read($h, $mgr + 0x510, 4); $first = [Sr2Mem]::Read($h, $mgr + 0x234, 4)
+        $hdr = [Sr3Mem]::Read($h, $mgr + 0x510, 4); $first = [Sr3Mem]::Read($h, $mgr + 0x234, 4)
         if ($hdr -and [BitConverter]::ToUInt32($hdr, 0) -eq 0x6EB808 -and $first -and [BitConverter]::ToUInt32($first, 0) -eq $mgr + 0x510) {
             $list = New-Object byte[] (12 + 4 * $n)
             Put $list 0 ([BitConverter]::GetBytes([int](1 + $n))); Put $list 8 ([BitConverter]::GetBytes([int]($mgr + 0x510)))
             for ($i = 0; $i -lt $n; $i++) { [Array]::Copy($st, 4 + 4 * $i, $list, 12 + 4 * $i, 4) }
-            [Sr2Mem]::Write($h, $mgr + 0x22C, $list, $false)
+            [Sr3Mem]::Write($h, $mgr + 0x22C, $list, $false)
         }
     }
 }
@@ -457,12 +457,12 @@ if ($Cores -gt 0 -and $Cores -lt [Environment]::ProcessorCount) {
     try { $proc.ProcessorAffinity = [IntPtr]$mask; Log ("Game limited to {0} of {1} CPU threads (keeps its video decoders' memory down)." -f $Cores, [Environment]::ProcessorCount) }
     catch { Log "Could not limit the game's CPU cores: $($_.Exception.Message)" }
 }
-$h = [Sr2Mem]::Open($proc.Id)
+$h = [Sr3Mem]::Open($proc.Id)
 try {
     $t0 = Get-Date
     while ($true) {
         if ($proc.HasExited) { throw 'The game closed before it finished booting.' }
-        $f = [Sr2Mem]::Read($h, $LoadedFlagVA, 4)
+        $f = [Sr3Mem]::Read($h, $LoadedFlagVA, 4)
         if ($f -and [BitConverter]::ToUInt32($f, 0) -ne 0) { break }
         if (((Get-Date) - $t0).TotalSeconds -gt 180) { throw 'Timed out waiting for the game to boot.' }
         Start-Sleep -Milliseconds 250
@@ -471,13 +471,13 @@ try {
     Start-Sleep -Seconds $DelaySeconds
     if ($proc.HasExited) { throw 'The game closed during start-up (before any patching).' }
 
-    # safety: every site must still hold the original bytes, or ours. The cave's "SR2C" signature
+    # safety: every site must still hold the original bytes, or ours. The cave's "SR3C" signature
     # also recognises an older build of this patch, which is then replaced in place.
-    $sig = [Sr2Mem]::Read($h, $CaveVA, 4)
-    $ours = $sig -and [Text.Encoding]::ASCII.GetString($sig) -eq 'SR2C'
+    $sig = [Sr3Mem]::Read($h, $CaveVA, 4)
+    $ours = $sig -and [Text.Encoding]::ASCII.GetString($sig) -eq 'SR3C'
     $already = $true; $older = $false
     foreach ($p in $Patches) {
-        $cur = [Sr2Mem]::Read($h, $p.VA, $p.NewB.Length)
+        $cur = [Sr3Mem]::Read($h, $p.VA, $p.NewB.Length)
         if (Same $cur $p.OrigB) { $already = $false; continue }
         if ($p.VA -eq $CaveVA -and $cur) {   # cave with possibly different tuning
             $a = $cur.Clone(); $b = $p.NewB.Clone(); for ($i = $TunableLo; $i -lt $SettingsHi; $i++) { $a[$i] = 0; $b[$i] = 0 }
@@ -490,25 +490,25 @@ try {
     elseif ($already) { Log 'Camera patch was already applied; updating the tuning values.' }
 
     if ($Off) {   # live un-patch: unhook first, then clear the cave
-        [Sr2Mem]::Suspend($h)
-        try { Remove-Cycle $h; for ($i = $Patches.Count - 1; $i -ge 0; $i--) { [Sr2Mem]::Write($h, $Patches[$i].VA, $Patches[$i].OrigB, $false) } }
-        finally { [Sr2Mem]::Resume($h) }
-        foreach ($p in $Patches) { if (-not (Same ([Sr2Mem]::Read($h, $p.VA, $p.OrigB.Length)) $p.OrigB)) { throw ("Restore verification failed at 0x{0:X}" -f $p.VA) } }
+        [Sr3Mem]::Suspend($h)
+        try { Remove-Cycle $h; for ($i = $Patches.Count - 1; $i -ge 0; $i--) { [Sr3Mem]::Write($h, $Patches[$i].VA, $Patches[$i].OrigB, $false) } }
+        finally { [Sr3Mem]::Resume($h) }
+        foreach ($p in $Patches) { if (-not (Same ([Sr3Mem]::Read($h, $p.VA, $p.OrigB.Length)) $p.OrigB)) { throw ("Restore verification failed at 0x{0:X}" -f $p.VA) } }
         Log 'Camera patch REMOVED from the running game (original camera).'
         return
     }
 
-    [Sr2Mem]::Suspend($h)
+    [Sr3Mem]::Suspend($h)
     try {
-        if ($older) { for ($i = $Patches.Count - 1; $i -ge 1; $i--) { [Sr2Mem]::Write($h, $Patches[$i].VA, $Patches[$i].OrigB, $false) } }   # unhook the old build
-        foreach ($p in $Patches) { [Sr2Mem]::Write($h, $p.VA, $p.NewB, ($p.VA -eq $CaveVA)) }
+        if ($older) { for ($i = $Patches.Count - 1; $i -ge 1; $i--) { [Sr3Mem]::Write($h, $Patches[$i].VA, $Patches[$i].OrigB, $false) } }   # unhook the old build
+        foreach ($p in $Patches) { [Sr3Mem]::Write($h, $p.VA, $p.NewB, ($p.VA -eq $CaveVA)) }
         try { Install-Cycle $h; $cycleOk = $true }
         catch { $cycleOk = $false; $cycleError = $_.Exception.Message }
     }
-    finally { [Sr2Mem]::Resume($h) }
+    finally { [Sr3Mem]::Resume($h) }
 
     foreach ($p in $Patches) {
-        $cur = [Sr2Mem]::Read($h, $p.VA, $p.NewB.Length); $exp = $p.NewB.Clone()
+        $cur = [Sr3Mem]::Read($h, $p.VA, $p.NewB.Length); $exp = $p.NewB.Clone()
         if ($p.VA -eq $CaveVA -and $cur) {
             for ($i = $DiagLo + 4; $i -lt $DiagHi; $i++) { $cur[$i] = 0; $exp[$i] = 0 }
             for ($i = $DebugLo; $i -lt $DebugHi; $i++) { $cur[$i] = 0; $exp[$i] = 0 }
@@ -516,7 +516,7 @@ try {
         if (-not (Same $cur $exp)) { throw ("Verification failed at 0x{0:X}" -f $p.VA) }
     }
     if ($Canary) { Log 'CANARY MODE: in a race the chase camera should look at your car from the SIDE.' }
-    Log 'SR2 camera is ACTIVE for this session. Have fun!'
+    Log 'Camera mod is ACTIVE for this session. Have fun!'
     Log ("  Profile '$ProfileName'")
     if (-not $cycleOk) { Log "  Camera cycle NOT installed: $cycleError" }
     else { Log ("  View Change cycles: Game: Chase cam, Bumper cam, Bonnet cam, then " + ((@($slots | Select-Object -Skip 1) | ForEach-Object { $_.Name }) -join ', ') + $(if ($showHidden) { ', then the Debug cameras' } else { '' })) }
@@ -525,5 +525,5 @@ try {
     if ($Framing) { Log ('  Framing: distance {0} m, height {1} m, field of view {2} deg' -f $Distance, $Height, $Fov) }
     else { Log '  Framing: SR3 default' }
 }
-finally { [Sr2Mem]::Close($h) }
+finally { [Sr3Mem]::Close($h) }
 if ($launched -and -not $Off) { Release-StuckKeys $proc }

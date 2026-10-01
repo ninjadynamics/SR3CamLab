@@ -19,7 +19,7 @@ C = dict(MAGIC=CAVE+0x00, STRENGTH=CAVE+0x08, VMIN=CAVE+0x0C, VINV=CAVE+0x10, SL
          FRAMING=CAVE+0x68, DIST=CAVE+0x6C, HEIGHT=CAVE+0x70, FOV=CAVE+0x74,   # framing override (tunable; FRAMING=0 keeps SR3's own)
          FARD=CAVE+0x78, FARH=CAVE+0x7C,                                       # far chase view keeps its 1.25/1.15 factors
          DBG_DIST=CAVE+0x80, DBG_HEIGHT=CAVE+0x84, DBG_FOV=CAVE+0x88)         # SR3's own framing, recorded each frame
-consts = struct.pack('<4sI', b'SR2C', 1) + struct.pack('<11f',
+consts = struct.pack('<4sI', b'SR3C', 1) + struct.pack('<11f',
          0.70,        # STRENGTH : 0 = original (follow heading), 1 = follow direction of travel
          4.0,         # VMIN     : m/s where the effect starts fading in
          1/8.0,       # VINV     : 1/(fade range) -> full effect at 12 m/s (~43 km/h)

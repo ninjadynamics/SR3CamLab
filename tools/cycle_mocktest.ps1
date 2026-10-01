@@ -2,7 +2,7 @@
 param([string]$Profile = 'Daytona')
 $src = Get-Content (Join-Path $PSScriptRoot '..\patch.ps1') -Raw
 $cut = $src.IndexOf('# ---- launch (unless')
-$body = $src.Substring(0, $cut).Replace('[Sr2Mem]::Alloc', '[MockMem]::Alloc').Replace('[Sr2Mem]::Write', '[MockMem]::Write').Replace('[Sr2Mem]::Read', '[MockMem]::Read')
+$body = $src.Substring(0, $cut).Replace('[Sr3Mem]::Alloc', '[MockMem]::Alloc').Replace('[Sr3Mem]::Write', '[MockMem]::Write').Replace('[Sr3Mem]::Read', '[MockMem]::Read')
 $body += @'
 
 Add-Type @"

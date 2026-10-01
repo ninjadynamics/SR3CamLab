@@ -383,11 +383,11 @@ All of it is done by `patch.ps1` on the running process.
 4. Suspend the process (`NtSuspendProcess`), verify every original byte, write, verify the
    written bytes, resume.
 
-### The chase camera cave (`0x673C80`, signature `"SR2C"`)
+### The chase camera cave (`0x673C80`, signature `"SR3C"`)
 
 | Offset | Content |
 |---|---|
-| `+0x00` | `"SR2C"`, version |
+| `+0x00` | `"SR3C"`, version |
 | `+0x08` | strength, fade start (m/s), 1/fade range, slip factor (2), stiffness min, max, damping (negated) |
 | `+0x24`–`+0x30` | constants 0, 1, ε, speed ε |
 | `+0x34`–`+0x4C` | diagnostics and scratch (canary flag, call counters, angle delta, target x/z, dot) |

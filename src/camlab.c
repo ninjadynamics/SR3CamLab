@@ -1,5 +1,5 @@
 /*
-    CamLab - a tiny SR2-style chase camera playground.
+    CamLab - a tiny chase camera playground for SR3CamLab.
 
     A low-poly hatchback races an endless, procedurally generated rally stage
     (turns, hills, jump crests), driven by steering behaviours (path following,
@@ -726,7 +726,7 @@ static int LaunchGame(const Profile *p)
 }
 #endif
 
-// ============================================================== chase camera (SR2-style)
+// ============================================================== chase camera (swings into the slide)
 typedef struct { float yaw, yawVel, k, eyeY, offset, placed; int init; Vector3 eye, look; } Cam;
 
 // soft angle limit: free up to the knee, then resistance builds like a stiffening spring

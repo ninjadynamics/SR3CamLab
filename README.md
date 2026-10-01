@@ -1,15 +1,15 @@
 # SR3CamLab
 
-**An SR2-style chase camera for SEGA Rally 3 (arcade, via TeknoParrot), the game's hidden
-debug cameras, and a little app to tune it all.**
+**A chase camera that swings into the slide for SEGA Rally 3 (arcade, via TeknoParrot), the
+game's hidden debug cameras, and a little app to tune it all.**
 
 *by Ninja Dynamics*
 
 ![CamLab](res/camlab.png)
 
-SEGA Rally 3's chase camera sits locked behind the bumper like a GoPro on a stick. SEGA
-Rally 2's swings out when you slide, so in a drift you see the car sideways. This mod gives
-SR3 that camera, and more:
+SEGA Rally 3's chase camera sits locked behind the bumper like a GoPro on a stick. This mod
+gives it a camera that swings out when you slide, so in a drift you see the car sideways,
+and more:
 
 - **Your own chase cameras.** Camera profiles with travel follow, spring, angle limit and
   framing (distance, height, field of view), switchable in the race with View Change.
