@@ -1,0 +1,70 @@
+# SEGA Rally 3 - chase camera profiles, edited by CamLab.
+# PLAY.bat uses the default profile; pick another by name:
+#   PLAY.bat Drone
+# Framing (distance, height, fov) is optional: leave all three out for SR3's own.
+# "preset" is the entry in defaults.yaml that Reset returns a profile to.
+
+# "SR3 Chase" and "SR3 Chase Far" (built into CamLab) are SEGA Rally 3's own cameras.
+# In a race, View Change cycles the game's cameras, every profile, then the debug ones.
+# "overlay" is the size of the camera name shown on a change (px at 1080p, 0 = off);
+# "hiddenCameras" adds the cameras the game hides to View Change;
+# "speedUnits" is CamLab's speedometer: km/h or mph.
+
+default: Daytona
+overlay: 48
+hiddenCameras: true
+speedUnits: km/h
+
+profiles:
+  Daytona:
+    strength: 0.7
+    fadeInStartKmh: 14
+    fadeInFullKmh: 43
+    stiffnessMin: 65
+    stiffnessMax: 92
+    damping: 11.5
+    maxAngle: 35
+    capStiffness: 0.25
+    distance: 3.8
+    height: 1.9
+    fov: 72
+    preset: Daytona
+  Chase:
+    strength: 0.7
+    fadeInStartKmh: 14
+    fadeInFullKmh: 43
+    stiffnessMin: 30
+    stiffnessMax: 50
+    damping: 11.5
+    maxAngle: 35
+    capStiffness: 0.25
+    distance: 5.1
+    height: 1.6
+    fov: 60
+    preset: Chase
+  Chase Far:
+    strength: 0.7
+    fadeInStartKmh: 14
+    fadeInFullKmh: 43
+    stiffnessMin: 30
+    stiffnessMax: 50
+    damping: 11.5
+    maxAngle: 35
+    capStiffness: 0.25
+    distance: 6.4
+    height: 1.8
+    fov: 60
+    preset: Chase Far
+  Drone:
+    strength: 0.7
+    fadeInStartKmh: 14
+    fadeInFullKmh: 43
+    stiffnessMin: 30
+    stiffnessMax: 50
+    damping: 11.5
+    maxAngle: 35
+    capStiffness: 0.25
+    distance: 6
+    height: 4.6
+    fov: 87
+    preset: Drone

@@ -1,0 +1,9 @@
+# Normalise text to LF in the repository and convert on checkout as needed
+* text=auto
+
+# Windows scripts must keep CRLF line endings
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# binary assets
+*.png binary
