@@ -19,3 +19,6 @@ __pycache__/
 tools/*.json
 tools/*.csv
 tools/shots/
+
+# this PC's paths (written by PLAY.bat / the setup window)
+setup.yaml

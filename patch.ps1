@@ -23,6 +23,8 @@
                                       file's "overlay:", else 48; pixels at 1080p)
     -Cores <n>                     -> CPU threads the game may use (default 4; 0 = all). Keeps the
                                       memory its cached videos take low enough to avoid crashes.
+    -Setup                         -> open the setup window (where TeknoParrot and the game are;
+                                      kept in setup.yaml, found automatically the first time)
   In a race, the game's View Change button cycles through every camera: the game's own
   ("Game:", white: Chase, Bumper, Bonnet), each profile ("CamLab:", lime), then the debug
   cameras the game hides ("Debug:", orange: far chase, cockpit, the cockpit from the driver's
@@ -53,7 +55,14 @@
     Fov             deg    optional framing: lens width. Leave all three out to keep
                            SR3's own framing (the far chase view scales distance/height)
 #>
-param([string]$CameraProfile = '', [switch]$List, [switch]$NoLaunch, [switch]$Canary, [switch]$Off, [int]$DelaySeconds = 20, [string]$ProfilesFile = '', [int]$Overlay = -1, [int]$Cores = 4)
+param([string]$CameraProfile = '', [switch]$List, [switch]$NoLaunch, [switch]$Canary, [switch]$Off, [int]$DelaySeconds = 20, [string]$ProfilesFile = '', [int]$Overlay = -1, [int]$Cores = 4, [switch]$Setup)
+
+# Files from a downloaded zip carry Windows' "from the internet" mark, which makes Windows ask
+# before running PLAY.bat or camlab.exe. Clear it from SR3CamLab's own files (a no-op after the first run).
+Get-ChildItem -LiteralPath $PSScriptRoot -Recurse -File -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue
+
+# where TeknoParrot and the game are (setup.yaml, the setup window)
+. (Join-Path $PSScriptRoot 'setup.ps1')
 
 $ErrorActionPreference = 'Stop'
 
@@ -137,7 +146,6 @@ $CapStiffness   = if (Has 'CapStiffness') { Num 'CapStiffness' } else { 0.4 }
 $Framing = (Has 'Distance') -and (Has 'Height') -and (Has 'Fov')
 if ($Framing) { $Distance = Num 'Distance'; $Height = Num 'Height'; $Fov = Num 'Fov' }
 
-$Root      = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $CaveVA    = 0x673C80
 $TunableLo = 0x08; $TunableHi = 0x24
 $DiagLo = 0x34; $DiagHi = 0x50      # canary flag, call counters, runtime scratch (change at runtime)
@@ -434,15 +442,31 @@ function Release-StuckKeys($game) {
 }
 
 # ---- launch (unless the game is already running) ----
+$gameSetup = $null
+if ($Setup) {
+    $gameSetup = Get-GameSetup -Force
+    if (-not $gameSetup) { throw 'Setup cancelled; nothing was changed.' }
+    Log "Saved to setup.yaml: TeknoParrot $($gameSetup.teknoparrot), profile '$($gameSetup.profile)', game $($gameSetup.game)"
+}
 $proc = Get-Process -Name Rally -ErrorAction SilentlyContinue | Select-Object -First 1
 $launched = -not $proc
 if (-not $proc) {
     if ($NoLaunch) { throw 'Rally.exe is not running.' }
-    Log 'Starting SEGA Rally 3 through TeknoParrot...'
-    Start-Process -FilePath (Join-Path $Root 'TeknoParrotUi.exe') -ArgumentList '--profile=SR3.xml' -WorkingDirectory $Root
+    if (-not $gameSetup) { $gameSetup = Get-GameSetup }
+    if (-not $gameSetup) { throw 'Setup cancelled: PLAY.bat needs to know where TeknoParrot and SEGA Rally 3 are. Run PLAY.bat again (or PLAY.bat -Setup) to open the setup.' }
+    $tpDir = Split-Path -Parent $gameSetup.teknoparrot
+    if (Get-Process -Name TeknoParrotUi -ErrorAction SilentlyContinue) {
+        Log 'Note: TeknoParrot is already open. If the game does not start, close TeknoParrot and run PLAY.bat again.'
+    }
+    Log "Starting SEGA Rally 3 through TeknoParrot (profile '$($gameSetup.profile)')..."
+    Start-Process -FilePath $gameSetup.teknoparrot -ArgumentList "--profile=$($gameSetup.profile).xml" -WorkingDirectory $tpDir
     $t0 = Get-Date
     while (-not ($proc = Get-Process -Name Rally -ErrorAction SilentlyContinue | Select-Object -First 1)) {
-        if (((Get-Date) - $t0).TotalSeconds -gt 120) { throw 'Rally.exe did not start within 2 minutes.' }
+        if (((Get-Date) - $t0).TotalSeconds -gt 120) {
+            throw ("TeknoParrot did not start SEGA Rally 3 within 2 minutes. Check that the game runs when you start it from " +
+                   "TeknoParrot yourself (and that TeknoParrot isn't waiting on a message or an update), then try again. " +
+                   "To check where PLAY.bat looks for TeknoParrot and the game, run PLAY.bat -Setup.")
+        }
         Start-Sleep -Milliseconds 250
     }
 }

@@ -23,30 +23,50 @@ and more:
 - **CamLab** (`camlab.exe`): a driving playground with the same camera model, to tune
   profiles with sliders and launch the game with them. See [CAMLAB.md](CAMLAB.md).
 
+## Quick start
+
+1. **Make sure SEGA Rally 3 runs in TeknoParrot** on its own (TeknoParrot's *Add Game*, with
+   its game path set).
+2. **Download the zip** from [Releases](https://github.com/ninjadynamics/SR3CamLab/releases),
+   **right-click it → Extract All…**, and put the `SR3CamLab` folder in your TeknoParrot
+   folder. Don't run anything from inside the zip.
+3. **Close TeknoParrot** and **double-click `PLAY.bat`** in the `SR3CamLab` folder. It finds
+   TeknoParrot and the game by itself and starts it. After about 20 seconds in the game, the
+   camera mod switches on. Keep the black PLAY.bat window open while you play.
+
+**About Windows' warnings:** the first time, Windows may ask whether to run `PLAY.bat`, or
+show "Windows protected your PC" for `camlab.exe` (click **More info → Run anyway**). That's
+because they come from the internet and aren't signed by a company; PLAY.bat clears the mark
+on its first run. Some antivirus programs distrust any tool that changes another program's
+memory, which is how this mod works without touching your game files. If yours blocks or
+removes `patch.ps1`, allow the `SR3CamLab` folder.
+
 ## Requirements
 
 - Windows 10 or 11 (uses the built-in Windows PowerShell 5.1).
-- **SEGA Rally 3 (arcade), `Rally.exe` v3.8.4.1, set up in TeknoParrot** with the game
-  profile `SR3.xml`. The game is not included. The patch checks every byte it touches and
-  refuses any other version.
+- **SEGA Rally 3 (arcade), `Rally.exe` v3.8.4.1, set up in TeknoParrot.** The game is not
+  included. The patch checks every byte it touches and refuses any other version.
 
 ## Install
 
-Download the latest zip from [Releases](https://github.com/ninjadynamics/SR3CamLab/releases)
-(it includes `camlab.exe`) and unzip the `SR3CamLab` folder **inside your TeknoParrot
-folder**, next to `TeknoParrotUi.exe`:
+The release zip holds one folder. The easiest place for it is inside your TeknoParrot folder,
+next to `TeknoParrotUi.exe`, but anywhere works:
 
 ```
-TeknoParrot\
-├── TeknoParrotUi.exe
-├── UserProfiles\SR3.xml
-└── SR3CamLab\
-    ├── PLAY.bat          start the game with the mod
-    ├── patch.ps1         the live patcher
-    ├── profiles.yaml     your camera profiles (the game and CamLab share them)
-    ├── defaults.yaml     factory profiles (don't edit)
-    └── camlab.exe        the tuning app (from the release, or build it: see CAMLAB.md)
+SR3CamLab\
+├── PLAY.bat          start the game with the mod
+├── patch.ps1         the live patcher
+├── setup.ps1         finds TeknoParrot and the game (the setup window)
+├── profiles.yaml     your camera profiles (the game and CamLab share them)
+├── defaults.yaml     factory profiles (don't edit)
+└── camlab.exe        the tuning app (from the release, or build it: see CAMLAB.md)
 ```
+
+The first time you run `PLAY.bat` it looks for TeknoParrot and its SEGA Rally 3 game profile
+(any profile whose game is `Rally.exe`), checks the game is the supported version, and
+remembers all that in `setup.yaml`. If it can't find something, a setup window asks for it:
+
+![Setup](res/setup.png)
 
 ## Play
 
@@ -59,6 +79,7 @@ PLAY.bat Drone              a profile by name
 PLAY.bat "SR3 Chase"        SEGA Rally 3's own chase camera ("SR3 Chase Far": its far one)
 PLAY.bat Drone -Overlay 64  bigger camera names (0 = none)
 PLAY.bat -Cores 0           don't limit the game's CPU threads (see below)
+PLAY.bat -Setup             open the setup window (where TeknoParrot and the game are)
 ```
 
 **In a race, View Change cycles through every camera.** Its name shows for 2 seconds:
@@ -89,6 +110,16 @@ powershell -ExecutionPolicy Bypass -File patch.ps1 -Off -NoLaunch
 starts one thread per CPU core for each. On a 32-thread CPU that fills the 32-bit game's 4 GB
 and it crashes. `PLAY.bat` lets the game use 4 CPU threads, which halves the cost (the game
 itself only needs one).
+
+## Troubleshooting
+
+- **"TeknoParrot did not start SEGA Rally 3 within 2 minutes":** start the game from
+  TeknoParrot yourself first. It has to run there, and TeknoParrot may be showing a message or
+  an update. Close TeknoParrot before running `PLAY.bat`, then run `PLAY.bat -Setup` to check
+  which TeknoParrot, game profile and `Rally.exe` it uses.
+- **"not version 3.8.4.1":** the patch only works with that exact `Rally.exe` and refuses
+  anything else.
+- **Videos don't play / Windows "N" editions:** install Microsoft's Media Feature Pack.
 
 ## Profiles
 

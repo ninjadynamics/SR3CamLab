@@ -376,7 +376,12 @@ All of it is done by `patch.ps1` on the running process.
 
 ### Start-up
 
-1. Start the game through TeknoParrot (`TeknoParrotUi.exe --profile=SR3.xml`).
+1. Start the game through TeknoParrot (`TeknoParrotUi.exe --profile=<profile>.xml`). Which
+   TeknoParrot and which profile comes from `setup.yaml`. `setup.ps1` fills it the first time:
+   it finds TeknoParrot (a running instance, or the folders above SR3CamLab) and reads
+   `UserProfiles\*.xml` for a profile whose `<GamePath>` is `Rally.exe` (relative paths are
+   relative to the TeknoParrot folder). It checks the exe's MD5 and the game's DLLs, and asks
+   in a window when something is missing.
 2. As soon as `Rally.exe` appears, set its CPU affinity ([section 9](#9-video-playback-and-the-out-of-memory-for-vb-crash)).
 3. Wait until `[0x9EB81C]` (the settings pointer) is non-zero, then 20 s more for
    TeknoParrot's checks.
