@@ -29,6 +29,22 @@ Game facts used (found in the disassembly):
   no limit, on top of the base distance / height at [[mgr+0x50C]] / [[mgr+0x50C]+4]; held
   W/S or mouse would drive the camera through the car or out of the stage. The block clamps
   base + offset to K_RDMIN..K_RDMAX and K_RHMIN..K_RHMAX before the game applies them.
+  Menu videos (stage and car cards): table of 18 x (name, file, per-language flag, handle) at
+             0x728630; 0x621600 loads every entry whose handle is -1 (except LOADING_TEXTURE),
+             0x61C2C0 looks a video up by name and returns the table's handle. The track switcher
+             in patch.ps1 points an entry at another file, sets its handle to -1 and LOADVIDEOS
+             to 1; the block then calls 0x621600 on the game's own thread, once.
+             The game has 20 video objects (0x16C bytes each at 0xAD2F90) and uses 18, and never
+             frees one. REOPEN = handle + 1 has the block close that object's video (stop the
+             graph [+0x120] IMediaControl, release [+0x11C..0x12C] and the texture [+0x144]) and
+             open the file at REOPENPATH in its place (0x4DDC80: ecx = path, edi = object), then
+             start it the way the loader does. That is how a stage card shows another track.
+  HILITE:    the track id the stage selector is on, -1 when there is none: what the game itself
+             asks when a stage is confirmed (0x6669C0): 0x606490 with edi = the hash (0x5470D0)
+             of "ID_SELECTOR_TRACKSELECT" (0x6E53FC), guarded by [0x9C0F48].
+  MODESEL:   the same question for "ID_SELECTOR_MODESELECT" (0x6E5E14): what the first menu
+             (Championship / Quick Race / Classic) is on, -1 when there is none.
+  PHINT: when not 0, the text of the popup's second line (instead of the built-in hint).
   [0xA65794] PVS off: the scene manager's visibility refresh (0x500EA0) marks every node
              visible instead of using the camera's BSP leaf. The PVS is built for eyes near
              the road, so higher or roaming cameras lose scenery to it. Set for CamLab
@@ -63,7 +79,8 @@ D = dict(MAGIC=0x00, FONT=0x08, FONTH=0x0C, FRAMES=0x10, SHOWFRAMES=0x14, SIZE=0
          S_WTPID=0xF40, S_K32=0xF60, S_CURPID=0xF70, K_PITCH=0xF90, K_PITCHN=0xF94, FONT2=0xF98,
          HINT=0xFA0, TEXT=0xFA4, KEEP=0xFA8, S_HINT=0xFB0, K_TILTS=0xFD0, RESETPREV=0xFD8, K_RDMIN=0xFE0, K_RDMAX=0xFE4, K_RHMIN=0xFE8, K_RHMAX=0xFEC,
          GAMENAMES=0x2000, ORIG=0x2180, CAMOFF=0x21B0, EXTRA=0x21E0, CAMCOLOR=0x2210,
-         MIRROR=0x2240, SAVEDPTR=0x2258, PATCHIDX=0x225C, NGAME=0x2260)
+         MIRROR=0x2240, SAVEDPTR=0x2258, PATCHIDX=0x225C, NGAME=0x2260, LOADVIDEOS=0x2264, PHINT=0x2268,
+         HILITE=0x226C, REOPEN=0x2270, REOPENPATH=0x2274, MODESEL=0x2278)
 SLOT_PARAMS = 0x5C          # 11 + 12 dwords copied into the cave
 MAX_SLOTS = 21              # the game's list holds 21 pointers
 MAX_GAMECAMS = 12
@@ -79,6 +96,113 @@ draw_hook:
 d_base:
     pop ebp
     sub ebp, {CODE + 7}
+
+    cmp dword ptr [ebp + {D['LOADVIDEOS']}], 0
+    je no_videos
+    mov dword ptr [ebp + {D['LOADVIDEOS']}], 0
+    mov eax, 0x621600
+    call eax
+no_videos:
+
+    or eax, -1
+    cmp dword ptr [0x9c0f48], 0
+    je hilite_store
+    push 23
+    mov ecx, 0x6e53fc
+    mov eax, 0x5470d0
+    call eax
+    add esp, 4
+    mov edi, eax
+    mov eax, 0x606490
+    call eax
+hilite_store:
+    mov dword ptr [ebp + {D['HILITE']}], eax
+
+    or eax, -1
+    cmp dword ptr [0x9c0f48], 0
+    je modesel_store
+    push 22
+    mov ecx, 0x6e5e14
+    mov eax, 0x5470d0
+    call eax
+    add esp, 4
+    mov edi, eax
+    mov eax, 0x606490
+    call eax
+modesel_store:
+    mov dword ptr [ebp + {D['MODESEL']}], eax
+
+    mov eax, dword ptr [ebp + {D['REOPEN']}]
+    test eax, eax
+    je no_reopen
+    dec eax
+    cmp eax, 20
+    jae reopen_done
+    push eax
+    imul edi, eax, 0x16c
+    add edi, 0xad2f90
+    cmp dword ptr [edi + 4], 0
+    je reopen_open
+    mov eax, dword ptr [edi + 0x120]
+    test eax, eax
+    je reopen_release
+    mov ecx, dword ptr [eax]
+    push eax
+    call dword ptr [ecx + 0x24]
+reopen_release:
+    mov ebx, 0x12c
+reopen_loop:
+    mov eax, dword ptr [edi + ebx]
+    test eax, eax
+    je reopen_next
+    mov dword ptr [edi + ebx], 0
+    mov ecx, dword ptr [eax]
+    push eax
+    call dword ptr [ecx + 8]
+reopen_next:
+    sub ebx, 4
+    cmp ebx, 0x11c
+    jae reopen_loop
+    mov eax, dword ptr [edi + 0x144]
+    test eax, eax
+    je reopen_closed
+    mov dword ptr [edi + 0x144], 0
+    mov ecx, dword ptr [eax]
+    push eax
+    call dword ptr [ecx + 8]
+reopen_closed:
+    mov dword ptr [edi + 0x130], 0
+    mov dword ptr [edi], 0
+    mov dword ptr [edi + 4], 0
+    mov dword ptr [edi + 8], 0
+reopen_open:
+    mov ecx, dword ptr [ebp + {D['REOPENPATH']}]
+    push ebp
+    mov eax, 0x4ddc80
+    call eax
+    pop ebp
+    test eax, eax
+    je reopen_failed
+    mov eax, dword ptr [edi + 0x120]
+    mov ecx, dword ptr [eax]
+    push eax
+    call dword ptr [ecx + 0x1c]
+    test eax, eax
+    jl reopen_play
+    mov dword ptr [edi], 0
+reopen_play:
+    mov eax, dword ptr [esp]
+    push 1
+    push 0
+    push eax
+    mov eax, 0x4de370
+    call eax
+    add esp, 12
+reopen_failed:
+    add esp, 4
+reopen_done:
+    mov dword ptr [ebp + {D['REOPEN']}], 0
+no_reopen:
 
     mov esi, dword ptr [0x9eb4ec]
     test esi, esi
@@ -408,7 +532,11 @@ h2_ok:
     test eax, eax
     jz done
     mov ebx, eax
+    mov edx, dword ptr [ebp + {D['PHINT']}]
+    test edx, edx
+    jnz hint_text
     lea edx, [ebp + {D['S_HINT']}]
+hint_text:
     mov dword ptr [ebp + {D['TEXT']}], edx
     mov eax, ecx
     mov ecx, 0xffe0e0e0

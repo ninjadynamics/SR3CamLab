@@ -22,3 +22,15 @@ tools/shots/
 
 # this PC's paths (written by PLAY.bat / the setup window)
 setup.yaml
+
+# your own announcer recordings (and the placeholders SR3 Extras starts with)
+announcer/
+
+# another co-driver's clips (taken from your own copy of another game)
+codriver/
+
+# race sounds converted from your own PlayStation 3 disc
+sounds/
+
+# what PLAY.bat's window said on the last run
+play.log

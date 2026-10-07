@@ -198,3 +198,40 @@ for i, o in enumerate((0x510, 0x1700, 0x189C)): w32(MGR + 0x234 + 4 * i, MGR + o
 lst = frame('next race (game rebuilt its list)')
 print('    list offsets:', ' '.join(f'{o:X}' for o in lst))
 print('    index after the rebuild', r32(MGR + 0x230), '(want 3: Daytona kept, not the launch slot)')
+
+# ---- track switcher support: the video-load request and the hint text override
+loads = []
+stub(0x621600, 0, lambda a: loads.append(1) or 0)
+w32(BASE + D['LOADVIDEOS'], 1)
+u.mem_write(BASE + 0x2400, b'Press VIEW CHANGE to select alternative tracks\0')
+w32(BASE + D['PHINT'], BASE + 0x2400); w32(BASE + D['HINT'], 1); w32(BASE + D['FRAMES'], 5)
+frame('video-load request + own hint text')
+frame('next frame')
+print('    video loader called', len(loads), 'time(s) (want 1), request now', r32(BASE + D['LOADVIDEOS']), '(want 0)')
+print('    hint drawn:', sorted(set(l[1] for l in log if l[0] == 'DrawTextA' and 'VIEW' in l[1])))
+
+# ---- track switcher support: the highlighted stage and a card video opened in its own object
+seen = []
+stub(0x5470d0, 0, lambda a: seen.append(('hash', cstr(u.reg_read(UC_X86_REG_ECX)), args(1)[0])) or 0x1234)
+stub(0x606490, 0, lambda a: seen.append(('selector', hex(u.reg_read(UC_X86_REG_EDI)))) or 0x55AA)
+frame('no menu system: no selector asked')
+print('    highlighted', hex(r32(BASE + D['HILITE'])), '(want 0xffffffff), calls', seen)
+w32(0x9C0F48, 1)
+frame('stage selector asked')
+print('    highlighted', hex(r32(BASE + D['HILITE'])), '(want 0x55aa), calls', seen)
+VOBJ = 0xAD2F90 + 5 * 0x16C; COM = RVT + 0x400
+def com(a, name): seen.append((name, hex(a[0]))); return 0
+stub(STUB + 0xD0, 1, lambda a: com(a, 'Release')); stub(STUB + 0xD4, 1, lambda a: com(a, 'Run')); stub(STUB + 0xD8, 1, lambda a: com(a, 'Stop'))
+w32(COM + 8, STUB + 0xD0); w32(COM + 0x1C, STUB + 0xD4); w32(COM + 0x24, STUB + 0xD8)
+for k, o in enumerate((0x11C, 0x120, 0x124, 0x128, 0x12C, 0x144)): w32(COM + 0x100 + 4 * k, COM); w32(VOBJ + o, COM + 0x100 + 4 * k)
+w32(VOBJ, 1); w32(VOBJ + 4, 1); w32(VOBJ + 8, 1); w32(VOBJ + 0x130, 0x777)
+def vopen(a):
+    seen.append(('open', cstr(u.reg_read(UC_X86_REG_ECX)), hex(u.reg_read(UC_X86_REG_EDI) - 0xAD2F90), 'object closed' if r32(VOBJ + 4) == 0 and r32(VOBJ + 0x144) == 0 and r32(VOBJ + 0x120) == 0 else 'OBJECT NOT CLOSED'))
+    w32(VOBJ + 0x120, COM + 0x104); w32(VOBJ + 4, 1); return 1
+stub(0x4ddc80, 0, vopen); stub(0x4de370, 0, lambda a: seen.append(('play',) + tuple(args(3))) or 0)
+u.mem_write(BASE + 0x2500, b'.\frontend\PC\Videos\LANG_ENGLISH_CA1.wmv\0')
+w32(BASE + D['REOPENPATH'], BASE + 0x2500); w32(BASE + D['REOPEN'], 6); seen.clear()
+frame('card video reopened in object 5')
+for x in seen: print('    ', x)
+print('    request now', r32(BASE + D['REOPEN']), '(want 0)')
+seen.clear(); frame('next frame'); print('    calls', [x[0] for x in seen], '(want hash, selector only)')
