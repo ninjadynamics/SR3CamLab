@@ -155,6 +155,9 @@ test, and only switch a tool over when its output is identical.
 3. **The restructuring starts after Mountain is signed off.**
 4. **The GitHub repo is renamed (not replaced) after that sign-off.**
 
+5. **Our generated terrain may be shipped** as a ready-made file per course ("Yes we could ship our terrain"), provided it
+   holds only our geometry and 1995 texture NAMES - to be verified before the first release.
+
 ## Still open (not blocking)
 
 - Where `PLAY.bat` lives: the plan keeps it in the root next to `SR3Lab.exe`.
