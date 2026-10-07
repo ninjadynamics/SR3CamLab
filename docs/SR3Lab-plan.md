@@ -92,7 +92,7 @@ Two ways to make the Python part standalone:
 - **A. Freeze it** (bundle the Python runtime and libraries into one exe per tool). Byte-identical output is almost
   automatic because the same code runs. Cost: a large download (tens of MB), slower start, an opaque exe that some
   antivirus products flag, and the source is still Python.
-- **B. Port it** to C (or C#). Small, fast, matches the rest of the suite. Cost: weeks of work, and byte-identical
+- **B. Port it** to C (or C#). Small, fast, matches the rest of the suite. Cost: a few hours of AI work plus the comparison runs; byte-identical
   output must be proven function by function - floating-point order, DXT texture encoding, zlib level and sorting all
   have to match exactly.
 
@@ -157,6 +157,10 @@ test, and only switch a tool over when its output is identical.
 
 5. **Our generated terrain may be shipped** as a ready-made file per course ("Yes we could ship our terrain"), provided it
    holds only our geometry and 1995 texture NAMES - to be verified before the first release.
+
+6. **Standalone = a bundled Python interpreter** (the official embeddable build next to the scripts, which stay readable
+   files). No compiled-Python exe. A C rewrite is not ruled out by effort (it is hours of AI work, not weeks) but is done
+   only where measured speed calls for it, and under the same identical-output test.
 
 ## Still open (not blocking)
 
