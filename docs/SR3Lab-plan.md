@@ -144,14 +144,18 @@ test, and only switch a tool over when its output is identical.
   transparency.
 - **Renaming a public repo and its folder** breaks existing links, the users' `setup.yaml` paths and any shortcuts.
 
-## Open questions for the user
+## Decisions (user, 2026-10-07)
 
-1. **`scripts\` and transparency.** Is a frozen exe acceptable there as a first step (way A), or must everything in
-   `scripts\` be readable source from day one?
-2. **Where does `PLAY.bat` live** - in the root next to `SR3Lab.exe` (as planned here), or in `scripts\`?
-3. **Byte-identical forever, or only across the restructuring?** After a port, is "identical files" required, or is
-   "identical in game" enough?
-4. **Which courses are in the first public release** - Mountain only, or all eight classic courses once they are
-   redone to Mountain's standard?
-5. **Timing.** Start the restructuring now, or after Mountain is signed off?
-6. **GitHub.** Rename the existing public repo to SR3Lab (keeps history and stars, breaks links), or start a new one?
+1. **A bundled-Python exe in `scripts\` is acceptable** as the first step.
+2. **Byte-identical means: same inputs, same output files, whatever the tools are written in.** "It's like I'm asking to
+   switch from C to Pascal but make sure 5+5 remains 10." Every conversion to a standalone executable (bundle or port)
+   must reproduce the files the scripts produce at the moment of conversion. There is no weaker standard ("looks the
+   same in game") and no question to ask about it. The golden set is taken from the build that is signed off, and it
+   moves only when the build itself is deliberately changed.
+3. **The restructuring starts after Mountain is signed off.**
+4. **The GitHub repo is renamed (not replaced) after that sign-off.**
+
+## Still open (not blocking)
+
+- Where `PLAY.bat` lives: the plan keeps it in the root next to `SR3Lab.exe`.
+- Which courses are in the first public release: Mountain only, or all eight classic courses redone to its standard.
