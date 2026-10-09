@@ -34,3 +34,7 @@ sounds/
 
 # what PLAY.bat's window said on the last run
 play.log
+
+# local Blender scenes of imported courses (they hold SEGA geometry and textures: never committed)
+*.blend
+*.blend1

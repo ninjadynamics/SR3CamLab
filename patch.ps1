@@ -588,6 +588,106 @@ function Set-ArcadeTimes($h, [string]$gameDir, [string]$slot, [string]$dir) {
     [Sr3Mem]::Write($h, $at, $new, $true)
     Log "Checkpoint times: $slot uses the times of Main_release\track$dir\$slot."
 }
+# Car shadows. The game's dynamic shadows are variance shadow maps; the pixel shaders read gfShadowParamsPs from four floats at
+# 0x9F1068 (set once at start-up by 0x594570): +4 = the smallest variance allowed (1/512), +8 = the power the result is raised
+# to (10). A smaller variance floor and a higher power give a harder edge. An added track may bring shadow.txt in its folder
+# ("<variance floor> <power>", e.g. "0.0002 30": the 1995 courses want a hard shadow under the car); it is written while that
+# track is chosen and the game's own two values are put back when another one is.
+# A third word "noblur" also skips the 5 x 5 Gaussian blur the game runs over a render target after one of its passes (the
+# only call of 0x50D960, at 0x5A5467; LIKELY the shadow map - the two numbers alone changed nothing visible, in-game run
+# 2026-10-08). The call is replaced by five NOPs while the track is chosen and put back afterwards.
+$script:ShadowOrig = $null; $script:ShadowBlurOff = $false
+$ShadowBlurVA = 0x5A5467; $ShadowBlurOrig = [byte[]]@(0xE8, 0xF4, 0x84, 0xF6, 0xFF)
+function Set-ShadowParams($h, [string]$gameDir, [string]$slot, [string]$dir) {
+    if ($script:ShadowOrig) { [Sr3Mem]::Write($h, 0x9F106C, $script:ShadowOrig, $true); $script:ShadowOrig = $null }
+    if ($script:ShadowBlurOff) { [Sr3Mem]::Write($h, $ShadowBlurVA, $ShadowBlurOrig, $false); $script:ShadowBlurOff = $false }
+    if ($dir -eq 's') { return }
+    $file = Join-Path $gameDir "Main_release\track$dir\$slot\shadow.txt"
+    if (-not (Test-Path -LiteralPath $file)) { return }
+    $v = @(([IO.File]::ReadAllText($file)).Trim() -split '\s+')
+    $a = 0.0; $b = 0.0; $inv = [Globalization.CultureInfo]::InvariantCulture; $any = [Globalization.NumberStyles]::Float
+    if ($v.Count -lt 2 -or -not [double]::TryParse($v[0], $any, $inv, [ref]$a) -or -not [double]::TryParse($v[1], $any, $inv, [ref]$b) -or $a -le 0 -or $a -gt 0.01 -or $b -lt 1 -or $b -gt 200) { Log "Car shadows: $file not used (expected two numbers, e.g. 0.0002 30)."; return }
+    $old = [Sr3Mem]::Read($h, 0x9F106C, 8); if ($null -eq $old) { return }
+    $script:ShadowOrig = $old
+    $new = New-Object byte[] 8; [Array]::Copy([BitConverter]::GetBytes([single]$a), 0, $new, 0, 4); [Array]::Copy([BitConverter]::GetBytes([single]$b), 0, $new, 4, 4)
+    [Sr3Mem]::Write($h, 0x9F106C, $new, $true)
+    $blur = ''
+    if ($v.Count -ge 3 -and $v[2] -eq 'noblur') {
+        if (Same ([Sr3Mem]::Read($h, $ShadowBlurVA, 5)) $ShadowBlurOrig) {
+            [Sr3Mem]::Write($h, $ShadowBlurVA, [byte[]]@(0x90, 0x90, 0x90, 0x90, 0x90), $false); $script:ShadowBlurOff = $true; $blur = ', blur pass off'
+        } else { $blur = ', blur pass NOT touched (unexpected bytes at its call)' }
+    }
+    Log "Car shadows: $slot uses variance floor $a, power $b$blur (Main_release\track$dir\$slot\shadow.txt)."
+}
+# SHADER EXPERIMENT (2026-10-08, "SR3 track format\24_shaders.md"). Can a pixel shader of the game be swapped while it runs?
+# The uber effect "ubershadergame.fx" is one chunk of shaderlib3_uber_data.sbf with 1229 precompiled techniques; every shader record
+# holds, at +0x10, the pointer of the Direct3D shader the game made from it at boot, and the game reads that pointer again at every
+# bind. An added track may bring shader.txt in its folder with the word
+#     untextured     the pixel shader of the imported walls (technique T_Lpse_Tdnsl, record at chunk +0xABFC) is pointed at the one of
+#                    T_Lps (lit, no textures, record at chunk +0x8DFC): the imported scenery should lose its pictures and nothing else
+#                    change. (18 of SEGA's own materials use the same technique and would lose theirs too while it is on.)
+#     untextured-own the same for the technique T_Lpse_Tdnl (record at chunk +0xAB48), which no material of the game selects: only the tiles a
+#                    build names in its course setting own_shader_tiles lose their pictures.
+# The pointer is put back when another track is chosen or the file is gone. Nothing is written unless all four checks of the chunk hold.
+# THE GAME'S ROAD NOT DRAWN (2026-10-09). An imported 1995 course may keep its own road polygons, joined to their walls and rock
+# as SEGA modelled them; SEGA Rally 3's road (TrackDeform) is then needed for the DRIVING only, and wherever it is drawn it
+# shows through the 1995 surface (its 1 m grid does not follow banked 1995 polygons; making its textures transparent does not
+# hide it: build RAW2, in game). 0x4EEF70 is the routine that draws the road (cdecl, two arguments, plain ret; it is called from
+# the wrappers 0x4EF4C0 and 0x4EF500, reached from 0x4F00D3, 0x5A3F4D, 0x5A42CB). A track folder with road.txt holding the
+# word "hide" gets its first byte (0x55, push ebp) replaced by 0xC3 (ret) while that track is selected; the byte is put back for
+# every other track. Nothing is written unless the first six bytes are the expected ones.
+# A second routine, 0x4EE920 (cdecl, plain ret; called twice from 0x5E0330 with a car's position), draws road cells AROUND EACH CAR
+# from the same road data (LIKELY the patch that carries ruts and tyre marks). With the 1995 road in the same place it flickers against
+# it under the car, more the faster the car goes (RAW3, in game). road.txt with the words "hide all" stops that one too.
+$RoadDrawVA = 0x4EEF70; $RoadDrawOrig = [byte[]]@(0x55, 0x8B, 0xEC, 0x83, 0xE4, 0xF0); $script:RoadHidden = $false
+$RoadCarVA = 0x4EE920; $RoadCarOrig = [byte[]]@(0x83, 0xEC, 0x3C, 0x8B, 0x00, 0x6B); $script:RoadCarHidden = $false
+function Set-RoadHide($h, [string]$gameDir, [string]$slot, [string]$dir) {
+    if ($script:RoadHidden) { [Sr3Mem]::Write($h, $RoadDrawVA, [byte[]]@(0x55), $false); $script:RoadHidden = $false; Log "Game's road: drawn again." }
+    if ($script:RoadCarHidden) { [Sr3Mem]::Write($h, $RoadCarVA, [byte[]]@(0x83), $false); $script:RoadCarHidden = $false }
+    if ($dir -eq 's') { return }
+    $file = Join-Path $gameDir "Main_release\track$dir\$slot\road.txt"
+    if (-not (Test-Path -LiteralPath $file)) { return }
+    $word = ([IO.File]::ReadAllText($file)).Trim().ToLower()
+    if ($word -ne 'hide' -and $word -ne 'hide all') { Log "Game's road: $file not used (expected: hide, or: hide all)."; return }
+    $now = [Sr3Mem]::Read($h, $RoadDrawVA, 6)
+    if (-not (Same $now $RoadDrawOrig)) { Log "Game's road: NOT hidden, unexpected bytes at its drawing routine ($(($now | ForEach-Object { $_.ToString('X2') }) -join ' '))."; return }
+    [Sr3Mem]::Write($h, $RoadDrawVA, [byte[]]@(0xC3), $false); $script:RoadHidden = $true
+    $more = ''
+    if ($word -eq 'hide all') {
+        if (Same ([Sr3Mem]::Read($h, $RoadCarVA, 6)) $RoadCarOrig) { [Sr3Mem]::Write($h, $RoadCarVA, [byte[]]@(0xC3), $false); $script:RoadCarHidden = $true; $more = ', nor its patch around each car' }
+        else { $more = ' (the patch around each car NOT touched: unexpected bytes)' }
+    }
+    Log "Game's road: not drawn on $slot$more (Main_release\track$dir\$slot\road.txt); it still carries the driving."
+}
+$script:ShaderSwap = $null
+function Set-ShaderTest($h, [string]$gameDir, [string]$slot, [string]$dir) {
+    if ($script:ShaderSwap) { [Sr3Mem]::Write($h, $script:ShaderSwap.Va, $script:ShaderSwap.Old, $true); Log "Shader experiment: the wall shader is back (pointer restored)."; $script:ShaderSwap = $null }
+    if ($dir -eq 's') { return }
+    $file = Join-Path $gameDir "Main_release\track$dir\$slot\shader.txt"
+    if (-not (Test-Path -LiteralPath $file)) { return }
+    $word = ([IO.File]::ReadAllText($file)).Trim().ToLower()
+    if ($word -ne 'untextured' -and $word -ne 'untextured-own') { Log "Shader experiment: $file not used (expected the word: untextured or untextured-own)."; return }
+    $rec = if ($word -eq 'untextured-own') { 0xAB48 } else { 0xABFC }; $code = if ($word -eq 'untextured-own') { 0x10E420 } else { 0x1122B8 }      # the pixel shader record of the technique, and where its bytecode starts
+    $u32 = { param($va) $b = [Sr3Mem]::Read($h, $va, 4); if ($null -eq $b) { return $null }; return [long][BitConverter]::ToUInt32($b, 0) }
+    $n = & $u32 0x9F1280
+    if ($null -eq $n -or $n -lt 1 -or $n -gt 64) { Log "Shader experiment: the effect list could not be read (count $n)."; return }
+    $base = $null
+    for ($i = 0; $i -lt $n; $i++) {
+        $np = & $u32 (0x9F1084 + 8 * $i); if ($null -eq $np -or $np -lt 0x10000) { continue }
+        $s = [Sr3Mem]::Read($h, $np, 18); if ($null -eq $s) { continue }
+        if ([Text.Encoding]::ASCII.GetString($s) -eq "ubershadergame.fx`0") { $base = $np - 0xACB0; break }
+    }
+    if ($null -eq $base) { Log "Shader experiment: ubershadergame.fx is not in the effect list ($n effects): nothing changed."; return }
+    $c1 = & $u32 $base; $c2 = & $u32 ($base + 0x70E4 + 8); $c3 = & $u32 ($base + $rec); $c4 = if ($c3) { & $u32 ($base + $code) } else { $null }
+    if ($c1 -ne 0x02D604CD -or $c2 -ne ($base + 0xABFC) -or $c3 -ne ($base + $code) -or $c4 -ne 0xFFFF0300) {
+        Log ("Shader experiment: the effect at 0x{0:X} is not the one this was written for (checks {1:X} {2:X} {3:X} {4:X}; shader library 2 instead of 3?): nothing changed." -f $base, $c1, $c2, $c3, $c4); return
+    }
+    $va = $base + $rec + 0x10; $a = [Sr3Mem]::Read($h, $va, 4); $b = [Sr3Mem]::Read($h, ($base + 0x8DFC + 0x10), 4)
+    if ($null -eq $a -or $null -eq $b -or [BitConverter]::ToUInt32($a, 0) -eq 0 -or [BitConverter]::ToUInt32($b, 0) -eq 0) { Log "Shader experiment: a shader pointer is empty (walls $([BitConverter]::ToUInt32($a, 0)), plain $([BitConverter]::ToUInt32($b, 0))): nothing changed."; return }
+    [Sr3Mem]::Write($h, $va, $b, $true); $script:ShaderSwap = @{ Va = $va; Old = $a }
+    $back = [Sr3Mem]::Read($h, $va, 4)
+    Log ("Shader experiment: effect at 0x{0:X}; wall pixel shader 0x{1:X} replaced by the untextured one 0x{2:X} (read back 0x{3:X}). Imported scenery should show without its pictures." -f $base, [BitConverter]::ToUInt32($a, 0), [BitConverter]::ToUInt32($b, 0), [BitConverter]::ToUInt32($back, 0))
+}
 # Runs until the game closes.
 function Watch-Tracks($game, [string]$gameExe) {
     Add-Type -AssemblyName System.Drawing, System.Windows.Forms
@@ -677,7 +777,7 @@ public static class Sr3Pad {
                 }
                 $dirNow = $dir
             }
-            if ("$name/$dir" -ne $timesNow) { Set-ArcadeTimes $h (Split-Path -Parent $gameExe) $name $dir; $timesNow = "$name/$dir" }
+            if ("$name/$dir" -ne $timesNow) { Set-ArcadeTimes $h (Split-Path -Parent $gameExe) $name $dir; Set-ShadowParams $h (Split-Path -Parent $gameExe) $name $dir; Set-ShaderTest $h (Split-Path -Parent $gameExe) $name $dir; Set-RoadHide $h (Split-Path -Parent $gameExe) $name $dir; $timesNow = "$name/$dir" }
             # ... and its sounds are the chosen track's, where the game has them
             $cur = if ($list) { $list[$choice[$name]] } else { $null }
             $sound = if ($cur) { "$($cur.Ambience)/$($cur.Music)/$($cur.Events)" } else { '//' }
