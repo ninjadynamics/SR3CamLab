@@ -36,5 +36,20 @@ sounds/
 play.log
 
 # local Blender scenes of imported courses (they hold SEGA geometry and textures: never committed)
+blender/
 *.blend
 *.blend1
+
+# compiled helpers of the importer (built from the .c files beside them on first use)
+*.dll
+*.pyc
+
+# the importer's data folders (links to the work folder outside the repository: builds, ROM extracts, SEGA textures - never committed)
+/scripts/tmp/
+/scripts/out/
+/scripts/classic_tex/
+/scripts/previews/
+/scripts/retex/
+/classic/
+# link to /courses (the importer looks for it beside itself)
+/scripts/courses/

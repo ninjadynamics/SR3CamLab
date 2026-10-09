@@ -1,0 +1,138 @@
+{
+ "name": "mountain",
+ "title": "SEGA Rally Championship (1995) - Mountain",
+ "objects": [
+  1259,
+  1318
+ ],
+ "half_width": 7,
+ "surface_codes": {
+  "0": "tarmac",
+  "1": "tarmac",
+  "8": "tarmac",
+  "9": "tarmac",
+  "2": "gravel",
+  "3": "gravel",
+  "4": "gravel",
+  "6": "gravel"
+ },
+ "start": {
+  "slice": 10,
+  "direction": 1
+ },
+ "textures": {},
+ "art": {
+  "rocks": [
+   [
+    "Canyon4",
+    "53850d6a"
+   ],
+   [
+    "Canyon4",
+    "89f2eea0"
+   ],
+   [
+    "Canyon4",
+    "c24eb36a"
+   ]
+  ],
+  "rock_tint": 0.6,
+  "road_tarmac": [
+   "Lakeside4",
+   "7f8b9a62",
+   "6025fa42"
+  ],
+  "road_dirt": [
+   "Lakeside4",
+   "029be493",
+   "ed8aec61"
+  ],
+  "tree_row": [
+   "Lakeside4",
+   "0fcf0f84",
+   2.0,
+   0.19,
+   0.975
+  ]
+ },
+ "steps": {
+  "classic": 34,
+  "mixed": 35,
+  "allsr3": 36
+ },
+ "props": "slot",
+ "label_overrides": {},
+ "start_grid": {
+  "rom": "maincpu",
+  "offset": "0x3db80",
+  "note": "4 cars x (x, y, z) f32; table order in ROM = Desert, Forest, Mountain, Lake Side"
+ },
+ "gameplay": "course1_mountain",
+ "texel_block": "0x600000",
+ "props_note": "every track needs its pobj files + grass cache: without them the grass set-up (0x506FD0) never runs and the game dies at 0x5DE16C when a wheel touches the road (in-game runs 2026-10-07). 'minimal' is not usable.",
+ "cameras": "default",
+ "sea": {
+  "tile": "tex_sea_blue_64x64_c1DF",
+  "level": -0.5,
+  "cell": 40.0,
+  "colour": [
+   62,
+   107,
+   160
+  ],
+  "screen_colour": [
+   25,
+   63,
+   129
+  ],
+  "lod_bias": 2.0
+ },
+ "road_tint": {
+  "tarmac": [
+   0.42,
+   0.45,
+   0.52
+  ],
+  "gravel": [
+   0.62,
+   0.48,
+   0.36
+  ]
+ },
+ "sky_drop": 300.0,
+ "sky_repeat": 8,
+ "sky_top": 28.28,
+ "checkpoints": "classic",
+ "road_layers": {
+  "tarmac": [
+   "Alpine4",
+   "5186a744",
+   "7e6973ab"
+  ]
+ },
+ "road_layers_note": "Alpine4's Terrain_Tarmac pair: clean tarmac (Desert4's own Safari tarmac throws dust clouds)",
+ "lighting_from": "Tropical4",
+ "scene_gain": [
+  0.8,
+  0.8,
+  0.8
+ ],
+ "light_dir": [
+  0.0,
+  -9.4,
+  3.4
+ ],
+ "mirror_groups": [
+  [
+   "tex_s1_x0896_y0320_128x128_c0DB_t",
+   "tex_s1_x0256_y0384_128x64_c0DB_t",
+   "tex_s1_x0384_y0512_64x128_c0DB_t"
+  ]
+ ],
+ "mirror_groups_note": "the castle (three boards, one folded screen) shows its picture mirrored as a whole, in place: it is painted lit from the left, the 1995 sun is to its right",
+ "round_exclude": [
+  "tex_s1_x0384_y0640_128x128"
+ ],
+ "round_exclude_note": "the village's roof tile (labelled 'dirt'): never rounded",
+ "light_dir_note": "the 1995 ROM's light vector (0, -0.94, 0.34): sun 70 degrees up, to the right of the start grid. Settled by the user on 2026-10-08 (\"let's keep the 70deg sun\") after an A/B against a 16:30 sun (47.7 degrees). The earlier default [-4, -6, 4] (47 degrees) was a guess from before the ROM vector was found."
+}

@@ -1,0 +1,383 @@
+{
+ "name": "desert",
+ "title": "SEGA Rally Championship (1995) - Desert",
+ "objects": [
+  937,
+  996
+ ],
+ "half_width": 7,
+ "start": {
+  "slice": 10,
+  "direction": 1
+ },
+ "textures": {
+  "roof": [
+   "Desert4",
+   "13ec50b4"
+  ],
+  "grass": [
+   "Desert4",
+   "3eab748d"
+  ],
+  "sand": [
+   "Desert4",
+   "4427b0a6"
+  ],
+  "dirt": [
+   "Canyon4",
+   "1ec88958"
+  ],
+  "rock": [
+   "Desert4",
+   "a92a9e76"
+  ]
+ },
+ "art": {
+  "rocks": [
+   [
+    "Desert4",
+    "a92a9e76"
+   ],
+   [
+    "Desert4",
+    "18649346"
+   ]
+  ],
+  "rock_tint": 0.4,
+  "road_tarmac": [
+   "Desert4",
+   "e56e4a5c",
+   "0558e395"
+  ],
+  "road_dirt": [
+   "Desert4",
+   "5b5f7bf7",
+   "5196e5b9"
+  ],
+  "tree_row": [
+   "Desert4",
+   "aad295ec",
+   4.0,
+   0.06,
+   0.99
+  ],
+  "pieces": {
+   "windows": [
+    [
+     "Desert4",
+     "7a53c9b1",
+     [
+      0,
+      0,
+      125,
+      125
+     ]
+    ],
+    [
+     "Desert4",
+     "7a53c9b1",
+     [
+      130,
+      0,
+      255,
+      125
+     ]
+    ],
+    [
+     "Desert4",
+     "7a53c9b1",
+     [
+      0,
+      135,
+      125,
+      265
+     ]
+    ],
+    [
+     "Desert4",
+     "7a53c9b1",
+     [
+      130,
+      135,
+      255,
+      265
+     ]
+    ],
+    [
+     "Desert4",
+     "7a53c9b1",
+     [
+      0,
+      270,
+      255,
+      390
+     ]
+    ]
+   ],
+   "doors": [
+    [
+     "Desert4",
+     "7a53c9b1",
+     [
+      258,
+      0,
+      382,
+      265
+     ]
+    ],
+    [
+     "Desert4",
+     "7a53c9b1",
+     [
+      258,
+      272,
+      382,
+      512
+     ]
+    ]
+   ],
+   "bush": [
+    "Desert4",
+    "b838ea06",
+    [
+     372,
+     300,
+     512,
+     492
+    ]
+   ],
+   "crown": [
+    "Desert4",
+    "b838ea06",
+    [
+     10,
+     10,
+     400,
+     250
+    ]
+   ],
+   "tree": [
+    "Desert4",
+    "b838ea06",
+    [
+     10,
+     10,
+     400,
+     250
+    ]
+   ]
+  }
+ },
+ "steps": {
+  "classic": 25,
+  "mixed": 26,
+  "allsr3": 27
+ },
+ "props": "slot",
+ "label_overrides": {
+  "0": "sand",
+  "1": "sand",
+  "2": "sand",
+  "165": "sand",
+  "167": "sand",
+  "168": "sand",
+  "169": "sand",
+  "3": "dirt",
+  "4": "dirt",
+  "5": "dirt",
+  "14": "dirt",
+  "16": "dirt",
+  "52": "dirt",
+  "153": "dirt",
+  "163": "dirt",
+  "164": "dirt",
+  "166": "dirt",
+  "170": "dirt",
+  "51": "gravel",
+  "154": "gravel",
+  "9": "grass",
+  "10": "grass",
+  "11": "grass",
+  "12": "grass",
+  "13": "grass",
+  "15": "grass",
+  "65": "grass",
+  "66": "grass",
+  "155": "grass",
+  "156": "grass",
+  "17": "brick_wall",
+  "18": "brick_wall",
+  "19": "brick_wall",
+  "20": "brick_wall",
+  "21": "brick_wall",
+  "22": "brick_wall",
+  "23": "brick_wall",
+  "96": "brick_wall",
+  "97": "brick_wall",
+  "98": "brick_wall",
+  "99": "brick_wall",
+  "100": "brick_wall",
+  "101": "brick_wall",
+  "102": "brick_wall",
+  "103": "brick_wall",
+  "104": "brick_wall",
+  "24": "lamp",
+  "25": "lamp",
+  "26": "window",
+  "27": "window",
+  "28": "window",
+  "29": "window",
+  "30": "window",
+  "31": "window",
+  "32": "window",
+  "33": "window",
+  "34": "window",
+  "35": "window",
+  "36": "window",
+  "37": "window",
+  "38": "window",
+  "39": "window",
+  "40": "window",
+  "41": "window",
+  "42": "window",
+  "43": "window",
+  "69": "window",
+  "70": "window",
+  "71": "window",
+  "78": "window",
+  "79": "window",
+  "72": "door",
+  "73": "door",
+  "74": "door",
+  "75": "door",
+  "76": "door",
+  "77": "door",
+  "8": "sign",
+  "44": "sign",
+  "86": "sign",
+  "161": "sign",
+  "162": "sign",
+  "6": "bush",
+  "7": "bush",
+  "45": "bush",
+  "46": "bush",
+  "47": "bush",
+  "48": "bush",
+  "49": "bush",
+  "84": "bush",
+  "85": "bush",
+  "146": "bush",
+  "147": "bush",
+  "148": "bush",
+  "149": "bush",
+  "157": "bush",
+  "158": "bush",
+  "159": "bush",
+  "160": "bush",
+  "171": "bush",
+  "184": "bush",
+  "185": "bush",
+  "150": "tree",
+  "151": "tree",
+  "152": "tree",
+  "82": "bare",
+  "83": "bare",
+  "92": "bare",
+  "93": "bare",
+  "53": "tree_wall",
+  "54": "tree_wall",
+  "80": "tree_wall",
+  "81": "tree_wall",
+  "50": "rock",
+  "55": "plaster_wall",
+  "56": "plaster_wall",
+  "57": "plaster_wall",
+  "58": "plaster_wall",
+  "59": "plaster_wall",
+  "60": "plaster_wall",
+  "61": "plaster_wall",
+  "62": "plaster_wall",
+  "63": "plaster_wall",
+  "64": "plaster_wall",
+  "67": "plaster_wall",
+  "68": "plaster_wall",
+  "87": "plaster_wall",
+  "88": "plaster_wall",
+  "89": "plaster_wall",
+  "90": "plaster_wall",
+  "91": "plaster_wall",
+  "94": "plaster_wall",
+  "95": "plaster_wall",
+  "115": "plaster_wall",
+  "116": "plaster_wall",
+  "117": "plaster_wall",
+  "118": "plaster_wall",
+  "119": "plaster_wall",
+  "120": "plaster_wall",
+  "121": "plaster_wall",
+  "122": "plaster_wall",
+  "123": "plaster_wall",
+  "124": "plaster_wall",
+  "125": "plaster_wall",
+  "126": "plaster_wall",
+  "127": "plaster_wall",
+  "128": "plaster_wall",
+  "129": "plaster_wall",
+  "130": "plaster_wall",
+  "131": "plaster_wall",
+  "132": "plaster_wall",
+  "133": "plaster_wall",
+  "134": "plaster_wall",
+  "135": "plaster_wall",
+  "136": "plaster_wall",
+  "137": "plaster_wall",
+  "138": "plaster_wall",
+  "139": "plaster_wall",
+  "140": "plaster_wall",
+  "141": "plaster_wall",
+  "142": "plaster_wall",
+  "143": "plaster_wall",
+  "144": "plaster_wall",
+  "145": "plaster_wall",
+  "173": "wood",
+  "174": "wood",
+  "175": "wood",
+  "176": "wood",
+  "177": "wood",
+  "178": "wood",
+  "179": "wood",
+  "180": "wood",
+  "181": "wood",
+  "182": "wood",
+  "183": "wood",
+  "105": "fence",
+  "106": "fence",
+  "172": "fence",
+  "107": "bush",
+  "108": "bush",
+  "109": "bush",
+  "110": "bush",
+  "111": "dirt",
+  "112": "dirt",
+  "113": "dirt",
+  "114": "dirt"
+ },
+ "surface_codes": {
+  "0": "tarmac",
+  "1": "tarmac",
+  "8": "tarmac",
+  "9": "tarmac",
+  "2": "gravel",
+  "3": "gravel",
+  "4": "gravel",
+  "6": "gravel"
+ },
+ "start_grid": {
+  "rom": "maincpu",
+  "offset": "0x3db20",
+  "note": "4 cars x (x, y, z) f32; table order in ROM = Desert, Forest, Mountain, Lake Side"
+ },
+ "gameplay": "course2_desert",
+ "texel_block": "0x400000",
+ "cameras": "default"
+}

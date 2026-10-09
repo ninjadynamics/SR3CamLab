@@ -1,0 +1,137 @@
+{
+ "name": "lakeside",
+ "title": "SEGA Rally Championship (1995) - Lake Side",
+ "objects": [
+  1379,
+  1438
+ ],
+ "half_width": 7,
+ "start": {
+  "slice": 10,
+  "direction": 1
+ },
+ "textures": {
+  "grass": [
+   "Lakeside4",
+   "2ce6d1af"
+  ],
+  "dirt": [
+   "Lakeside4",
+   "ed8aec61"
+  ],
+  "stone_wall": [
+   "Lakeside4",
+   "7dabd389"
+  ],
+  "rock": [
+   "Lakeside4",
+   "37747404"
+  ]
+ },
+ "art": {
+  "rocks": [
+   [
+    "Lakeside4",
+    "37747404"
+   ],
+   [
+    "Lakeside4",
+    "7155805c"
+   ],
+   [
+    "Lakeside4",
+    "58bdc898"
+   ]
+  ],
+  "rock_tint": 0.25,
+  "road_tarmac": [
+   "Lakeside4",
+   "7f8b9a62",
+   "6025fa42"
+  ],
+  "road_dirt": [
+   "Lakeside4",
+   "029be493",
+   "ed8aec61"
+  ],
+  "tree_row": [
+   "Lakeside4",
+   "572ddcf5",
+   4.0,
+   0.06,
+   0.985
+  ]
+ },
+ "steps": {
+  "classic": 28,
+  "mixed": 29,
+  "allsr3": 30
+ },
+ "props": "slot",
+ "label_overrides": {
+  "0": "tree_wall",
+  "7": "tree_wall",
+  "8": "tree_wall",
+  "9": "tree_wall",
+  "10": "tree_wall",
+  "11": "tree_wall",
+  "12": "tree_wall",
+  "13": "tree_wall",
+  "14": "tree_wall",
+  "15": "tree_wall",
+  "16": "tree_wall",
+  "17": "tree_wall",
+  "18": "tree_wall",
+  "23": "tree_wall",
+  "24": "tree_wall",
+  "25": "tree_wall",
+  "26": "tree_wall",
+  "28": "tree_wall",
+  "29": "tree_wall",
+  "30": "tree_wall",
+  "31": "tree_wall",
+  "32": "tree_wall",
+  "33": "tree_wall",
+  "34": "tree_wall",
+  "35": "tree_wall",
+  "36": "tree_wall",
+  "37": "tree_wall",
+  "38": "tree_wall",
+  "39": "tree_wall",
+  "40": "tree_wall",
+  "41": "tree_wall",
+  "1": "trunk",
+  "4": "trunk",
+  "5": "bare",
+  "2": "dirt",
+  "3": "bush",
+  "6": "grass",
+  "43": "grass",
+  "44": "grass",
+  "19": "crown",
+  "21": "tree",
+  "22": "tree",
+  "20": "sign",
+  "45": "sign",
+  "27": "rock",
+  "42": "stone_wall"
+ },
+ "surface_codes": {
+  "0": "tarmac",
+  "1": "tarmac",
+  "8": "tarmac",
+  "9": "tarmac",
+  "2": "gravel",
+  "3": "gravel",
+  "4": "gravel",
+  "6": "gravel"
+ },
+ "start_grid": {
+  "rom": "maincpu",
+  "offset": "0x3dbb0",
+  "note": "4 cars x (x, y, z) f32; table order in ROM = Desert, Forest, Mountain, Lake Side"
+ },
+ "gameplay": "course3_lakeside",
+ "texel_block": "0x700000",
+ "cameras": "default"
+}

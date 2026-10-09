@@ -1,0 +1,148 @@
+{
+ "name": "forest",
+ "title": "SEGA Rally Championship (1995) - Forest",
+ "objects": [
+  1135,
+  1194
+ ],
+ "half_width": 7,
+ "start": {
+  "slice": 10,
+  "direction": 1
+ },
+ "textures": {
+  "grass": [
+   "Lakeside4",
+   "2ce6d1af"
+  ],
+  "dirt": [
+   "Lakeside4",
+   "ed8aec61"
+  ],
+  "gravel": [
+   "Lakeside4",
+   "6468d4aa"
+  ],
+  "stone_wall": [
+   "Lakeside4",
+   "7dabd389"
+  ],
+  "asphalt": [
+   "Lakeside4",
+   "6025fa42"
+  ],
+  "rock": [
+   "Alpine4",
+   "e8a80b7c"
+  ]
+ },
+ "art": {
+  "rocks": [
+   [
+    "Alpine4",
+    "e8a80b7c"
+   ],
+   [
+    "Lakeside4",
+    "37747404"
+   ]
+  ],
+  "rock_tint": 0.5,
+  "road_tarmac": [
+   "Alpine4",
+   "5186a744",
+   "7e6973ab"
+  ],
+  "road_dirt": [
+   "Lakeside4",
+   "2086679e",
+   "6468d4aa"
+  ],
+  "tree_row": [
+   "Alpine4",
+   "484f0734",
+   4.0,
+   0.13,
+   0.895
+  ],
+  "pieces": {
+   "tree": [
+    "Alpine4",
+    "45d314a7",
+    [
+     372,
+     262,
+     512,
+     512
+    ]
+   ]
+  }
+ },
+ "steps": {
+  "classic": 31,
+  "mixed": 32,
+  "allsr3": 33
+ },
+ "props": "slot",
+ "label_overrides": {
+  "0": "tree_wall",
+  "27": "tree_wall",
+  "36": "asphalt",
+  "37": "asphalt",
+  "38": "stone_wall",
+  "39": "flat",
+  "1": "rock",
+  "5": "rock",
+  "6": "rock",
+  "8": "rock",
+  "9": "rock",
+  "21": "rock",
+  "22": "rock",
+  "23": "rock",
+  "24": "rock",
+  "25": "rock",
+  "26": "rock",
+  "2": "ivy",
+  "3": "ivy",
+  "4": "sign",
+  "7": "stone_wall",
+  "10": "stone_wall",
+  "19": "stone_wall",
+  "11": "tree",
+  "20": "tree",
+  "12": "fence",
+  "13": "fence",
+  "18": "fence",
+  "14": "gravel",
+  "15": "dirt",
+  "16": "dirt",
+  "17": "dirt",
+  "28": "grass",
+  "29": "grass",
+  "30": "grass",
+  "31": "grass",
+  "32": "grass",
+  "33": "grass",
+  "34": "grass",
+  "35": "asphalt",
+  "40": "flat"
+ },
+ "surface_codes": {
+  "0": "tarmac",
+  "1": "tarmac",
+  "8": "tarmac",
+  "9": "tarmac",
+  "2": "gravel",
+  "3": "gravel",
+  "4": "gravel",
+  "6": "gravel"
+ },
+ "start_grid": {
+  "rom": "maincpu",
+  "offset": "0x3db50",
+  "note": "4 cars x (x, y, z) f32; table order in ROM = Desert, Forest, Mountain, Lake Side"
+ },
+ "gameplay": "course4_forest",
+ "texel_block": "0x500000",
+ "cameras": "default"
+}
