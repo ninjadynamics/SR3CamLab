@@ -114,16 +114,16 @@ The mu meaning is LIKELY (ordering; in game the traction limit scales with it).
   inside the game; checks the layout and a byte-identical round trip of each SEGA file first), then copy into the game.
   Realism: `python scripts\handling\realism_map.py` (realism_specs.json -> flavor_realism.json), then build_flavor.py.
 - `handling.json` next to PLAY.bat (`handling.example.json`): `{version, default, cars{name: flavor}, flavors{name:
-  {digit, grip_file, steer_rate}}}` (steer_rate rad/s at full stick, 0 = SEGA's steering; older steer_return_s / steer_linear are ignored).
+  {digit, grip_file}}}` (older files' steer_rate / steer_return_s / steer_linear are ignored: every handling steers with SEGA's own steering).
 
-### The launcher (patch.ps1: Read-Handling, Set-Handling, Sync-RaceFlavor, Install-Steer, Start-SteerRace, Update-SteerRace)
+### The launcher (patch.ps1: Read-Handling, Set-Handling, Sync-RaceFlavor, Remove-SteerHook)
 | What | Where |
 |---|---|
 | all ten known cars on one flavor | the 's' of "cars" at 0x6C631D -> the digit |
 | a per-car mix | 0x5C6144 `push 0x6C630C` -> `call` CARPATH (tools\build_flavorhooks.py, 231 bytes): compares ebp with the ten names (0x4AF410), pushes its own pattern with the car's digit (flags at +8 + 12 x i in 0x5C6000's order) or SEGA's |
 | added cars (Hornet) | the 's' at 0x6C6371, one flavor for all of them |
 | grip file | the 's' of "Effects" at 0x6C6176, when a flavor in use has one (one per race) |
-| steering rate | 0x5CFF32 `call 0x448C00` (the human driver's steering handed to the vehicle in 0x5CFE90, every input mode) -> STEER routine (toolsuild_flavorhooks.py, 238 bytes): only for the player's vehicle (ecx = [[0x9DBAC8 + 4] + 0x858], record 0's human driver; the Classic opponent passes unchanged); while A > 0 the vehicle gets stick x min(1, A / v + B x v) (stick = (b1 - b0) / 255 from driver + 0x1C84, v = |the wrapper's vtable + 0x30 vector|, m/s), A = R x L / lock, B = R x K / lock written when the race runs (Update-SteerRace: R the player's car's handling's rate, L its wheelbase, lock its front wheel + 0x184, K = $SteerK); A = 0 = SEGA's chain. Replaced the steering return (rate limit toward the centre) and the stick 1:1 of 2026-10-14 |
+| steering | SEGA's own for every handling. The STEER hook of 2026-10-14 / 15 (0x5CFF32 `call 0x448C00` -> a routine of ours: steering return, then 1:1, then a steering rate) is gone; Remove-SteerHook writes SEGA's call back when a game still holds it (PLAY.bat run again on a game an earlier launcher had hooked) |
 All take effect when the next race loads. A missing folder or car file: that car keeps SEGA's file (Log line).
 
 ### One handling per race, the stick 1:1 for SRC (2026-10-14)
@@ -179,7 +179,23 @@ At 60 km/h the yaw per full stick is R within -15 / +7 %, at 120 km/h the two cl
 model's 0.66 there against 0.53 / 0.83 asked for); at 180 km/h the straight leaves too little clean distance for a weave
 small enough to stay in the linear range, so 180 is NOT verified. K stays 0.0023 (a fit through the noisy 120 km/h point,
 K 0.0013, did worse in the check race). The 1:1 run's 1.95 rad/s at 190 km/h was also at the grip limit (2.4 g), not linear.
-Next: a long straight (Classic's Daytona speedway, track5) for 120 / 180 km/h, longer weaves, the same regression.
+Not continued: the owner had the steering rate taken out the same night (next section).
+
+### Taken out again: the steering rate; SRC on SEGA's SegaRally tyre model (2026-10-15)
+The owner, after kb 29 (SRC's steering read from the Model 2 code): "remove the rads tuning and put realism on realism default
+with the (resulting) acceleration scaled to SR3 <-- nothing else. make sure SR3's default model is untampered with. install C on
+the SRC option (key 2)". C = kb 29's cheap experiment: SR3's own tyre force model 1 "SegaRally" in the SRC files.
+- Launcher and settings app: the steering rate, its keys, labels, handling.json fields and the pop-up's field are gone; every
+  handling steers with SEGA's own chain (Remove-SteerHook above). handling.json / handling.example.json: no steer_* fields.
+- SRC (`flavor_src.json` `force_model` 2 -> 1): built with build_flavor.py into a staging folder and copied into
+  Main_release\car1; against the files it replaced, chunk by chunk, the ONLY change in all ten is chunk 27 + 8, 2 -> 1
+  (the five compressed files differ in every byte, their chunks do not). The grip file SurfacePairEffect1 is byte-identical.
+- Realism: realism_map.py's defaults (pace sr3: each car's torque scaled to its SEGA file's launch, the Bowler with its measured
+  pace_trim 0.84) and nothing else (SR3's force model 2, no grip file); identical to the agent's stage_r2 build, which differs
+  from the one installed before only in the Bowler.
+- SR3's own: SEGA's files are untouched (Main_release\cars: the ten bespoke files and SurfacePairEffects dated 2008-04-29; the
+  only newer files there are the added Hornet's); a car on SR3 loads SEGA's paths (flag 0 / 's'), and no steering hook.
+- Not yet driven in game.
 
 ### Live keys (owner, 2026-10-14: "Do A and A+, assign to num keys. Live labels ... (camlab style)")
 Whenever a flavor is built (Main_release\car1 / car2), the per-car routine and the steering hook go in even with no
@@ -187,11 +203,9 @@ handling.json (every car on SEGA's handling), and while the game window is in fr
 | Key (number row or keypad) | Does |
 |---|---|
 | 1 / 2 / 3 | SR3's own / SRC / Realism for the car: on the car select the HIGHLIGHTED one (camera block + 0x227C CARSEL: 0x606510 with the hash 0x6EACE04A of "ID_SELECTOR_CARSELECT" = the highlighted entry's data, the car id; 0x606490 gives its place in the list instead, which made the first try pick C4 for the highlighted ST205), anywhere else the player's car ([0x9DBDA0 + 0xC] +4). Its flag in the per-car routine (an added car: the shared 's' at 0x6C6371), the grip file's 's'; from that car's next race; handling.json is written |
-| 4 / 6 | that car's handling's steering rate 0.1 rad/s lower / higher (0.5 .. 3.0; from off: 1.5); in a race it changes at once |
-| 5 | steering rate off (SEGA's own steering chain) / back on (to the value it had) |
 | 0 | show what the car has |
 Each key shows a label for 2.5 s: the camera block's popup (first line at block + 0x2400, second at + 0x2480, the green of the
-alternative-track titles), e.g. "Steering: 1.5 rad/s at full stick" / "SEGA Rally Championship handling, Toyota Celica ST205". The rate is per handling (handling.json `flavors.<name>.steer_rate`, SR3's own as `sr3`; defaults: src 1.5, realism and sr3 0 = SEGA's chain; the settings app's handling pop-up has SRC's as a number).
+alternative-track titles), e.g. "Handling: SEGA Rally Championship" / "Toyota Celica ST205, from its next race". (Keys 4 / 6 / 5 were the steering return, then the steering rate: taken out 2026-10-15.)
 VERIFIED in game 2026-10-14: ST205 highlighted -> 2 -> "Handling: SEGA Rally Championship / Toyota Celica ST205, from its next
 race"; the next car (Focus) -> keypad 3 -> Realism; in a race 6 / 5 / 5 -> rate 0.333 / 0 / 0.333 per frame.
 

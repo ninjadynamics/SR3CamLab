@@ -1234,7 +1234,6 @@ public static class Sr3Pad {
                         $car = Get-KeyCar $h $base $menu; $lines = $null
                         if (-not $car) { $lines = @('No car yet', 'pick one on the car select') }
                         elseif ($HandlingKeys.ContainsKey($vk)) { $lines = Set-CarHandlingLive $h $car $HandlingKeys[$vk] }
-                        elseif ($SteerKeys.ContainsKey($vk)) { $lines = Set-SteerLive $h $car $SteerKeys[$vk] (-not $menu) }
                         else { $lines = Show-CarHandling $h $car }
                         if ($lines) { $labelLines = $lines; $labelUntil = (Get-Date).AddSeconds(2.5) }
                     }
@@ -1284,9 +1283,7 @@ public static class Sr3Pad {
                 $showing = $false
             }
             Sync-RaceFlavor $h                                            # every car of the next race on the player's car's handling
-            if ($script:SteerRace -and $script:SteerRace.Pending -and -not $menu) { Update-SteerRace $h }   # the rate, once the race's car can be read
-            if ($wasMenu -and -not $menu) {                               # a race starts: the player's car's steering rate (Set-Handling)
-                Start-SteerRace $h
+            if ($wasMenu -and -not $menu) {                               # a race starts
                 if ($script:RaceFlavor) { Log "Handling: this race on $($FlavorTitles[$script:RaceFlavorName]), the player's car's ($($script:RaceFlavor -replace '/.*$', '')); every car in it loads that handling." }
             }
             $wasDown = $down; $wasMenu = $menu
@@ -1460,7 +1457,7 @@ function Open-CarCards($h, [long]$base) {
 # Main_release\car<digit>\ (and, if it has one, a grip file SurfacePairEffect<digit>\surfacepairdata_xdata.sbf), built on the
 # owner's machine from SEGA's own files by scripts\handling\build_flavor.py; nothing of SEGA's ships. handling.json next to
 # PLAY.bat (example: handling.example.json) says which car drives which flavor:
-#   {"version": 1, "default": "sr3", "cars": {"ST205": "src"}, "flavors": {"src": {"digit": "1", "grip_file": true, "steer_rate": 1.5}}}
+#   {"version": 1, "default": "sr3", "cars": {"ST205": "src"}, "flavors": {"src": {"digit": "1", "grip_file": true}}}
 # No file, or "default": "sr3" and no car on a flavor: nothing is patched.
 # The race loader 0x5C5D30 makes each car's data path when a race loads (so a change takes effect at the next race):
 #   the ten known cars: "\main_release\cars\%s%s_data" (0x6C630C, pushed at 0x5C6144) with "bespoke";
@@ -1479,23 +1476,8 @@ $CarPathEntry = 0xA0                                                           #
 $CarPathOrder = 'C4', 'Delta_HF', 'ST205', 'Enduro', 'RSFocus', '207', 'SubaruImpreza', 'SX4', 'Bowler', 'MitsubishiEvo'
 $CarPathSite = 0x5C6144; $CarPathBytes = '680c636c00'
 $CarDirSite = 0x6C631D; $AddedCarDirSite = 0x6C6371; $GripDirSite = 0x6C6176
-# Steering rate (the owner, 2026-10-15: "steering return knobs are useless. off is ok. replace those knobs with rad/s
-# steering rate. let's try 1.5. 1:1 was a bad idea"). The human driver's update (0x5E9D20, driver vtable 0x6ED0C8) hands the
-# steering to the vehicle in 0x5CFE90 (fld [esi+0x18] ... call 0x448C00 at 0x5CFF32) in every input mode; with the
-# TeknoParrot pad (input mode 1) the value comes from 0x5E0B20: (b1 - b0) / 300 x a lock factor (0.8 .. 0.6 with speed) x the
-# car's speed table (1.5 at rest .. 0.5 from 110 mph), no time smoothing (kb 28). The call at 0x5CFF32 goes to
-# tools\build_flavorhooks.py's STEER routine first. For the player's vehicle only (ecx = [[0x9DBAC8 + 4] + 0x858], record 0's
-# human driver) and while A > 0 it hands the vehicle  stick x min(1, A / v + B x v)  instead (stick = (b1 - b0) / 255 from
-# the pad bytes at driver + 0x1C84, v = the car's speed in m/s from the wrapper's vtable + 0x30, as 0x5E0B20 gets it), a
-# fraction of the full lock: with A = R x L / lock and B = R x K / lock the wheels at full stick stand at
-# min(lock, R x (L + K v^2) / v), a steady turn of about R rad/s, the same measure as kb 28's yaw gain (SRC's own laps 2.0 -
-# 2.1). R per handling (handling.json flavors.<name>.steer_rate, rad/s; 0 or missing = SEGA's chain, A = 0), L the car's
-# wheelbase (chunk 26: front minus rear hub z), lock = the front wheel's + 0x184 read in the race, K = $SteerK. Written when
-# the race runs (Update-SteerRace); keys 4 / 6 / 5 change it at once. The player's car: the library node [0x9DBDA0 + 0xC].
-$SteerCode = '00000000000000008180803b0000803f000080bf0000803f0000000000000000e800000000588b15ccba9d0085d20f84b3000000813ac8d06e000f85a7000000398a580800000f859b000000f30f1048db0f57d20f2fca0f868a0000005150528b01ff5030f30f1000f30f59c0f30f104804f30f59c9f30f58c1f30f104808f30f59c9f30f58c1f30f51c05a5859f30f5f40eff30f1140f3f30f1048dbf30f5ec8f30f1050dff30f59d0f30f58caf30f5d48e7f30f1148f7510fb68a851c00000fb692841c000029d1f30f2ac159f30f5940e3f30f5d40e7f30f5f40ebf30f59c1f30f11442404b8008c4400ffe0'
-$SteerEntry = 0x20                                                            # A +0 (0 = SEGA's chain), B +4, 1/255, 1.0, -1.0, lowest speed 1.0, last speed +0x18, last full-stick fraction +0x1C
-$SteerK = 0.0023                                                              # understeer term K, s^2/m (kb 28, the rate measurements)
-$WheelBase = @{ C4 = 2.601; RSFocus = 2.654; SubaruImpreza = 2.622; SX4 = 2.487; MitsubishiEvo = 2.604; '207' = 2.550; ST205 = 2.519; Delta_HF = 2.473; Bowler = 2.712; Enduro = 2.628; hornet = 2.847 }   # chunk 26, m
+# Steering: SEGA's own for every handling. The steering-rate hook (a call at 0x5CFF32 to a routine of ours, 2026-10-15) was taken out on the
+# owner's word the same night ("remove the rads tuning"); a game a launcher of that day had hooked gets SEGA's call back (Remove-SteerHook).
 $SteerSite = 0x5CFF32; $SteerBytes = 'e8c98ce7ff'                                  # call 0x448C00
 function Read-Handling([string]$gameExe) {
     $file = Join-Path $PSScriptRoot 'handling.json'
@@ -1516,9 +1498,7 @@ function Read-Handling([string]$gameExe) {
                 if (Test-Path -LiteralPath (Join-Path $gameDir "SurfacePairEffect$d\surfacepairdata_xdata.sbf")) { $grip = $true }
                 else { Log "Handling: flavor $k's grip file SurfacePairEffect$d\surfacepairdata_xdata.sbf is missing; its cars keep SEGA's tyre grip." }
             }
-            $rate = 0.0; if ($DefaultFlavors.Contains($k)) { $rate = [double]$DefaultFlavors[$k].Rate }
-            if ($v.PSObject.Properties['steer_rate']) { $rate = [double]$v.steer_rate }        # (steer_return_s and steer_linear of older files: ignored)
-            $fl[$k] = @{ Name = $k; Digit = $d; Dir = $dir; Grip = $grip; Rate = $rate }
+            $fl[$k] = @{ Name = $k; Digit = $d; Dir = $dir; Grip = $grip }      # (steer_rate / steer_return_s / steer_linear of older files: ignored)
         }
     }
     $want = @{}
@@ -1547,12 +1527,12 @@ function Set-DirChar($h, [long]$va, [string]$ch, [string]$what) {
     if ($cur[0] -ne [byte][char]$ch) { [Sr3Mem]::Write($h, $va, [byte[]]@([byte][char]$ch), $true) }
 }
 function Set-Handling($game) {
-    $script:Handling = Read-Handling $script:GameExePath; $script:SteerCave = $null; $script:SteerRace = $null; $script:CarPathCave = $null; $script:RaceFlavor = $null
+    $script:Handling = Read-Handling $script:GameExePath; $script:CarPathCave = $null; $script:RaceFlavor = $null
     $cfg = $script:Handling
     if (-not $cfg) { $cfg = New-HandlingLive $script:GameExePath; $script:Handling = $cfg }      # nothing asked for, but a flavor is built: every car on SEGA's, ready for the keys
-    if ($cfg) { $script:SteerRates = Read-SteerRates $cfg }
     $h = [Sr3Mem]::Open($game.Id)
     try {
+        Remove-SteerHook $h
         $site = [Sr3Mem]::Read($h, $CarPathSite, 5)
         $hooked = $site -and $site[0] -eq 0xE8                       # ours already (PLAY.bat run again on a running game)
         if (-not $cfg) {                                              # nothing asked for: SEGA's paths (also undoes an earlier run)
@@ -1595,24 +1575,21 @@ function Set-Handling($game) {
         $gch = 's'
         if ($grip.Count) { $gch = $fl[$grip[0]].Digit; if ($grip.Count -gt 1) { Log "Handling: $($grip -join ' and ') each have a grip file; one is read per race: $($grip[0])'s." } }
         Set-DirChar $h $GripDirSite $gch 'Handling (grip file)'
-        if ($fl.Count -or @($script:SteerRates.Values | Where-Object { $_ -gt 0 }).Count) { $script:SteerCave = Install-Steer $h }      # (in place whenever the keys may want it; A = 0 = SEGA's chain otherwise)
-        if ($fl.Count) { Log ('Handling keys (game window in front): 1 / 2 / 3 = ' + (($FlavorTitles.Keys | ForEach-Object { $FlavorTitles[$_] + $(if ($_ -ne 'sr3' -and -not $fl.ContainsKey($_)) { ' (not built)' } else { '' }) }) -join ' / ') + ' for the highlighted car (car select) or your car; 4 / 6 = steering rate -/+ 0.1 rad/s, 5 = off (SEGA''s steering) / on, 0 = show.') }
+        if ($fl.Count) { Log ('Handling keys (game window in front): 1 / 2 / 3 = ' + (($FlavorTitles.Keys | ForEach-Object { $FlavorTitles[$_] + $(if ($_ -ne 'sr3' -and -not $fl.ContainsKey($_)) { ' (not built)' } else { '' }) }) -join ' / ') + ' for the highlighted car (car select) or your car; 0 = show.') }
     } catch { Log "Handling: $($_.Exception.Message)" } finally { [Sr3Mem]::Close($h) }
 }
 # Live handling keys (the owner, 2026-10-14: "Do A and A+, assign to num keys. Live labels for live value changes (camlab style)").
 # While the game window is in front: 1 / 2 / 3 (number row or keypad) = SEGA Rally 3's own handling / SEGA Rally Championship's / Realism
 # for one car: on the car select the highlighted one (camera block + 0x227C, CARSEL), anywhere else the player's car. It takes effect at
 # that car's next race load (its flag in the per-car routine; the added cars' path character; the grip file's character) and is written
-# to handling.json. 4 / 6 = that car's handling's steering rate 0.1 rad/s lower / higher (0.5 .. 3.0), 5 = off (SEGA's own steering) /
-# back on: in a race it changes at once. 0 = show what the car has. Every key shows a label (the camera block's popup, as the camera names do).
+# to handling.json. 0 = show what the car has. Every key shows a label (the camera block's popup, as the camera names do).
 $HandlingKeys = @{ 0x31 = 'sr3'; 0x32 = 'src'; 0x33 = 'realism'; 0x61 = 'sr3'; 0x62 = 'src'; 0x63 = 'realism' }
-$SteerKeys = @{ 0x34 = -0.1; 0x36 = 0.1; 0x64 = -0.1; 0x66 = 0.1; 0x35 = 0.0; 0x65 = 0.0 }   # rad/s; 0 = off / back on
 $InfoKeys = @(0x30, 0x60)
 $CarTitles = @{ C4 = 'Citroen C4 WRC'; RSFocus = 'Ford Focus RS WRC 07'; SubaruImpreza = 'Subaru Impreza WRC2008'; SX4 = 'Suzuki SX4 WRC'; MitsubishiEvo = 'Mitsubishi Lancer Evolution X'; '207' = 'Peugeot 207 Super 2000'; ST205 = 'Toyota Celica ST205'; Delta_HF = 'Lancia Super Delta HF integrale'; Bowler = 'Bowler Nemesis'; Enduro = 'McRae Enduro' }
 function Get-CarTitle([string]$car) { if ($CarTitles.ContainsKey($car)) { return $CarTitles[$car] }; return (Get-Culture).TextInfo.ToTitleCase($car) }      # the labels' names: the menu's
-$HandlingKeyCodes = @($HandlingKeys.Keys) + @($SteerKeys.Keys) + $InfoKeys
+$HandlingKeyCodes = @($HandlingKeys.Keys) + $InfoKeys
 $FlavorTitles = [ordered]@{ sr3 = "SEGA Rally 3's own"; src = 'SEGA Rally Championship'; realism = 'Realism' }
-$DefaultFlavors = [ordered]@{ src = @{ Digit = '1'; Grip = $true; Rate = 1.5 }; realism = @{ Digit = '2'; Grip = $false; Rate = 0.0 } }   # steering rate, rad/s at full stick (0 = SEGA's chain); SRC 1.5 (owner, 2026-10-15)
+$DefaultFlavors = [ordered]@{ src = @{ Digit = '1'; Grip = $true }; realism = @{ Digit = '2'; Grip = $false } }
 # no handling.json (or nothing on a flavor): the flavors that are built, every car on SEGA's handling; $null when none is built
 function New-HandlingLive([string]$gameExe) {
     if (-not $gameExe) { return $null }
@@ -1620,7 +1597,7 @@ function New-HandlingLive([string]$gameExe) {
     foreach ($k in $DefaultFlavors.Keys) {
         $v = $DefaultFlavors[$k]; $dir = Join-Path $gameDir "Main_release\car$($v.Digit)"
         if (@(Get-ChildItem -LiteralPath $dir -Filter '*_data.sbf' -ErrorAction SilentlyContinue).Count) {
-            $fl[$k] = @{ Name = $k; Digit = $v.Digit; Dir = $dir; Grip = ($v.Grip -and (Test-Path -LiteralPath (Join-Path $gameDir "SurfacePairEffect$($v.Digit)\surfacepairdata_xdata.sbf"))); Rate = $v.Rate }
+            $fl[$k] = @{ Name = $k; Digit = $v.Digit; Dir = $dir; Grip = ($v.Grip -and (Test-Path -LiteralPath (Join-Path $gameDir "SurfacePairEffect$($v.Digit)\surfacepairdata_xdata.sbf"))) }
         }
     }
     if (-not $fl.Count) { return $null }
@@ -1630,12 +1607,6 @@ function New-HandlingLive([string]$gameExe) {
     }
     return @{ Plan = $plan; Flavors = $fl }
 }
-# each handling's steering rate in rad/s at full stick (handling.json "steer_rate", SEGA's own included as "sr3"; 0 = SEGA's chain)
-function Read-SteerRates($cfg) {
-    $s = @{ sr3 = 0.0 }; foreach ($k in $cfg.Flavors.Keys) { $s[$k] = [double]$cfg.Flavors[$k].Rate }
-    try { $j = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'handling.json')) | ConvertFrom-Json; if ($j.flavors -and $j.flavors.sr3 -and $j.flavors.sr3.steer_rate) { $s.sr3 = [double]$j.flavors.sr3.steer_rate } } catch { }
-    return $s
-}
 # handling.json as the settings app writes it (default = the handling most of SEGA's ten have, cars = the others)
 function Save-Handling {
     $cfg = $script:Handling; if (-not $cfg) { return }
@@ -1644,12 +1615,8 @@ function Save-Handling {
     $cars = [ordered]@{}; foreach ($c in @($cfg.Plan.Keys | Sort-Object)) { if ($cfg.Plan[$c] -ne $default) { $cars[$c] = $cfg.Plan[$c] } }
     $flv = [ordered]@{}
     foreach ($k in $DefaultFlavors.Keys) {
-        $v = $DefaultFlavors[$k]; $e = [ordered]@{ digit = $v.Digit; grip_file = [bool]$v.Grip }
-        $r = [double]$v.Rate; if ($script:SteerRates -and $script:SteerRates.ContainsKey($k)) { $r = [double]$script:SteerRates[$k] }
-        $e.steer_rate = [math]::Round($r, 2)
-        $flv[$k] = $e
+        $v = $DefaultFlavors[$k]; $flv[$k] = [ordered]@{ digit = $v.Digit; grip_file = [bool]$v.Grip }
     }
-    if ($script:SteerRates.sr3 -gt 0) { $flv.sr3 = [ordered]@{ steer_rate = [math]::Round($script:SteerRates.sr3, 2) } }
     try { [IO.File]::WriteAllText((Join-Path $PSScriptRoot 'handling.json'), ([ordered]@{ version = 1; default = $default; cars = $cars; flavors = $flv } | ConvertTo-Json -Depth 4)) }
     catch { Log "Handling: handling.json can't be written: $($_.Exception.Message)" }
 }
@@ -1725,67 +1692,15 @@ function Sync-RaceFlavor($h) {
     $gch = 's'; if ($f -ne 'sr3' -and $fl[$f].Grip) { $gch = $fl[$f].Digit }; Set-DirChar $h $GripDirSite $gch 'Handling (grip file)'
     $script:RaceFlavor = "$car/$f"; $script:RaceFlavorName = $f
 }
-# a handling's steering rate: 4 / 6 lower / higher, 5 off (SEGA's chain) / back on; at once when the player's car drives that handling
-function Set-SteerLive($h, [string]$car, [double]$step, [bool]$race) {
-    if (-not $script:SteerCave) { return @('The steering rate is off', 'see play.log') }
-    $f = $script:Handling.Plan[$car]; if (-not $f) { $f = 'sr3' }
-    $r = [double]$script:SteerRates[$f]
-    if (-not $script:SteerOff) { $script:SteerOff = @{} }
-    if ($step -eq 0) { if ($r -gt 0) { $script:SteerOff[$f] = $r; $r = 0.0 } else { $r = 1.5; if ($script:SteerOff[$f]) { $r = $script:SteerOff[$f] } } }
-    elseif ($r -le 0) { $r = 1.5 }
-    else { $r = [math]::Round([math]::Min(3.0, [math]::Max(0.5, $r + $step)), 2) }
-    $script:SteerRates[$f] = $r; Save-Handling
-    if ($race -and $script:SteerRace -and $script:SteerRace.Flavor -eq $f) { Update-SteerRace $h -Live }
-    return @((Get-SteerText $r), "$($FlavorTitles[$f]) handling, $(Get-CarTitle $car)" + $(if (-not $race) { ' (from the race)' } else { '' }))
-}
-function Get-SteerText([double]$r) { if ($r -gt 0) { return ('Steering: {0:0.0} rad/s at full stick' -f $r) }; return "Steering: SEGA Rally 3's own" }
 function Show-CarHandling($h, [string]$car) {
     $f = $script:Handling.Plan[$car]; if (-not $f) { $f = 'sr3' }
-    return @("Handling: $($FlavorTitles[$f])", "$(Get-CarTitle $car), " + ((Get-SteerText ([double]$script:SteerRates[$f])) -replace '^Steering: ', 'steering '))
+    return @("Handling: $($FlavorTitles[$f])", "$(Get-CarTitle $car)")
 }
-function Install-Steer($h) {
-    $a = [Sr3Mem]::Read($h, $SteerSite, 5)
-    if (-not $a) { Log 'Steering rate: the game can''t be read there; off.'; return $null }
-    if (-not (Same $a (HexToBytes $SteerBytes))) {
-        $cave = $SteerSite + 5 + [BitConverter]::ToInt32($a, 1) - $SteerEntry  # ours already (PLAY.bat run again on a running game)
-        if ($a[0] -eq 0xE8 -and (Same ([Sr3Mem]::Read($h, $cave + $SteerEntry, 8)) ((HexToBytes $SteerCode)[$SteerEntry..($SteerEntry + 7)]))) { return $cave }
-        Log ("Steering rate: unexpected bytes at 0x{0:X} (an older build of this launcher on a running game?); off." -f $SteerSite); return $null
-    }
-    $cave = [Sr3Mem]::Alloc($h, 0x1000); [Sr3Mem]::Write($h, $cave, (HexToBytes $SteerCode), $true)
-    [Sr3Mem]::Suspend($h)
-    try { [Sr3Mem]::Write($h, $SteerSite, (CallTo $SteerSite ($cave + $SteerEntry)), $false) } finally { [Sr3Mem]::Resume($h) }
-    Log 'Steering rate: in place (set when each race runs, from the player''s car''s handling).'
-    return $cave
-}
-# a race starts (the menus closing): SEGA's chain until the race runs; then Update-SteerRace (from Watch-Tracks) reads the
-# car's front wheel (its lock, + 0x184) and writes A and B for the player's car's handling's rate; -Live: a key in a race
-function Start-SteerRace($h) {
-    if (-not $script:SteerCave) { return }
-    $name = ''; $node = Read-GamePtr $h (0x9DBDA0 + 0xC)
-    if ($node) { $id = Read-GameInt $h ($node + 4); if ($id -ge 0 -and $id -lt $HandlingCarNames.Count) { $name = $HandlingCarNames[$id] } else { $name = Get-AddedCarName $h $node } }
-    $f = 'sr3'; if ($script:Handling) { foreach ($k in $script:Handling.Plan.Keys) { if ($k -ieq $name) { $f = $script:Handling.Plan[$k] } } }
-    $L = 2.6; foreach ($k in $WheelBase.Keys) { if ($k -ieq $name) { $L = $WheelBase[$k] } }
-    $script:SteerRace = @{ Car = $name; Flavor = $f; L = $L; Lock = 0.0; Pending = $true }
-    [Sr3Mem]::Write($h, $script:SteerCave, (New-Object byte[] 8), $true)
-}
-function Update-SteerRace($h, [switch]$Live) {
-    $s = $script:SteerRace; if (-not $s -or -not $script:SteerCave) { return }
-    if (-not $s.Lock) {
-        $d = Read-GamePtr $h 0x9DBACC; if (-not $d -or (Read-GamePtr $h $d) -ne 0x6ED0C8) { return }
-        $veh = Read-GamePtr $h ((Read-GamePtr $h ($d + 0x858)) + 4); if (-not $veh -or (Read-GamePtr $h $veh) -ne 0x678864) { return }
-        $w0 = Read-GamePtr $h ((Read-GamePtr $h (Read-GamePtr $h ($veh + 0x2C))) + 0x10); if (-not $w0) { return }
-        $b = [Sr3Mem]::Read($h, $w0 + 0x184, 4); if (-not $b) { return }
-        $lk = [BitConverter]::ToSingle($b, 0); if ($lk -lt 0.1 -or $lk -gt 1.0) { return }
-        $s.Lock = $lk
-    }
-    $r = 0.0; if ($script:SteerRates -and $script:SteerRates.ContainsKey($s.Flavor)) { $r = [double]$script:SteerRates[$s.Flavor] }
-    $A = 0.0; $B = 0.0; if ($r -gt 0) { $A = $r * $s.L / $s.Lock; $B = $r * $SteerK / $s.Lock }
-    [Sr3Mem]::Write($h, $script:SteerCave, ([BitConverter]::GetBytes([single]$A) + [BitConverter]::GetBytes([single]$B)), $true)
-    if ($s.Pending -or $Live) {
-        if ($r -gt 0) { Log ("Steering: {0} ({1}): {2:0.0} rad/s at full stick (wheelbase {3:0.00} m, lock {4:0.000} rad)." -f $s.Car, $s.Flavor, $r, $s.L, $s.Lock) }
-        elseif ($s.Flavor -ne 'sr3' -or $Live) { Log "Steering: $($s.Car) ($($s.Flavor)): SEGA Rally 3's own." }
-    }
-    $s.Pending = $false
+# SEGA's call at 0x5CFF32 back in place when a launcher of 2026-10-15 left its steering-rate routine there (PLAY.bat run again on a running game)
+function Remove-SteerHook($h) {
+    $a = [Sr3Mem]::Read($h, $SteerSite, 5); if (-not $a -or (Same $a (HexToBytes $SteerBytes)) -or $a[0] -ne 0xE8) { return }
+    [Sr3Mem]::Suspend($h); try { [Sr3Mem]::Write($h, $SteerSite, (HexToBytes $SteerBytes), $false) } finally { [Sr3Mem]::Resume($h) }
+    Log 'Steering: the steering-rate routine of an earlier launcher taken out; SEGA''s own steering.'
 }
 
 function Release-StuckKeys($game) {
