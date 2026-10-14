@@ -525,6 +525,50 @@ Add-Type -Namespace SR3 -Name Keys -MemberDefinition '[DllImport("user32.dll")] 
 # tracks: a list of nodes from [[0xB2A850] + 8] + 8, {next, id, ..., +0x18 -> name};
 # [0x9DBB0C] != 0 while View Change is held; video table: see tools\build_cycle.py.
 $TrackDirSites = 0x6C607B, 0x6C60A3, 0x6D57C3, 0x6E034F, 0x6E03A3, 0x6E055B     # the 's' of "tracks"
+# The folder is chosen inside the game's own path code (tools\build_trackdir.py, test tools\trackdir_emu.py): the three
+# routines that make a track's paths start with a jump to a routine of ours, which looks the track being read up in a
+# table (track -> folder character) and writes that character into the strings above just before the path is made. The
+# launcher only keeps the table current. Before, the launcher wrote the strings when its poll saw the track change, which
+# was sometimes after the game had begun reading: a load of half one folder and half another crashed the game
+# (2026-10-14, 0x5AF329). Without the routine (unexpected bytes) the poll writes the strings as before.
+$TrackDirCode = '9c60e8000000005d83ed07a1b0bd9d0085c074738b701885f6746cb2738dbd000200008b0f83f9107605b91000000083c70485c974275657bb170000008a063a07751284c0740746474b7409ebef5f5e8a5718eb085f5e83c72049ebd588157b606c008815a3606c008815c3576d0088154f036e008815a3036e0088155b056e008895f0010000619dc3e871ffffffa1b0bd9d0068955c5c00c3e861ffffff81ec180100006876575c00c3e850ffffff81ec0001000068b6b36100c3'
+$TrackDirHooks = @(@(0x5C5C90, 'a1b0bd9d00', 0x8A), @(0x5C5770, '81ec18010000', 0x9A), @(0x61B3B0, '81ec00010000', 0xAB))   # site, the game's bytes, entry
+$TrackDirTable = 0x200
+function Install-TrackDir($h) {
+    try {
+        $first = [Sr3Mem]::Read($h, $TrackDirHooks[0][0], 5)
+        if ($first -and $first[0] -eq 0xE9) {                     # PLAY.bat run again on a running game: ours already
+            $cave = $TrackDirHooks[0][0] + 5 + [BitConverter]::ToInt32($first, 1) - $TrackDirHooks[0][2]
+            if (Same ([Sr3Mem]::Read($h, $cave, 8)) ((HexToBytes $TrackDirCode)[0..7])) { return $cave }
+            Log 'Track folders: the path code holds a jump that is not ours; folders are switched by polling.'; return $null
+        }
+        foreach ($k in $TrackDirHooks) { if (-not (Same ([Sr3Mem]::Read($h, $k[0], $k[1].Length / 2)) (HexToBytes $k[1]))) { Log ("Track folders: unexpected bytes at 0x{0:X}; folders are switched by polling." -f $k[0]); return $null } }
+        $cave = [Sr3Mem]::Alloc($h, 0x1000); [Sr3Mem]::Write($h, $cave, (HexToBytes $TrackDirCode), $true)
+        [Sr3Mem]::Write($h, $cave + $TrackDirTable, (New-Object byte[] 4), $true)
+        foreach ($a in $TrackDirSites) { [Sr3Mem]::Write($h, $a, [byte[]]@([byte][char]'s'), $true) }   # (and the strings stay writable for the routine)
+        [Sr3Mem]::Suspend($h)
+        try {
+            foreach ($k in $TrackDirHooks) {
+                $j = CallTo $k[0] ($cave + $k[2]); $j[0] = 0xE9
+                if ($k[1].Length / 2 -gt 5) { $j = $j + [byte[]]@(0x90) }
+                [Sr3Mem]::Write($h, $k[0], $j, $false)
+            }
+        } finally { [Sr3Mem]::Resume($h) }
+        return $cave
+    } catch { Log "Track folders: $($_.Exception.Message); folders are switched by polling."; return $null }
+}
+# the table: every slot with alternatives and the folder character of its chosen track ('s' = the game's own)
+function Write-TrackDirTable($h, [long]$cave, $slots, $choice) {
+    $b = New-Object byte[] (4 + 0x20 * 16); $n = 0
+    foreach ($s in @($slots.Keys | Sort-Object)) {
+        if ($n -ge 16) { break }
+        $nm = [Text.Encoding]::ASCII.GetBytes([string]$s); if ($nm.Length -gt 23) { continue }
+        [Array]::Copy($nm, 0, $b, 4 + 0x20 * $n, $nm.Length)
+        $b[4 + 0x20 * $n + 0x18] = [byte][char]([string]$slots[$s][$choice[$s]].Dir)[0]; $n++
+    }
+    [Array]::Copy([BitConverter]::GetBytes([int]$n), 0, $b, 0, 4)
+    if (-not (Same $b $script:TrackDirLast)) { [Sr3Mem]::Write($h, $cave + $TrackDirTable, $b, $true); $script:TrackDirLast = $b }
+}
 $TrackBkgdSite = 0x6BCF0F                                                        # the 'D' of "BKGD_NAME_%s"
 $TrackBannerSites = 0x6BD79E, 0x6D96E6, 0x6E2AB2, 0x6E336E, 0x6E5A36            # the last 'R' of "MENU_BANNER_%s"
 # the announcer's clip for a card: "push <name>" in the routine at 0x610DC0 (address of the pointer, the game's own name)
@@ -944,9 +988,12 @@ public static class Sr3Pad {
     try {
         $base = Find-Cycle $h
         if (-not $base) { Log 'Alternative tracks and the START button need the camera patch; it is not in the game.'; Wait-GameExit $game; return }
+        $tdCave = $null; $script:TrackDirLast = $null
         if ($slots.Count) {
             Log ('Alternative tracks: ' + ((@($slots.Keys | Sort-Object) | ForEach-Object { "$_ +$($slots[$_].Count - 1)" }) -join ', ') + '. On the stage-select screen, View Change steps through them.')
             Initialize-TrackVideos $h $base $slots
+            $tdCave = Install-TrackDir $h
+            if ($tdCave) { Log 'Track folders: chosen in the game''s own path code (each load reads one folder).' }
         }
         $text = $base + $SwitchTextOff
         [Sr3Mem]::Write($h, $text + 0x40, (Str 'Press VIEW CHANGE to select alternative tracks' 64), $true)
@@ -1006,8 +1053,9 @@ public static class Sr3Pad {
             if ($stage) { $name = $hiName }
             $list = $slots[$name]
             $dir = if ($list) { $list[$choice[$name]].Dir } else { 's' }
+            if ($tdCave) { Write-TrackDirTable $h $tdCave $slots $choice }   # the game's path code picks the folder from this table
             if ($dir -ne $dirNow) {
-                foreach ($a in $TrackDirSites) { [Sr3Mem]::Write($h, $a, [byte[]]@([byte][char]$dir), $true) }
+                if (-not $tdCave) { foreach ($a in $TrackDirSites) { [Sr3Mem]::Write($h, $a, [byte[]]@([byte][char]$dir), $true) } }
                 if ($script:TrackArt) {
                     [Sr3Mem]::Write($h, $TrackBkgdSite, [byte[]]@([byte][char]$(if ($dir -eq 's') { 'D' } else { $dir })), $true)
                     foreach ($a in $TrackBannerSites) { [Sr3Mem]::Write($h, $a, [byte[]]@([byte][char]$(if ($dir -eq 's') { 'R' } else { $dir })), $true) }
