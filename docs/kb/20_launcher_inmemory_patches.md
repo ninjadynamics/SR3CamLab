@@ -128,8 +128,14 @@ Smoothing and blend (2026-10-14; `mouseSmoothing`, `cameraBlend` in `profiles.ya
 the steerable cameras are handed on a share per update (`1 - e^(-dt/tau)`), and on View Change the view travels from the old
 camera to the new one. How a camera reaches the screen (state objects, interpolation, the camera pointers at mgr +0x184 /
 +0x188 / +0x18C / +0x190) is written up in `tools\build_cycle.py` and `FINDINGS.md`. VERIFIED (code) and run on an emulated CPU
-against the game's own routines (`tools\cycle_real.py`); NOT yet seen in game. Settings and state: block + 0x2280; second code
-area: block + 0x2800.
+against the game's own routines (`tools\cycle_real.py`). Seen in game by the owner (2026-10-14): "the transitions happen but the
+movement is janky in the first 1/3 second". Cause: the view the blend leaves from was carried by the car's whole body matrix,
+so it pitched, rolled and heaved with every bump, which the cameras' own springs smooth away; early in the blend (eased, 74 %
+of the way at 1/3 s of 0.5 s) that raw body motion dominated. Since then it is carried by the car's heading and place only
+(a yaw frame built each frame at block + 0x27C0: forward without its height, straight up, right from the heading), and
+the car's whole matrix must be numbers. cycle_emu.py check: a car bouncing (pitch 6 deg, roll 4 deg, 5 cm, 6 Hz) keeps the
+old view on the heading-carried path (7.7e-06 m), where the body matrix would have moved it up to 0.48 m in the first 0.2 s.
+The block grew to 0x4000 bytes for it. Settings and state: block + 0x2280; second code area: block + 0x2800 .. 0x4000.
 
 What the per-frame entry does: extends the race camera list (Chase + the game's cameras + one Chase entry per profile + the
 hidden cameras; an entry `0x80000000 | offset` adds a camera a second time as a patched variant, the driver's-seat

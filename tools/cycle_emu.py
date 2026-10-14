@@ -9,7 +9,7 @@ D = j['data']; CODE = bytes.fromhex(j['code'])
 BASE = 0x20000000; MGR_OWNER = 0x30000000; MGR = MGR_OWNER + 0x18; CAVE = 0x673C80
 STUB = 0x40000000; FONT = 0x41000000; FONTVT = 0x41001000; STACK = 0x50000000; DONE = 0x60000000
 u = Uc(UC_ARCH_X86, UC_MODE_32)
-for a, n in ((0x400000, 0x800000), (BASE, 0x3000), (MGR_OWNER, 0x10000), (STUB, 0x1000), (FONT, 0x2000),
+for a, n in ((0x400000, 0x800000), (BASE, json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cycle.json")))["size"]), (MGR_OWNER, 0x10000), (STUB, 0x1000), (FONT, 0x2000),
              (STACK - 0x10000, 0x20000), (DONE, 0x1000)):
     u.mem_map(a, n)
 w32 = lambda a, v: u.mem_write(a, struct.pack('<I', v & 0xffffffff))
@@ -458,6 +458,35 @@ setup(0.5, 0x189C, 'bonnet', 2); press(3); shown[0x510] = 'daytona'; render(); f
 tr = travel(0.5, 1 / 60, 34, frm, lambda k: set_car((100.0 + 0.9 * k, 5.0 + 0.02 * k, -40.0 + 0.3 * k), 0.3 + 0.02 * k)); done = [k for k, x in enumerate(tr) if x[3]]
 check('car at 200 km/h turning 69 deg/s through the blend: every frame is the kept view carried by the car, eased towards the camera (worst %.2g m off), ends to the bit at frame %d' % (max(max(x[2]) for x in tr if x[2]), done[0]),
       max(max(x[2]) for x in tr if x[2]) < 1e-3 and done == list(range(done[0], 34)))
+
+# 5b. the car bounces (pitch, roll, heave) during the blend: the old view rides with its heading and place only, so the
+# body's movements do not shake it (owner, 2026-10-14: "janky in the first 1/3 second of the transition")
+def set_car_pr(pos, yaw, pitch, roll):
+    c, s = math.cos(yaw), math.sin(yaw); R0, U0, F0 = (c, 0, -s), (0, 1, 0), (s, 0, c)
+    F1 = tuple(F0[i] * math.cos(pitch) + U0[i] * math.sin(pitch) for i in range(3)); U1 = tuple(U0[i] * math.cos(pitch) - F0[i] * math.sin(pitch) for i in range(3))
+    R2 = tuple(R0[i] * math.cos(roll) + U1[i] * math.sin(roll) for i in range(3)); U2 = tuple(U1[i] * math.cos(roll) - R0[i] * math.sin(roll) for i in range(3))
+    car.update(R=R2, U=U2, F=F1, P=pos); u.mem_write(MAT, struct.pack('<16f', *R2, 0, *U2, 0, *F1, 0, *pos, 1))
+def yawframe():                              # the car's heading and place, as the block makes them
+    f = (car['F'][0], 0.0, car['F'][2]); n = norm(f); f = tuple(x / n for x in f); r = (f[2], 0.0, -f[0])
+    if sum(r[i] * car['R'][i] for i in range(3)) < 0: r = tuple(-x for x in r)
+    return dict(R=r, U=(0.0, 1.0, 0.0), F=f, P=car['P'])
+def carframe_y(v):
+    y = yawframe(); e, at, up, fov = v; d = sub(at, e); n = norm(d); tc = lambda p: tuple(sum(p[i] * y[ax][i] for i in range(3)) for ax in 'RUF')
+    return tc(sub(e, y['P'])), tc(tuple(x / n for x in d)), tc(up), n, fov
+def blended_y(frm, s):
+    y = yawframe(); wy = lambda p, pt=True: tuple(p[0] * y['R'][i] + p[1] * y['U'][i] + p[2] * y['F'][i] + (y['P'][i] if pt else 0) for i in range(3))
+    e1, a1, u1, f1 = pose(shown[r32(MGR + 0x184) - MGR]); d1 = sub(a1, e1); n1 = norm(d1)
+    e = mix(wy(frm[0]), e1, s); d = mix(wy(frm[1], False), tuple(x / n1 for x in d1), s); n = norm(d); dist = frm[3] + (n1 - frm[3]) * s
+    return e, tuple(e[i] + d[i] / n * dist for i in range(3)), mix(wy(frm[2], False), u1, s), frm[4] + (f1 - frm[4]) * s
+bounce = lambda k: set_car_pr((100.0 + 0.9 * k, 5.0 + 0.05 * math.sin(k * 0.6), -40.0 + 0.3 * k), 0.3 + 0.01 * k, 6 * deg * math.sin(k * 0.6), 4 * deg * math.sin(k * 0.45 + 1))
+setup(0.5, 0x510, 'daytona', 3); bounce(0); render(); frm = carframe_y(view()); press(4); shown[0x510] = 'drone'
+worst, rigid = 0.0, 0.0; t = 0.0
+for k in range(34):
+    bounce(k + 1); v = render(1 / 60); t = k * game['dt'] / 0.5
+    if t < 1:
+        worst = max(worst, max(err(v, blended_y(frm, ease(t))))); rigid = max(rigid, err(v, blended(frm, ease(t)))[0] if t < 0.4 else 0)
+check('car bouncing through the blend (pitch 6 deg, roll 4 deg, 5 cm, at 6 Hz): the old view rides with the heading and place only (worst %.2g m off that path); carried by the whole body it would have been up to %.2f m off in the first 0.2 s' % (worst, rigid),
+      worst < 1e-3 and rigid > 0.05)
 
 # 6. View Change again while a blend runs: on from where the view is, no jump
 setup(0.5, 0x510, 'daytona', 3); frm = carframe(view()); press(4); shown[0x510] = 'drone'; tr = travel(0.5, 1 / 60, 12, frm); midv = tr[-1][1]; frm2 = carframe(midv)

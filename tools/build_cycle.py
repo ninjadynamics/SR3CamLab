@@ -104,7 +104,8 @@ of the way to their value per update, so a movement starts and stops softly.
 Blend between cameras (K_BLEND seconds; 0 = cut, as before): BLEND runs after the game has interpolated its
 cameras for the frame and keeps the view of every frame in the car's frame (eye, direction, look distance, up,
 field of view). After a View Change it rewrites the interpolated eye / look-at / up / field of view of the camera
-the frame is drawn from: the view the change left from, carried along by the car, towards the camera's own,
+the frame is drawn from: the view the change left from, carried along by the car's heading and place (not its pitch
+and roll, which the cameras' springs smooth: carried by those it shook), towards the camera's own,
 by t x t x (3 - 2t) of the way, t = real time since the start / K_BLEND (QueryPerformanceCounter). At t = 1 it
 stops writing, so the camera's own values are shown untouched. Only a View Change this block accepted starts
 one; a camera change of the game's own (intro, time over, replay) stays a cut and ends a running blend.
@@ -145,12 +146,15 @@ D = dict(MAGIC=0x00, FONT=0x08, FONTH=0x0C, FRAMES=0x10, SHOWFRAMES=0x14, SIZE=0
          # views (0x40 each: eye, direction, up as 4 floats, then look distance and field of view): the last
          # frame's and the one the blend left from, both in the car's frame; this frame's in the world; then the
          # look-at point written back and a scratch vector. Ends at 0x23E0, below the switcher's strings (0x2400)
-         BLAST=0x2300, BFROM=0x2340, BNOW=0x2380, BAT=0x23C0, BTMP=0x23D0)
+         BLAST=0x2300, BFROM=0x2340, BNOW=0x2380, BAT=0x23C0, BTMP=0x23D0,
+         # the car's frame the blend carries views in: heading and place only, no pitch or roll (4 rows of 4 floats:
+         # right, up, forward, position), between the switcher's strings (up to 0x27C0) and the second code area
+         BYAW=0x27C0)
 SLOT_PARAMS = 0x5C          # 11 + 12 dwords copied into the cave
 MAX_SLOTS = 21              # the game's list holds 21 pointers
 MAX_GAMECAMS = 12
 CODE = 0x1000
-SIZE = 0x3000
+SIZE = 0x4000              # 0x3000 until 2026-10-14 (the blend's heading-only frame did not fit the second code area)
 CAVE = 0x673C80
 ks = Ks(KS_ARCH_X86, KS_MODE_32)
 strip = lambda a: "\n".join(l.split(';')[0].rstrip() for l in a.splitlines() if l.split(';')[0].strip())
@@ -158,17 +162,18 @@ strip = lambda a: "\n".join(l.split(';')[0].rstrip() for l in a.splitlines() if 
 # ---- the second code area (the first one, below, is nearly full): constants, then code. Everything here is reached
 # with ebp = the block's base; the first area calls these routines by their offsets, so they are assembled first.
 CODE2 = 0x2800              # after the track switcher's strings (0x2400 .. 0x27C0)
-CODE2_END = 0x3000
+CODE2_END = 0x4000
 C2 = dict(ONE=CODE2, THREE=CODE2 + 4, DTBIG=CODE2 + 8, DTMAX=CODE2 + 0xC, TINY2=CODE2 + 0x10, UNIT2=CODE2 + 0x14, MASK=CODE2 + 0x20,
-          S_QPC=CODE2 + 0x30, S_QPF=CODE2 + 0x48)
+          S_QPC=CODE2 + 0x30, S_QPF=CODE2 + 0x48, XZ=CODE2 + 0x70, UPY=CODE2 + 0x80, RSIGN=CODE2 + 0x90)
 consts2 = (struct.pack('<6f', 1.0, 3.0,
                        0.25,        # DTBIG: a frame time over this (or not above 0) is not smoothed over: raw
                        0.1,         # DTMAX: the most real time one frame may add to a blend (a hitch does not eat it)
                        1e-6,        # TINY2: (0.001)^2: pixels, key travel and metres under 0.001 count as nothing
                        0.0625       # UNIT2: (0.25)^2: a car axis with a length squared within 1 +- 0.25 passes for unit length
                        ).ljust(0x20, b'\0') + struct.pack('<4I', 0xffffffff, 0xffffffff, 0xffffffff, 0)   # MASK: x, y, z of 4 floats
-           + b'QueryPerformanceCounter'.ljust(0x18, b'\0') + b'QueryPerformanceFrequency'.ljust(0x28, b'\0'))
-assert len(consts2) == 0x70
+           + b'QueryPerformanceCounter'.ljust(0x18, b'\0') + b'QueryPerformanceFrequency'.ljust(0x28, b'\0')
+           + struct.pack('<12f', 1, 0, 1, 0,   0, 1, 0, 0,   1, 0, -1, 0))     # XZ: drops y; UPY: straight up; RSIGN: (z, -x) of a heading
+assert len(consts2) == 0xA0
 BWAIT_FRAMES = 120          # the game moves to another camera object 2 updates after View Change; 2 s is ample
 
 asm2 = f"""
@@ -513,6 +518,59 @@ bs_unit:
     mov dword ptr [ebp + {D['BT']}], 0
     mov dword ptr [ebp + {D['BACTIVE']}], 1
 bs_live:
+    ; -- the car's frame the views are carried in: its heading and its place, without pitch and roll. Carried by the
+    ; whole body matrix, the view a blend leaves from shook with every bump and lean of the car, which the cameras'
+    ; own springs smooth away: the first part of each blend was jerky (owner, 2026-10-14). Made here, after the start
+    ; checks, which look at the car's own matrix
+    ; (the car's whole matrix must be numbers: 0 x every part is 0, or no number)
+    movups xmm0, xmmword ptr [edx]
+    andps xmm0, xmm7
+    movups xmm1, xmmword ptr [edx + 0x10]
+    andps xmm1, xmm7
+    addps xmm0, xmm1
+    movups xmm1, xmmword ptr [edx + 0x20]
+    andps xmm1, xmm7
+    addps xmm0, xmm1
+    movups xmm1, xmmword ptr [edx + 0x30]
+    andps xmm1, xmm7
+    addps xmm0, xmm1
+    xorps xmm1, xmm1
+    mulps xmm0, xmm1
+    movaps xmm2, xmm0
+    call hsum
+    ucomiss xmm2, xmm1
+    jp bs_none
+    movups xmm0, xmmword ptr [edx + 0x20]
+    andps xmm0, xmm7
+    mulps xmm0, xmmword ptr [ebp + {C2['XZ']}]
+    movaps xmm2, xmm0
+    mulps xmm2, xmm2
+    call hsum
+    comiss xmm2, dword ptr [ebp + {C2['TINY2']}]
+    jbe bs_none
+    sqrtss xmm2, xmm2
+    shufps xmm2, xmm2, 0
+    divps xmm0, xmm2
+    movups xmmword ptr [ebp + {D['BYAW'] + 0x20}], xmm0
+    movups xmm1, xmmword ptr [ebp + {C2['UPY']}]
+    movups xmmword ptr [ebp + {D['BYAW'] + 0x10}], xmm1
+    movaps xmm1, xmm0
+    shufps xmm1, xmm1, 0xC6
+    mulps xmm1, xmmword ptr [ebp + {C2['RSIGN']}]
+    movups xmm2, xmmword ptr [edx]
+    andps xmm2, xmm7
+    mulps xmm2, xmm1
+    call hsum
+    xorps xmm3, xmm3
+    comiss xmm2, xmm3
+    jae bs_right
+    subps xmm3, xmm1
+    movaps xmm1, xmm3
+bs_right:
+    movups xmmword ptr [ebp + {D['BYAW']}], xmm1
+    movups xmm0, xmmword ptr [edx + 0x30]
+    movups xmmword ptr [ebp + {D['BYAW'] + 0x30}], xmm0
+    lea edx, [ebp + {D['BYAW']}]
     ; -- the camera's own view of this frame, in the world: eye, unit direction, look distance, up, field of view
     movups xmm0, xmmword ptr [ebx + 0x30]
     andps xmm0, xmm7

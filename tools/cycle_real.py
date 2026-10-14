@@ -19,7 +19,7 @@ image = open(exe, 'rb').read()
 j = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cycle.json'))); D = j['data']
 BASE = 0x20000000; OWNER = 0x30000000; MGR = OWNER + 0x18; STUB = 0x40000000; STACK = 0x50000000; DONE = 0x60000000
 u = Uc(UC_ARCH_X86, UC_MODE_32)
-for a, n in ((0x400000, 0x800000), (BASE, 0x3000), (OWNER, 0x10000), (STUB, 0x1000), (STACK - 0x10000, 0x20000), (DONE, 0x1000)): u.mem_map(a, n)
+for a, n in ((0x400000, 0x800000), (BASE, json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cycle.json")))["size"]), (OWNER, 0x10000), (STUB, 0x1000), (STACK - 0x10000, 0x20000), (DONE, 0x1000)): u.mem_map(a, n)
 u.mem_write(0x400000, image[:0x32B000])                                 # headers, .text, .rdata, the initialised part of .data (file offset = RVA)
 u.mem_write(BASE + j['codeOff'], bytes.fromhex(j['code'])); u.mem_write(BASE + j['code2Off'], bytes.fromhex(j['code2']))
 u.mem_write(BASE, b'SR3V'); u.mem_write(BASE + D['S_K32'], b'kernel32.dll\0')
