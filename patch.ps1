@@ -1201,6 +1201,9 @@ function Set-MenuTimers($game) {
 # selector holds up to 38 cars; the library is a list read from the database file, with no fixed size.
 $CarListCode = 'ba00000000eb0eba01000000eb07ba02000000eb0085ff746256535589d38b0789f9ff505831eda150a8b2008b700483c608743e31c0837e14007405b802000000837e10007405b80100000031c939d80f95c139e975158b46048b4e408b176a006a006aff505189f9ff52548b3685f675c24583fd0272af5d5b5ec3'
 $CarListSites = @(@(0x600790, 0, '85ff74518b'), @(0x6006F0, 7, '85ff74408b'))      # site, entry in our routine, the game's bytes there
+$CardHookCode = '85ed7433e8000000005e83c63d803e00742589e989f28a013a027516414284c075f48b4e208b098b4424145f5e5d89085bc383c624ebd68b4424145f5e5dc700ffffffff5bc3'
+$CardHookExit = '8b4424145f5e5dc700ffffffff5bc3'
+$ExtraCards = @(,@('CARSLIDE_HORNET_GRAVEL_1', 0x72870C))  # card name, the game's video handle cell it borrows (0x72870C: the TV-static loop); (the comma keeps a one-entry list a list of lists)
 function Set-CarLists($game) {
     $h = [Sr3Mem]::Open($game.Id); $n = 0
     try {
@@ -1222,6 +1225,19 @@ function Set-CarLists($game) {
         # last write (jne at 0x599D7A), so +0x1708 stayed 0 and the speedo showed 0. All ten values are made the same way.
         $sp = [Sr3Mem]::Read($h, 0x599D78, 4)
         if (Same $sp (HexToBytes '3bc87510')) { [Sr3Mem]::Write($h, 0x599D7A, [byte[]]@(0x90, 0x90), $false) }
+        # ... and a card on the car select: the card is the video named CARSLIDE_<FOLDER>_GRAVEL_1 in the game's table of 18
+        # (0x728630, looked up by 0x61C2C0); a name not in it got no video (a blank card). The lookup's not-found exit
+        # (0x61C30B) now jumps to tools\build_cardhook.py's routine, which gives the cars below a video handle of the
+        # game's table (a stand-in until a car has its own video), and -1 as before for any other name.
+        $ex = [Sr3Mem]::Read($h, 0x61C30B, 15)
+        if (Same $ex (HexToBytes $CardHookExit)) {
+            $list = New-Object Collections.Generic.List[byte]
+            foreach ($c in $ExtraCards) { $nm = [Text.Encoding]::ASCII.GetBytes($c[0]); $list.AddRange($nm); $list.AddRange((New-Object byte[] (32 - $nm.Length))); $list.AddRange([BitConverter]::GetBytes([int]$c[1])) }
+            $list.AddRange((New-Object byte[] 36))
+            $cc = [Sr3Mem]::Alloc($h, 0x1000); [Sr3Mem]::Write($h, $cc, ((HexToBytes $CardHookCode) + $list.ToArray()), $true)
+            $j = CallTo 0x61C30B $cc; $j[0] = 0xE9
+            [Sr3Mem]::Suspend($h); try { [Sr3Mem]::Write($h, 0x61C30B, $j, $false) } finally { [Sr3Mem]::Resume($h) }
+        }
     } catch { Log "Car lists: $($_.Exception.Message)" } finally { [Sr3Mem]::Close($h) }
     Log $(if ($n -eq $CarListSites.Count) { 'Car lists: every car in every mode (each mode''s own cars first).' } else { "Car lists: $n of $($CarListSites.Count) changed." })
 }
