@@ -1149,6 +1149,7 @@ public static class Sr3Pad {
                 [Sr3Mem]::Write($h, $base + 0x2268, ([BitConverter]::GetBytes([int]0)), $true)
                 $showing = $false
             }
+            if ($wasMenu -and -not $menu) { Set-SteerRate $h }          # a race starts: the player's car's steering return (Set-Handling)
             $wasDown = $down; $wasMenu = $menu
             Start-Sleep -Milliseconds 15
         }
@@ -1291,10 +1292,176 @@ function Open-CarCards($h, [long]$base) {
     }
 }
 
+# Handling flavors (docs\kb\28_handling_flavors.md; the owner, 2026-10-14): each car drives with SEGA's handling ("sr3") or
+# with a flavor (SRC = SEGA Rally Championship 1995, Realism, ...). A flavor is a folder of car files
+# Main_release\car<digit>\ (and, if it has one, a grip file SurfacePairEffect<digit>\surfacepairdata_xdata.sbf), built on the
+# owner's machine from SEGA's own files by scripts\handling\build_flavor.py; nothing of SEGA's ships. handling.json next to
+# PLAY.bat (example: handling.example.json) says which car drives which flavor:
+#   {"version": 1, "default": "sr3", "cars": {"ST205": "src"}, "flavors": {"src": {"digit": "1", "grip_file": true, "steer_return_s": 0.25}}}
+# No file, or "default": "sr3" and no car on a flavor: nothing is patched.
+# The race loader 0x5C5D30 makes each car's data path when a race loads (so a change takes effect at the next race):
+#   the ten known cars: "\main_release\cars\%s%s_data" (0x6C630C, pushed at 0x5C6144) with "bespoke";
+#   any other car (Hornet): the same pattern at 0x6C6360 with "gravel" (<name>gravel_data);
+#   the grip file: "\SurfacePairEffects\surfacepairdata_xdata" (0x6C6164, read by the race loader 0x5C6290 each race).
+# - Every known car on one flavor: the 's' of "cars" (0x6C631D) becomes the flavor's digit (one character, as the tracks).
+# - A mix: `push 0x6C630C` becomes `call` to tools\build_flavorhooks.py's CARPATH routine, which compares the car's name
+#   (ebp) with the ten names of 0x5C6000 and pushes its own pattern with that car's digit (its flag), or SEGA's 0x6C630C.
+# - The added cars: the 's' at 0x6C6371, one flavor for all of them (they share that pattern).
+# - The grip file: the 's' of "Effects" (0x6C6176) when a flavor in use has one; one grip file per race (the first such).
+# A flavor whose folder or a car whose file is missing: that car keeps SEGA's file (a Log line), never a load of a file that
+# is not there. A flavor's grip file only changes its own tyre type's records (SRC: Tyre_Road), so SR3's cars are unaffected.
+$HandlingCarNames = 'C4', 'RSFocus', 'SubaruImpreza', 'SX4', 'MitsubishiEvo', '207', 'ST205', 'Delta_HF', 'Bowler', 'Enduro'   # car library ids 0..9
+$CarPathCode = '80626c00020000000000000084626c00080000000000000090626c00050000000000000098626c000600000000000000a0626c000700000000000000a8626c000300000000000000ac626c000d00000000000000bc626c000300000000000000c0626c000600000000000000c8626c000d00000000000000000000005c6d61696e5f72656c656173655c636172315c257325735f6461746100000000000000005657e8000000005f8db759ffffff8b0685c07427ff76045055b810f44a00ffd083c40c85c0750f8a460884c0740d8847e68d47d5eb0a83c60cebd3b80c636c005f5e870424ffe0'
+$CarPathEntry = 0xA0                                                           # flags (folder digit, 0 = SEGA's) at +8 + 12 x i, in this order:
+$CarPathOrder = 'C4', 'Delta_HF', 'ST205', 'Enduro', 'RSFocus', '207', 'SubaruImpreza', 'SX4', 'Bowler', 'MitsubishiEvo'
+$CarPathSite = 0x5C6144; $CarPathBytes = '680c636c00'
+$CarDirSite = 0x6C631D; $AddedCarDirSite = 0x6C6371; $GripDirSite = 0x6C6176
+# Steering return (the owner, 2026-10-14: with a pad the wheels straighten at once; the cabinet wheel's spring made it
+# gradual). The human driver's update (0x5E9D20, driver vtable 0x6ED0C8) hands the steering to the vehicle in 0x5CFE90
+# (fld [esi+0x18] ... call 0x448C00 at 0x5CFF32) in every input mode; the value itself comes from 0x5D4D10 or, with the
+# TeknoParrot pad (input mode 1), from 0x5E0B20, both without time smoothing. The call at 0x5CFF32 goes to
+# tools\build_flavorhooks.py's STEER routine first: a value farther from the centre on the same side passes at once
+# (pressing stays instant), toward or across the centre it moves at most RATE per call; the result goes to the vehicle only
+# (controls + 0x18 stays raw: mode 1 builds its next value from it), then on to 0x448C00. Only the player's vehicle:
+# ecx must be [[0x9DBAC8 + 4] + 0x858] (record 0's human driver, vtable 0x6ED0C8); other callers pass unchanged. RATE (float at +0) = 1 / (seconds x 60), 0 = off = SEGA's behaviour; set
+# at each race start from the player's car's flavor. The player's car: the library node [0x9DBDA0 + 0xC] (stored by
+# 0x5AF760 on the car select), node + 4 = car id, node + 0x40 = name. (A first version hooked 0x5D4D10's two exits
+# 0x5D4F28 / 0x5D4F31: never reached with the pad, in game 2026-10-14; if a running game still has those jumps, their
+# RATE stays 0 and they pass the value on unchanged.)
+$SteerCode = '0000000000000000e800000000588b15ccba9d0085d2746f813ac8d06e007567398a58080000755ff30f10442404f30f1048f30f57d20f2fca7641f30f1058f70f28e0f30f59e30f2fe272130f28e0f30f59e00f28ebf30f59eb0f2fe5731d0f28e0f30f5ce3f30f5de10f57edf30f5ce9f30f5fe5f30f58dc0f28c3f30f1140f7f30f11442404b8008c4400ffe0'
+$SteerEntry = 0x8
+$SteerSite = 0x5CFF32; $SteerBytes = 'e8c98ce7ff'                                  # call 0x448C00
+function Read-Handling([string]$gameExe) {
+    $file = Join-Path $PSScriptRoot 'handling.json'
+    if (-not $gameExe -or -not (Test-Path -LiteralPath $file)) { return $null }
+    try { $j = [IO.File]::ReadAllText($file) | ConvertFrom-Json } catch { Log "Handling: $file can't be read; every car keeps SEGA's handling."; return $null }
+    $gameDir = Split-Path -Parent $gameExe
+    $default = 'sr3'; if ($j.default) { $default = "$($j.default)".ToLower() }
+    $fl = @{}
+    if ($j.flavors) {
+        foreach ($p in $j.flavors.PSObject.Properties) {
+            $k = $p.Name.ToLower(); $v = $p.Value; $d = "$($v.digit)"
+            if ($k -eq 'sr3') { continue }
+            if ($d -notmatch '^[1-9]$') { Log "Handling: flavor $k has no folder digit 1..9; skipped."; continue }
+            $dir = Join-Path $gameDir "Main_release\car$d"
+            if (-not (Test-Path -LiteralPath $dir)) { Log "Handling: flavor $k's folder Main_release\car$d is missing; skipped."; continue }
+            $grip = $false
+            if ($v.grip_file) {
+                if (Test-Path -LiteralPath (Join-Path $gameDir "SurfacePairEffect$d\surfacepairdata_xdata.sbf")) { $grip = $true }
+                else { Log "Handling: flavor $k's grip file SurfacePairEffect$d\surfacepairdata_xdata.sbf is missing; its cars keep SEGA's tyre grip." }
+            }
+            $steer = 0.0; if ($v.steer_return_s) { $steer = [double]$v.steer_return_s }
+            $fl[$k] = @{ Name = $k; Digit = $d; Dir = $dir; Grip = $grip; Steer = $steer }
+        }
+    }
+    $want = @{}
+    if ($j.cars) { foreach ($p in $j.cars.PSObject.Properties) { $want[$p.Name.ToLower()] = "$($p.Value)".ToLower() } }
+    $cars = @{}                                                       # car -> its data file name
+    foreach ($c in $HandlingCarNames) { $cars[$c] = "$($c.ToLower())bespoke_data.sbf" }
+    foreach ($f in @(Get-ChildItem -LiteralPath (Join-Path $gameDir 'Main_release\cars') -Filter '*gravel_data.sbf' -ErrorAction SilentlyContinue)) {
+        $n = $f.Name -replace '(?i)gravel_data\.sbf$', ''
+        if ($HandlingCarNames -notcontains $n) { $cars[$n] = $f.Name }   # an added car (SEGA's per-surface leftovers of the ten are skipped)
+    }
+    $plan = @{}; $any = $false
+    foreach ($c in @($cars.Keys)) {
+        $f = $default; if ($want.ContainsKey($c.ToLower())) { $f = $want[$c.ToLower()] }
+        if ($f -ne 'sr3') {
+            if (-not $fl.ContainsKey($f)) { Log "Handling: $c asks for flavor $f, which is not available; it keeps SEGA's handling."; $f = 'sr3' }
+            elseif (-not (Test-Path -LiteralPath (Join-Path $fl[$f].Dir $cars[$c]))) { Log "Handling: Main_release\car$($fl[$f].Digit) has no $($cars[$c]); $c keeps SEGA's handling."; $f = 'sr3' }
+        }
+        $plan[$c] = $f; if ($f -ne 'sr3') { $any = $true }
+    }
+    if (-not $any) { return $null }
+    return @{ Plan = $plan; Flavors = $fl }
+}
+function Set-DirChar($h, [long]$va, [string]$ch, [string]$what) {
+    $cur = [Sr3Mem]::Read($h, $va, 1)
+    if (-not $cur -or -not ($cur[0] -eq 0x73 -or ($cur[0] -ge 0x31 -and $cur[0] -le 0x39))) { Log ("{0}: unexpected byte at 0x{1:X}; left as it is." -f $what, $va); return }
+    if ($cur[0] -ne [byte][char]$ch) { [Sr3Mem]::Write($h, $va, [byte[]]@([byte][char]$ch), $true) }
+}
+function Set-Handling($game) {
+    $script:Handling = Read-Handling $script:GameExePath; $script:SteerCave = $null; $script:SteerRateWas = 0
+    $cfg = $script:Handling
+    $h = [Sr3Mem]::Open($game.Id)
+    try {
+        $site = [Sr3Mem]::Read($h, $CarPathSite, 5)
+        $hooked = $site -and $site[0] -eq 0xE8                       # ours already (PLAY.bat run again on a running game)
+        if (-not $cfg) {                                              # nothing asked for: SEGA's paths (also undoes an earlier run)
+            foreach ($a in $CarDirSite, $AddedCarDirSite, $GripDirSite) { Set-DirChar $h $a 's' 'Handling' }
+            if ($hooked) { $cave = $CarPathSite + 5 + [BitConverter]::ToInt32($site, 1) - $CarPathEntry; for ($i = 0; $i -lt $CarPathOrder.Count; $i++) { [Sr3Mem]::Write($h, $cave + 8 + 12 * $i, [byte[]]@(0), $true) } }
+            return
+        }
+        $plan = $cfg.Plan; $fl = $cfg.Flavors
+        $one = @($HandlingCarNames | ForEach-Object { $plan[$_] } | Sort-Object -Unique)
+        if ($one.Count -eq 1 -and -not $hooked) {
+            $ch = 's'; if ($one[0] -ne 'sr3') { $ch = $fl[$one[0]].Digit; Log "Handling: every known car on flavor $($one[0]) (Main_release\car$ch)." }
+            Set-DirChar $h $CarDirSite $ch 'Handling (known cars)'
+        } else {
+            $cave = $null
+            if ($hooked) {
+                $cave = $CarPathSite + 5 + [BitConverter]::ToInt32($site, 1) - $CarPathEntry
+                if (-not (Same ([Sr3Mem]::Read($h, $cave + $CarPathEntry, 8)) ((HexToBytes $CarPathCode)[$CarPathEntry..($CarPathEntry + 7)]))) { Log 'Handling: the car path code holds a call that is not ours; per-car flavors are off.'; $cave = $null }
+            } elseif (Same $site (HexToBytes $CarPathBytes)) {
+                $cave = [Sr3Mem]::Alloc($h, 0x1000); [Sr3Mem]::Write($h, $cave, (HexToBytes $CarPathCode), $true)
+                [Sr3Mem]::Suspend($h); try { [Sr3Mem]::Write($h, $CarPathSite, (CallTo $CarPathSite ($cave + $CarPathEntry)), $false) } finally { [Sr3Mem]::Resume($h) }
+            } else { Log ("Handling: unexpected bytes at 0x{0:X}; per-car flavors are off." -f $CarPathSite) }
+            if ($cave) {
+                Set-DirChar $h $CarDirSite 's' 'Handling (known cars)'
+                for ($i = 0; $i -lt $CarPathOrder.Count; $i++) {
+                    $f = $plan[$CarPathOrder[$i]]; $b = 0; if ($f -ne 'sr3') { $b = [byte][char]$fl[$f].Digit }
+                    [Sr3Mem]::Write($h, $cave + 8 + 12 * $i, [byte[]]@([byte]$b), $true)
+                }
+                Log ('Handling per car: ' + (($HandlingCarNames | ForEach-Object { "$_ $($plan[$_])" }) -join ', ') + '.')
+            }
+        }
+        $added = @($plan.Keys | Where-Object { $HandlingCarNames -notcontains $_ })
+        if ($added.Count) {
+            $ao = @($added | ForEach-Object { $plan[$_] } | Sort-Object -Unique)
+            if ($ao.Count -eq 1) { $ch = 's'; if ($ao[0] -ne 'sr3') { $ch = $fl[$ao[0]].Digit; Log "Handling: added cars ($($added -join ', ')) on flavor $($ao[0])." }; Set-DirChar $h $AddedCarDirSite $ch 'Handling (added cars)' }
+            else { Set-DirChar $h $AddedCarDirSite 's' 'Handling (added cars)'; Log "Handling: the added cars ($($added -join ', ')) ask for different flavors; they keep SEGA's handling (they share one path pattern)." }
+        }
+        $used = @($plan.Values | Where-Object { $_ -ne 'sr3' } | Sort-Object -Unique)
+        $grip = @($used | Where-Object { $fl[$_].Grip })
+        $gch = 's'
+        if ($grip.Count) { $gch = $fl[$grip[0]].Digit; if ($grip.Count -gt 1) { Log "Handling: $($grip -join ' and ') each have a grip file; one is read per race: $($grip[0])'s." } }
+        Set-DirChar $h $GripDirSite $gch 'Handling (grip file)'
+        if (@($used | Where-Object { $fl[$_].Steer -gt 0 }).Count) { $script:SteerCave = Install-SteerReturn $h }
+    } catch { Log "Handling: $($_.Exception.Message)" } finally { [Sr3Mem]::Close($h) }
+}
+function Install-SteerReturn($h) {
+    $a = [Sr3Mem]::Read($h, $SteerSite, 5)
+    if (-not $a) { Log 'Steering return: the game can''t be read there; off.'; return $null }
+    if (-not (Same $a (HexToBytes $SteerBytes))) {
+        $cave = $SteerSite + 5 + [BitConverter]::ToInt32($a, 1) - $SteerEntry  # ours already (PLAY.bat run again on a running game)
+        if ($a[0] -eq 0xE8 -and (Same ([Sr3Mem]::Read($h, $cave + $SteerEntry, 8)) ((HexToBytes $SteerCode)[$SteerEntry..($SteerEntry + 7)]))) { return $cave }
+        Log ("Steering return: unexpected bytes at 0x{0:X}; off." -f $SteerSite); return $null
+    }
+    $cave = [Sr3Mem]::Alloc($h, 0x1000); [Sr3Mem]::Write($h, $cave, (HexToBytes $SteerCode), $true)
+    [Sr3Mem]::Suspend($h)
+    try { [Sr3Mem]::Write($h, $SteerSite, (CallTo $SteerSite ($cave + $SteerEntry)), $false) } finally { [Sr3Mem]::Resume($h) }
+    Log 'Steering return: in place (set at each race start from the player''s car).'
+    return $cave
+}
+# at each race start (the menus closing): the steering return of the player's car's flavor, or off
+function Set-SteerRate($h) {
+    if (-not $script:SteerCave) { return }
+    $name = ''; $node = Read-GamePtr $h (0x9DBDA0 + 0xC)
+    if ($node) { $id = Read-GameInt $h ($node + 4); if ($id -ge 0 -and $id -lt $HandlingCarNames.Count) { $name = $HandlingCarNames[$id] } else { $name = Read-GameString $h ($node + 0x40) 32 } }
+    $f = 'sr3'; $sec = 0.0
+    if ($script:Handling) { foreach ($k in $script:Handling.Plan.Keys) { if ($k -ieq $name) { $f = $script:Handling.Plan[$k] } } }
+    if ($f -ne 'sr3') { $sec = $script:Handling.Flavors[$f].Steer }
+    $rate = 0.0; if ($sec -gt 0) { $rate = 1.0 / ($sec * 60.0) }
+    [Sr3Mem]::Write($h, $script:SteerCave, ([BitConverter]::GetBytes([single]$rate) + [BitConverter]::GetBytes([single]0)), $true)
+    if ($rate -gt 0) { Log ("Steering return: {0} ({1}): {2:0.00} s from full lock to centre." -f $name, $f, $sec) }
+    elseif ($script:SteerRateWas -gt 0) { Log "Steering return: off for $name." }
+    $script:SteerRateWas = $rate
+}
+
 function Release-StuckKeys($game) {
     Log 'Leave this window open: when the game closes it releases any stuck Alt/Ctrl/Shift/Win key.'
     Set-MenuTimers $game
     Set-CarLists $game
+    Set-Handling $game
     Watch-Tracks $game $script:GameExePath
     foreach ($vk in 0x12, 0xA4, 0xA5, 0x11, 0xA2, 0xA3, 0x10, 0xA0, 0xA1, 0x5B, 0x5C) { [SR3.Keys]::keybd_event([byte]$vk, 0, 2, [UIntPtr]::Zero) }
     Log 'Game closed. Modifier keys released.'

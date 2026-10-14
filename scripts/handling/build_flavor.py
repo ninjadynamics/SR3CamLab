@@ -1,0 +1,160 @@
+"""Build a handling flavor's car files and grip file from the owner's own SR3 files.  Only the numbers table ships.
+
+    python build_flavor.py <numbers.json> --game "F:\\...\\Rally" --out <staging Rally folder> [--force-model 1|2] [--cars ST205,Delta_HF]
+                           [--torque-scale x] [--grip-scale x] [--check]
+
+Writes   <out>\\Main_release\\car<digit>\\<car>bespoke_data.sbf   (all ten cars, or --cars)
+         <out>\\SurfacePairEffect<digit>\\surfacepairdata_xdata.sbf  (SEGA's file with the flavor's tyre records changed)
+The game reads them when the launcher turns the 's' of "cars" (0x6C631D) and of "Effects" (0x6C6176) into the digit.
+
+What is changed in each car file (chunk = index in SEGA's 42-chunk layout, checked by shape before writing):
+  ch4  engine        +0x08 peak torque x torque_scale, +0x0C max rpm
+  ch7  gears         +0x0C count (= forward + 2), ratios R, N, forward from km/h per 1000 rpm with the car's own wheel
+                     radius (ch26 +0x28) and final drive (kept): ratio = 376.99 x r / (FD x v)
+  ch8  auto gearbox  upshift / downshift fractions of max rpm
+  ch14 tyre type     "Tyre_Rally" -> the flavor's tyre name (its records are the flavor's grip, in the grip file)
+  ch27 tyre forces   +0x08 force model (0 Standard, 1 SegaRally, 2 PowerslideSteer = SR3's own, 3 AlwaysSteer)
+Grip file: records <tyre>_<surface>[_Top|_Base] get  SR3's Tyre_Rally_Tarmac_<same layer> x ratio x grip_scale  for the
+grouped surfaces, SR3's Tyre_Rally_<surface> x grip_scale for the rest. SR3's own Tyre_Rally records are not touched."""
+import sys, os, json, struct, argparse, re
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'importer'))
+from sbfw import read_sbf, write_sbf
+CARS = ['C4', 'RSFocus', 'SubaruImpreza', 'SX4', 'MitsubishiEvo', '207', 'ST205', 'Delta_HF', 'Bowler', 'Enduro']
+F = lambda c, o: struct.unpack_from('<f', c.data, o)[0]
+U = lambda c, o: struct.unpack_from('<I', c.data, o)[0]
+def setf(c, o, v): b = bytearray(c.data); struct.pack_into('<f', b, o, v); c.data = bytes(b)
+def setu(c, o, v): b = bytearray(c.data); struct.pack_into('<I', b, o, v); c.data = bytes(b)
+
+def rewrite(f):
+    """bytes of f with SEGA's own layout and trailer (byte-identical when nothing was changed)"""
+    tail = f.raw[len(f.raw) - f.tail:] if f.tail else 0
+    f2 = type(f)(); f2.__dict__.update(f.__dict__); f2.tail = tail
+    return write_sbf(f2, layout='keep')
+
+def check_layout(f, name):
+    ch = f.chunks
+    ok = (len(ch) == 42 and len(ch[4].data) == 32 and len(ch[7].data) == 52 and ch[7].fix == [0x10] and len(ch[8].data) == 96
+          and ch[14].data[0x18:0x22] == b'Tyre_Rally' and len(ch[27].data) == 48 and len(ch[26].data) == 180)
+    if not ok: raise SystemExit('%s: not the layout this script knows; nothing written' % name)
+
+def set_gears(ch, rat_fwd, reverse=None):
+    rat = [reverse if reverse is not None else F(ch[7], 0x14), 0.0] + list(rat_fwd)
+    if len(rat) > 8: raise SystemExit('at most 6 forward gears fit chunk 7')
+    rat += [rat_fwd[-1]] * (8 - len(rat))
+    setu(ch[7], 0x0C, len(rat_fwd) + 2)
+    for i, x in enumerate(rat): setf(ch[7], 0x14 + 4 * i, x)
+
+def set_curve(ch, tc):
+    c3 = ch[3]
+    if len(tc) != U(c3, 4): raise SystemExit('torque_curve must have %d points' % U(c3, 4))
+    for i, (a, b) in enumerate(tc): setf(c3, 0x08 + 8 * i, a); setf(c3, 0x0C + 8 * i, b)
+
+def shift_points(ch, g):
+    """ch8 automatic gearbox: ups[] and downs[] are indexed by the current gear index (0 R, 1 N, 2 first ...; read at
+    0x45E660 against engine rad/s / max rad/s). Each gear's downshift point is kept below the rpm the upshift into that gear
+    leaves (up x ratio / previous ratio - margin), or the gearbox hunts (SRC test 1: 1st <-> 2nd at 70 km/h)."""
+    c8 = ch[8]; n_up, p_up, n_dn, p_dn = U(c8, 4), U(c8, 8), U(c8, 0xC), U(c8, 0x10)
+    up = g.get('upshift_fraction', F(c8, p_up + 8)); down = g.get('downshift_fraction', F(c8, p_dn + 8)); margin = g.get('downshift_margin', 0.08)
+    n = U(ch[7], 0xC); rat = [F(ch[7], 0x14 + 4 * i) for i in range(n)]
+    per = g.get('upshift_fraction_per_gear') or []                       # 1st, 2nd, ... (gear index 2, 3, ...)
+    ups = [per[i - 2] if 2 <= i < 2 + len(per) else up for i in range(max(n_up, n_dn))]
+    for i in range(n_up): setf(c8, p_up + 4 * i, ups[i])
+    for i in range(n_dn):
+        d = down
+        if 3 <= i < n and rat[i - 1] > 0: d = min(down, ups[i - 1] * rat[i] / rat[i - 1] - margin)
+        setf(c8, p_dn + 4 * i, round(d, 3))
+
+def build_car(path, T, args, car):
+    """flavor-wide settings (gearbox / engine / tyre / force_model), then the car's own row of T['cars'] if there is one"""
+    f = read_sbf(path); check_layout(f, os.path.basename(path))
+    ch = f.chunks; g = T.get('gearbox'); e = T.get('engine'); ty = T.get('tyre'); P = (T.get('cars') or {}).get(car, {})
+    r = F(ch[26], 0x28); fd = F(ch[7], 4)
+    if g:
+        set_gears(ch, [376.99 * r / (fd * v) for v in g['forward_kmh_per_1000rpm']], g.get('reverse_ratio'))
+    if e:
+        ts = args.torque_scale if args.torque_scale is not None else e.get('torque_scale', 1.0)
+        setf(ch[4], 0x08, F(ch[4], 0x08) * ts)
+        setf(ch[6], 0x08, F(ch[6], 0x08) * max(1.0, ts))                  # clutch capacity (2000, LIKELY Nm) follows the torque
+        if e.get('max_rpm'): setf(ch[4], 0x0C, float(e['max_rpm']))
+        if e.get('torque_curve'): set_curve(ch, e['torque_curve'])
+    if P:                                                                   # per-car row (Realism)
+        if 'mass' in P: setf(ch[0], 4, P['mass'])
+        for k, o in zip(P.get('inertia_scale', ()), (8, 0xC, 0x10)): setf(ch[0], o, F(ch[0], o) * k)
+        if 'torque_nm' in P: setf(ch[4], 8, P['torque_nm'] * (args.torque_scale or 1.0))
+        if 'max_rpm' in P: setf(ch[4], 0xC, P['max_rpm'])
+        if 'torque_curve' in P: set_curve(ch, P['torque_curve'])
+        if 'gears' in P:
+            setf(ch[7], 4, fd * P['gears'].get('fd_scale', 1.0)); set_gears(ch, P['gears']['ratios'])
+        if 'diff' in P:
+            dd = P['diff']; setu(ch[10], 4, dd['drive']); setu(ch[10], 8, dd['type'])
+            for k, x in enumerate(dd.get('params', ())): setf(ch[10], 0xC + 4 * k, x)
+        if 'wheel_inertia' in P:
+            for i in (13, 17, 20, 23): setf(ch[i], 0x1C, P['wheel_inertia'])
+        if 'tyre' in P: ty = {'name': P['tyre']}
+    shift_points(ch, g or {})
+    if ty:
+        name = ty['name'].encode()
+        b = bytearray(ch[14].data); b[0x18:0x18 + 12] = (name + b'\0' * 12)[:12]; ch[14].data = bytes(b)
+    fm = args.force_model if args.force_model is not None else P.get('force_model', T.get('force_model', 2))
+    setu(ch[27], 0x08, int(fm))
+    n = U(ch[7], 0xC) - 2
+    c8 = ch[8]; downs = [round(F(c8, U(c8, 0x10) + 4 * i), 2) for i in range(2, n + 2)] + ['up'] + [round(F(c8, U(c8, 8) + 4 * i), 3) for i in range(2, n + 2)]
+    return rewrite(f), dict(radius=r, fd=F(ch[7], 4), ratios=[round(F(ch[7], 0x1C + 4 * i), 3) for i in range(n)], torque=F(ch[4], 8), rpm=F(ch[4], 0xC), downs=downs,
+                            mass=F(ch[0], 4), force_model=fm, diff=(U(ch[10], 4), U(ch[10], 8)))
+def build_grip(path, T, args):
+    f = read_sbf(path)
+    c = [x for x in f.chunks if x.id == 0x6172a752][0]; d = bytearray(c.data)
+    recs = {}; o = 8
+    while True:                                                            # linked list {next, mu, ..., name}
+        nxt = struct.unpack_from('<I', d, o)[0]; end = nxt if o in c.fix else len(d)
+        runs = list(re.finditer(rb'[A-Za-z_][ -~]{3,}', bytes(d[o + 4:end])))
+        if runs: recs[runs[-1].group().decode()] = o + 4                  # offset of the record's mu
+        if o not in c.fix: break
+        o = nxt
+    ty = T['tyre']; gs = args.grip_scale if args.grip_scale is not None else ty.get('grip_scale', 1.0)
+    group_of = {s: g for g, ss in ty['groups'].items() for s in ss}
+    mu = lambda n: struct.unpack_from('<f', d, recs[n])[0]
+    changed = []
+    for n in sorted(recs):
+        m = re.match(r'Tyre_Rally_(.+?)(_Top|_Base)?$', n)
+        if not m: continue
+        surf, layer = m.group(1), m.group(2) or ''
+        target = '%s_%s%s' % (ty['name'], surf, layer)
+        if target not in recs: continue
+        if surf in group_of:
+            ref = 'Tyre_Rally_Tarmac' + (layer or '_Top')
+            v = mu(ref) * ty['surface_ratio_to_tarmac'][group_of[surf]] * gs
+        else: v = mu(n) * gs
+        struct.pack_into('<f', d, recs[target], v); changed.append((target, round(v, 3)))
+    c.data = bytes(d)
+    return rewrite(f), changed
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('table'); ap.add_argument('--game', default=r'F:\Jogos\SEGA Rally 3\GAME\Sega Rally 3\Rally')
+    ap.add_argument('--out', required=True); ap.add_argument('--cars', default='')
+    ap.add_argument('--force-model', type=int); ap.add_argument('--torque-scale', type=float); ap.add_argument('--grip-scale', type=float)
+    args = ap.parse_args()
+    T = json.load(open(args.table, encoding='utf-8-sig')); dg = T['folder_digit']
+    if os.path.abspath(args.out).lower().startswith(os.path.abspath(args.game).lower()):
+        raise SystemExit('--out lies inside the game folder: build into a staging folder; installing is the launcher\'s job')
+    out_cars = os.path.join(args.out, 'Main_release', 'car' + dg); os.makedirs(out_cars, exist_ok=True)
+    extra = [c for c, p in (T.get('cars') or {}).items() if p.get('file')]          # added cars (Hornet: <name>gravel_data)
+    want = [c.lower() for c in args.cars.split(',') if c]
+    for car in [c for c in CARS + extra if not want or c.lower() in want]:
+        fn = (T['cars'][car]['file'] if car in extra else car.lower() + 'bespoke_data.sbf')
+        src = os.path.join(args.game, 'Main_release', 'cars', fn)
+        if not os.path.exists(src): print('%-14s %s not found: skipped' % (car, fn)); continue
+        f0 = read_sbf(src)                                   # round trip: SEGA's file rewritten unchanged gives the same bytes
+        if read_sbf(rewrite(f0)).raw != f0.raw: raise SystemExit('%s: round trip differs; nothing written' % car)
+        data, info = build_car(src, T, args, car)
+        open(os.path.join(out_cars, fn), 'wb').write(data)
+        print('%-14s mass %4.0f FD %.2f ratios %s down %s torque %.0f rpm %.0f diff %s fm %d' % (car, info['mass'], info['fd'], info['ratios'], info['downs'], info['torque'], info['rpm'], info['diff'], info['force_model']))
+    if T.get('tyre'):
+        data, changed = build_grip(os.path.join(args.game, 'SurfacePairEffects', 'surfacepairdata_xdata.sbf'), T, args)
+        gdir = os.path.join(args.out, 'SurfacePairEffect' + dg); os.makedirs(gdir, exist_ok=True)
+        open(os.path.join(gdir, 'surfacepairdata_xdata.sbf'), 'wb').write(data)
+        print('grip file: %d %s records set, e.g. %s' % (len(changed), T['tyre']['name'], changed[:4]))
+    else: print('grip file: none (the flavor keeps SR3\'s tyre records)')
+
+if __name__ == '__main__': main()

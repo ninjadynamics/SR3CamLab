@@ -60,3 +60,10 @@ blender/
 /classic/
 # link to /courses (the importer looks for it beside itself)
 /scripts/courses/
+
+# handling flavors (docs/kb/28_handling_flavors.md): the owner's own choice of flavors, and any flavor build staged in the
+# repository (built car / grip files are SEGA data: they go to the game folder, never here)
+/handling.json
+/scripts/handling/stage_*/
+/scripts/handling/*.sbf
+/scripts/handling/flavor_realism.json

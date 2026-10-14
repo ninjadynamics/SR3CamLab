@@ -1,0 +1,27 @@
+{
+  "flavor": "src",
+  "folder_digit": "1",
+  "about": "SEGA Rally Championship (1995) handling for SR3's ten cars. Only these numbers ship; the files are built from the owner's own SR3 files by build_flavor.py.",
+  "sources": {
+    "gears_kmh_per_1000rpm": "MAME srallyc autopilot + owner laps (ElSemi, Mountain): AT upshifts 80/150/181 km/h at ~8000 rpm, 3rd 22.4-23.0, 4th 26.1-27.1 km/h per 1000 rpm, limiter 8800 (agent_handling\\run_*, laps\\)",
+    "downshift": "SRC AT 4->3 at 139-151 km/h = 0.59-0.65 of 8800 rpm",
+    "grip": "sustained lateral (0.5 s median, p95): tarmac 2.65-2.75 g (owner, Mountain), gravel 2.35 g and dirt 2.41 g (autopilot, Desert): gravel/tarmac 0.87",
+    "celica_vs_delta": "identical in SRC (frame-identical logs), so one set for all cars"
+  },
+  "gearbox": {"forward_kmh_per_1000rpm": [11.8, 23.0, 26.4, 29.2], "slip_note": "SRC targets 9.6 / 18.9 / 22.7 / 26.6 divided by what test 2 measured of its design (0.81 / 0.82 / 0.86 / 0.91: SR3 tyres run 10-20 % slip when traction-limited)", "keep_final_drive": true, "reverse_ratio": -3.545,
+              "upshift_fraction": 0.91, "upshift_fraction_per_gear": [0.89, 0.823, 0.91], "upshift_note": "test 3: 1->2 at 82.9 km/h, 2->3 at 165.9 km/h with 0.91 (2nd runs 20.7 km/h per 1000 rpm at speed); SRC 81 / 150 / 181", "downshift_fraction": 0.65, "downshift_margin": 0.08},
+  "engine": {"max_rpm": 8800, "torque_scale": 2.5, "torque_curve": null},
+  "force_model": 2,
+  "force_model_options": {"0": "Standard", "1": "SegaRally", "2": "PowerslideSteer (SR3)", "3": "AlwaysSteer"},
+  "tyre": {"name": "Tyre_Road", "grip_scale": 1.35,
+           "surface_ratio_to_tarmac": {"tarmac": 1.0, "gravel": 0.87, "dirt": 0.89, "sand": 0.87},
+           "groups": {"tarmac": ["Tarmac", "BrokenTarmac"],
+                      "gravel": ["Gravel", "VolcanicAsh", "SandyCovering"],
+                      "dirt": ["DryMud", "DampMud", "GrassySwamp"],
+                      "sand": ["Sand"]},
+           "keep_sr3_ratio": ["Cobbles", "WoodenBridge", "WetTarmac", "WetMud", "Ice", "SnowTarmac", "SnowVolcanicAsh", "10mmSnow", "20mmSnow", "ShallowSnow", "SuperSlush"]},
+  "steer_return_seconds": 0.25,
+  "calibration_targets": {"0_100_s": 1.2, "0_200_s_mountain": 5.2, "sustained_lat_g_tarmac": 2.70, "sustained_lat_g_gravel": 2.35,
+                          "slip_deg_at_1g": 5.3, "slip_deg_above_1.6g": 9.6}
+}
+
