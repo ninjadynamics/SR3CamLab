@@ -54,11 +54,12 @@ for car, s in S.items():
     o['torque_curve'] = curve
     n = s.get('gears') or 6
     if not s.get('gears'): mis.append('gear count not in the source: 6 kept')
-    if s.get('ratios_example'):
-        ex = s['ratios_example']; ratios = [round(x * 1.18 / ex[-1], 3) for x in ex]
+    if s.get('ratios_rel'):
+        ex = s['ratios_rel']; ratios = [round(x * 1.18 / ex[-1], 3) for x in ex]
     else:
         ratios = [round(3.64 * (1.18 / 3.64) ** (i / (n - 1)), 3) for i in range(n)]
-    o['gears'] = {'ratios': ratios, 'fd_scale': round(pr / 5500.0, 4)}; o['top_kmh_est'] = round(233 * lim / 8000.0 / (pr / 5500.0))
+    if s.get('top_kmh_design'): o['gears'] = {'ratios': ratios, 'top_kmh': float(s['top_kmh_design'])}; o['top_kmh_est'] = s['top_kmh_design']
+    else: o['gears'] = {'ratios': ratios, 'fd_scale': round(lim / 8000.0, 4)}; o['top_kmh_est'] = 'SR3 own (228-235)'
     d = s.get('drive', '')
     if car == 'Hornet': o['diff'] = {'drive': 1, 'type': 0}
     elif car in ('207', 'Bowler', 'Enduro'): o['diff'] = {'drive': 2, 'type': 0, 'params': [0.2, 0.2, 0.0, 0.0]}
@@ -68,9 +69,9 @@ for car, s in S.items():
     out['cars'][car] = o
     out['misfits'] += ['%s: %s' % (car, m) for m in mis]
 out['misfits'] += ['all: tyre width is not part of SR3s grip model (mu x load); per-car grip would need a per-car tyre class (only Tyre_Road and Tyre_AllTerrain are free) or a per-car grip field still to be found (ch13 1800 / 0.345 / 125, ch27 Topham parameters)',
-                   'all: real ratios are not published: gears evenly spaced, final drive so that every car reaches the same road speed at its power peak as the Impreza WRC2008 at 5500 rpm (equal speed per power); the top speed at the limiter follows (top_kmh_est)',
+                   'all: real ratios are not published: gears evenly spaced, final drive x limit / 8000 so every car keeps SR3s own top speed at its limiter (228-235 km/h design); the Hornet: a design top of 265 km/h (a road-course Cup gearing; SR3 tyres run ~10 % slip in top gear)',
                    'all: centre split field 0.56 kept: which axle it means is not known yet']
 json.dump(out, open(dst, 'w'), indent=1)
 for car, o in out['cars'].items():
-    print('%-14s mass %5.0f torque %6.1f limit %5.0f gears %d fd x%.3f top ~%d km/h diff %s' % (car, o['mass'], o['torque_nm'], o['max_rpm'], len(o['gears']['ratios']), o['gears']['fd_scale'], o['top_kmh_est'], o['diff']))
+    print('%-14s mass %5.0f torque %6.1f limit %5.0f gears %d %s top %s km/h diff %s' % (car, o['mass'], o['torque_nm'], o['max_rpm'], len(o['gears']['ratios']), ('fd x%.3f' % o['gears']['fd_scale']) if 'fd_scale' in o['gears'] else 'fd from top', o['top_kmh_est'], o['diff']))
 print('\n'.join(out['misfits']))

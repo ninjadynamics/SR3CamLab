@@ -127,8 +127,10 @@ follows the torque scale. Tyre_Road records = SR3's Tyre_Rally tarmac x SRC's su
 
 ### Realism (realism_specs.json: one row per car with source URLs; realism_map.py)
 Real mass; inertia scaled by the real dimensions; SR3 torque = real Nm x 1.266 (the Impreza WRC2008 keeps SR3's
-acceleration per kg); curve from the torque and power peaks; real gear count, evenly spaced ratios, final drive for the same
-road speed at the power peak as the Impreza; drivetrain classes as in chunk 10 (Hornet: LimitedSlipRearWD). Evo X = Group N
+acceleration per kg); curve from the torque and power peaks; real gear count, evenly spaced ratios, final drive x limit / 8000
+so every car keeps SR3's own top speed at its limiter (228-235 km/h design; a first version matched the road speed at the
+power peak and left the Hornet at 141 km/h and the others at 170-218), the Hornet a design top of 265 km/h with 1st good for
+~100 km/h (a road-course Cup setup); drivetrain classes as in chunk 10 (Hornet: LimitedSlipRearWD). Evo X = Group N
 (SR3 is 2008, R4 came in 2011). Where real numbers do not fit SR3's model: tyre width is not in SR3's grip (mu x load), real
 ratios are not published, the split field's axle is unknown, several rev limits / peak rpms are estimates (marked in the file).
 

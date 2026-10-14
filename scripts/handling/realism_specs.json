@@ -1,41 +1,194 @@
 {
-  "about": "Real specs of the cars as SR3 has them (one row per car, with sources). 'est' = an estimate, no source found; 'conflict' = sources disagree. Only this table ships.",
-  "cars": {
-    "C4":            {"real": "Citroen C4 WRC (2007-08)", "mass_kg": 1230, "power_bhp": 315, "power_rpm": 5500, "torque_nm": 580, "torque_rpm": 2750, "gears": null,
-                      "drive": "4WD active centre diff", "length_mm": 4274, "width_mm": 1800, "wheelbase_mm": 2608,
-                      "src": ["https://en.wikipedia.org/wiki/Citro%C3%ABn_C4_WRC"], "notes": "gear count not in the source: keep SR3's 6"},
-    "RSFocus":       {"real": "Ford Focus RS WRC 07", "mass_kg": 1230, "power_bhp": 300, "power_rpm": 6000, "torque_nm": 550, "torque_rpm": 4000, "gears": 5,
-                      "drive": "4WD, M-Sport active centre differential", "length_mm": 4362, "width_mm": 1800, "wheelbase_mm": 2640,
-                      "src": ["https://www.crash.net/wrc/news/119284/1/ford-focus-rs-wrc-07-technical-specifications"]},
-    "SubaruImpreza": {"real": "Subaru Impreza WRC2008", "mass_kg": 1230, "power_bhp": 300, "power_rpm": 5500, "torque_nm": 650, "torque_rpm": 3000, "gears": 6,
-                      "drive": "4WD, electronically controlled centre diff", "src": ["https://www.autoblog.com/2008/05/29/subaru-releases-specs-on-impreza-wrc-2008/"],
-                      "notes": "479 lb-ft = 650 Nm; reference car of the torque rule"},
-    "SX4":           {"real": "Suzuki SX4 WRC (2008)", "mass_kg": 1230, "power_bhp": 316, "power_rpm": null, "torque_nm": 590, "torque_rpm": null, "gears": 5,
-                      "drive": "4WD", "length_mm": 4135, "width_mm": 1770, "height_mm": 1450, "wheelbase_mm": 2550,
-                      "src": ["https://en.wikipedia.org/wiki/Suzuki_SX4_WRC"], "notes": "rpm of peaks not in the source (est 5500 / 3500)"},
-    "MitsubishiEvo": {"real": "Mitsubishi Lancer Evolution X, Group N (2008; R4 only from 2011, after SR3)", "mass_kg": 1340, "power_bhp": 300, "power_rpm": null,
-                      "torque_nm": 600, "torque_rpm": null, "gears": 5, "drive": "4WD, road-car active centre diff (ACD)",
-                      "src": ["http://tech-racingcars.wikidot.com/mitsubishi-lancer-evo-x", "https://macgracing.co.uk/?p=47331", "https://en.wikipedia.org/wiki/Mitsubishi_Lancer_Evolution_X"],
-                      "notes": "conflict: the spec page names the Evo IX engine (4G63T) for the Evo X (4B11T); weight 1310-1370 kg (1340 used); rpm of peaks est 5500 / 3500"},
-    "207":           {"real": "Peugeot 207 Super 2000", "mass_kg": 1100, "power_bhp": 280, "power_rpm": null, "torque_nm": 250, "torque_rpm": null, "redline_rpm": 8500, "gears": 6,
-                      "drive": "4WD, mechanical diffs (S2000 rules)", "src": ["https://www.supercars.net/blog/2007-peugeot-207-s2000/"],
-                      "notes": "naturally aspirated 2.0: peaks est 8000 / 6500"},
-    "ST205":         {"real": "Toyota Celica GT-Four ST205, 1995 WRC Group A", "mass_kg": 1200, "power_bhp": 299, "power_rpm": 5600, "torque_nm": 500, "torque_rpm": 4000, "gears": 6,
-                      "drive": "4WD", "length_mm": 4424, "width_mm": 1770, "height_mm": 1300, "wheelbase_mm": 2545,
-                      "src": ["https://media.toyota.co.uk/?p=38633", "https://rallycars.com/cars/toyota-celica/history/"], "notes": "XTrac gearbox in the factory cars"},
-    "Delta_HF":      {"real": "Lancia Super Delta HF Integrale, 1992 Group A", "mass_kg": 1100, "power_bhp": 325, "power_rpm": 7000, "torque_nm": 535, "torque_rpm": 4000, "gears": 6,
-                      "drive": "4WD: front open, centre epicyclic + viscous, rear Torsen; split 45/55 (gravel) .. 40/60 (tarmac)",
-                      "src": ["http://tech-racingcars.wikidot.com/lancia-deltona", "https://www.supercars.net/blog/1993-lancia-integrale/"],
-                      "notes": "conflict: power quoted 275 .. 330-365 bhp; 325 used"},
-    "Bowler":        {"real": "Bowler Nemesis (4.4 V8, rally raid)", "mass_kg": 1850, "power_bhp": 280, "power_rpm": null, "torque_nm": 415, "torque_rpm": 4000, "gears": 6,
-                      "drive": "4WD", "src": ["https://en.wikipedia.org/wiki/Bowler_Nemesis"],
-                      "notes": "also offered as 4.2 supercharged V8 510 bhp / 561 Nm @ 3900; kerb weight; NA V8 limit est 6500"},
-    "Enduro":        {"real": "McRae Enduro (2.7 twin-turbo V6 diesel, T1)", "mass_kg": 1650, "power_bhp": 237, "power_rpm": null, "torque_nm": 521, "torque_rpm": null, "gears": 6,
-                      "drive": "4WD, ZF six-speed", "src": ["https://www.autocar.co.uk/node/34634", "https://www.goodwood.com/grr/race/historic/how-the-mcrae-enduro-took-on-dakar-and-survived/"],
-                      "notes": "predicted weight; diesel: peaks est 4000 / 2000, limit est 4800"},
-    "Hornet":        {"real": "1990s NASCAR Cup car (Hornet), 358 ci V8, RWD", "mass_kg": 1542, "power_bhp": 720, "power_rpm": 8000, "torque_nm": null, "torque_rpm": null, "gears": 4,
-                      "ratios_example": [3.08, 1.93, 1.34, 1.0], "drive": "RWD, spool (locked rear)", "file": "hornetgravel_data.sbf",
-                      "src": ["https://classiccars.com/listings/view/2095781/1993-ford-thunderbird-for-sale-in-owls-head-maine-04854", "https://en.wikipedia.org/wiki/NASCAR_engines", "https://www.classracer.com/classforum/showthread.php?p=390525"],
-                      "notes": "3400 lb; torque not found (est 700 Nm @ 6000 from 720 hp @ 8000); limit ~9000 (est); Jerico 4-speed example ratios; the owner: keep SEGA's width"}
+ "about": "Real specs of the cars as SR3 has them (one row per car, with sources). 'est' = an estimate, no source found; 'conflict' = sources disagree. Only this table ships. Gearing: every car keeps SR3s own top speed at its limiter unless top_kmh_design is given.",
+ "cars": {
+  "C4": {
+   "real": "Citroen C4 WRC (2007-08)",
+   "mass_kg": 1230,
+   "power_bhp": 315,
+   "power_rpm": 5500,
+   "torque_nm": 580,
+   "torque_rpm": 2750,
+   "gears": null,
+   "drive": "4WD active centre diff",
+   "length_mm": 4274,
+   "width_mm": 1800,
+   "wheelbase_mm": 2608,
+   "src": [
+    "https://en.wikipedia.org/wiki/Citro%C3%ABn_C4_WRC"
+   ],
+   "notes": "gear count not in the source: keep SR3's 6"
+  },
+  "RSFocus": {
+   "real": "Ford Focus RS WRC 07",
+   "mass_kg": 1230,
+   "power_bhp": 300,
+   "power_rpm": 6000,
+   "torque_nm": 550,
+   "torque_rpm": 4000,
+   "gears": 5,
+   "drive": "4WD, M-Sport active centre differential",
+   "length_mm": 4362,
+   "width_mm": 1800,
+   "wheelbase_mm": 2640,
+   "src": [
+    "https://www.crash.net/wrc/news/119284/1/ford-focus-rs-wrc-07-technical-specifications"
+   ]
+  },
+  "SubaruImpreza": {
+   "real": "Subaru Impreza WRC2008",
+   "mass_kg": 1230,
+   "power_bhp": 300,
+   "power_rpm": 5500,
+   "torque_nm": 650,
+   "torque_rpm": 3000,
+   "gears": 6,
+   "drive": "4WD, electronically controlled centre diff",
+   "src": [
+    "https://www.autoblog.com/2008/05/29/subaru-releases-specs-on-impreza-wrc-2008/"
+   ],
+   "notes": "479 lb-ft = 650 Nm; reference car of the torque rule"
+  },
+  "SX4": {
+   "real": "Suzuki SX4 WRC (2008)",
+   "mass_kg": 1230,
+   "power_bhp": 316,
+   "power_rpm": null,
+   "torque_nm": 590,
+   "torque_rpm": null,
+   "gears": 5,
+   "drive": "4WD",
+   "length_mm": 4135,
+   "width_mm": 1770,
+   "height_mm": 1450,
+   "wheelbase_mm": 2550,
+   "src": [
+    "https://en.wikipedia.org/wiki/Suzuki_SX4_WRC"
+   ],
+   "notes": "rpm of peaks not in the source (est 5500 / 3500)"
+  },
+  "MitsubishiEvo": {
+   "real": "Mitsubishi Lancer Evolution X, Group N (2008; R4 only from 2011, after SR3)",
+   "mass_kg": 1340,
+   "power_bhp": 300,
+   "power_rpm": null,
+   "torque_nm": 600,
+   "torque_rpm": null,
+   "gears": 5,
+   "drive": "4WD, road-car active centre diff (ACD)",
+   "src": [
+    "http://tech-racingcars.wikidot.com/mitsubishi-lancer-evo-x",
+    "https://macgracing.co.uk/?p=47331",
+    "https://en.wikipedia.org/wiki/Mitsubishi_Lancer_Evolution_X"
+   ],
+   "notes": "conflict: the spec page names the Evo IX engine (4G63T) for the Evo X (4B11T); weight 1310-1370 kg (1340 used); rpm of peaks est 5500 / 3500"
+  },
+  "207": {
+   "real": "Peugeot 207 Super 2000",
+   "mass_kg": 1100,
+   "power_bhp": 280,
+   "power_rpm": null,
+   "torque_nm": 250,
+   "torque_rpm": null,
+   "redline_rpm": 8500,
+   "gears": 6,
+   "drive": "4WD, mechanical diffs (S2000 rules)",
+   "src": [
+    "https://www.supercars.net/blog/2007-peugeot-207-s2000/"
+   ],
+   "notes": "naturally aspirated 2.0: peaks est 8000 / 6500"
+  },
+  "ST205": {
+   "real": "Toyota Celica GT-Four ST205, 1995 WRC Group A",
+   "mass_kg": 1200,
+   "power_bhp": 299,
+   "power_rpm": 5600,
+   "torque_nm": 500,
+   "torque_rpm": 4000,
+   "gears": 6,
+   "drive": "4WD",
+   "length_mm": 4424,
+   "width_mm": 1770,
+   "height_mm": 1300,
+   "wheelbase_mm": 2545,
+   "src": [
+    "https://media.toyota.co.uk/?p=38633",
+    "https://rallycars.com/cars/toyota-celica/history/"
+   ],
+   "notes": "XTrac gearbox in the factory cars"
+  },
+  "Delta_HF": {
+   "real": "Lancia Super Delta HF Integrale, 1992 Group A",
+   "mass_kg": 1100,
+   "power_bhp": 325,
+   "power_rpm": 7000,
+   "torque_nm": 535,
+   "torque_rpm": 4000,
+   "gears": 6,
+   "drive": "4WD: front open, centre epicyclic + viscous, rear Torsen; split 45/55 (gravel) .. 40/60 (tarmac)",
+   "src": [
+    "http://tech-racingcars.wikidot.com/lancia-deltona",
+    "https://www.supercars.net/blog/1993-lancia-integrale/"
+   ],
+   "notes": "conflict: power quoted 275 .. 330-365 bhp; 325 used"
+  },
+  "Bowler": {
+   "real": "Bowler Nemesis (4.4 V8, rally raid)",
+   "mass_kg": 1850,
+   "power_bhp": 280,
+   "power_rpm": null,
+   "torque_nm": 415,
+   "torque_rpm": 4000,
+   "gears": 6,
+   "drive": "4WD",
+   "src": [
+    "https://en.wikipedia.org/wiki/Bowler_Nemesis"
+   ],
+   "notes": "also offered as 4.2 supercharged V8 510 bhp / 561 Nm @ 3900; kerb weight; NA V8 limit est 6500"
+  },
+  "Enduro": {
+   "real": "McRae Enduro (2.7 twin-turbo V6 diesel, T1)",
+   "mass_kg": 1650,
+   "power_bhp": 237,
+   "power_rpm": null,
+   "torque_nm": 521,
+   "torque_rpm": null,
+   "gears": 6,
+   "drive": "4WD, ZF six-speed",
+   "src": [
+    "https://www.autocar.co.uk/node/34634",
+    "https://www.goodwood.com/grr/race/historic/how-the-mcrae-enduro-took-on-dakar-and-survived/"
+   ],
+   "notes": "predicted weight; diesel: peaks est 4000 / 2000, limit est 4800"
+  },
+  "Hornet": {
+   "real": "1990s NASCAR Cup car (Hornet), 358 ci V8, RWD",
+   "mass_kg": 1542,
+   "power_bhp": 720,
+   "power_rpm": 8000,
+   "torque_nm": null,
+   "torque_rpm": null,
+   "gears": 4,
+   "ratios_example": [
+    3.08,
+    1.93,
+    1.34,
+    1.0
+   ],
+   "drive": "RWD, spool (locked rear)",
+   "file": "hornetgravel_data.sbf",
+   "src": [
+    "https://classiccars.com/listings/view/2095781/1993-ford-thunderbird-for-sale-in-owls-head-maine-04854",
+    "https://en.wikipedia.org/wiki/NASCAR_engines",
+    "https://www.classracer.com/classforum/showthread.php?p=390525"
+   ],
+   "notes": "3400 lb; torque not found (est 700 Nm @ 6000 from 720 hp @ 8000); limit ~9000 (est); Jerico 4-speed example ratios; the owner: keep SEGA's width; gearing: a road-course setup, about 240-250 km/h at the limiter in 4th once tyre slip is taken off (design 265; test 1 measured 0.88 of the design in 4th on dirt) and 1st good for ~100 km/h (est, main session 2026-10-14); the Jerico example ratios (3.08 / 1.93 / 1.34 / 1.0) were an oval / short-track set",
+   "top_kmh_design": 265,
+   "ratios_rel": [
+    2.65,
+    1.92,
+    1.38,
+    1.0
+   ]
   }
+ }
 }

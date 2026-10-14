@@ -84,7 +84,9 @@ def build_car(path, T, args, car):
         if 'max_rpm' in P: setf(ch[4], 0xC, P['max_rpm'])
         if 'torque_curve' in P: set_curve(ch, P['torque_curve'])
         if 'gears' in P:
-            setf(ch[7], 4, fd * P['gears'].get('fd_scale', 1.0)); set_gears(ch, P['gears']['ratios'])
+            gr = P['gears']; set_gears(ch, gr['ratios'])
+            if 'top_kmh' in gr: setf(ch[7], 4, F(ch[4], 0xC) / 1000.0 * 376.99 * r / (gr['ratios'][-1] * gr['top_kmh']))   # design top speed at the limiter
+            else: setf(ch[7], 4, fd * gr.get('fd_scale', 1.0))
         if 'diff' in P:
             dd = P['diff']; setu(ch[10], 4, dd['drive']); setu(ch[10], 8, dd['type'])
             for k, x in enumerate(dd.get('params', ())): setf(ch[10], 0xC + 4 * k, x)
