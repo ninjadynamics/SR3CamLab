@@ -1,0 +1,521 @@
+{
+ "car": "Hornet",
+ "folder": "Hornet",
+ "about": "Liveries of the Daytona USA Hornet for SEGA Rally 3, built by daytona_car.py --livery <key> into a livery store (<store>\\<key>\\: the car files + manifest.json); hornet_livery.ps1 switches between them. Titles are what the renders show (number, colours). Rows are Daytona USA object rows (docs/kb/daytona_usa_rom_data.md section 11).",
+ "default": "hornet0",
+ "liveries": [
+  {
+   "key": "hornet0",
+   "title": "Hornet #41 (red / blue)",
+   "kind": "player",
+   "raced": true,
+   "body_row": 1460,
+   "frames_row": 1462,
+   "note": "default; the arcade's player car"
+  },
+  {
+   "key": "hornet1",
+   "title": "Hornet #41 (red / yellow)",
+   "kind": "player",
+   "raced": true,
+   "body_row": 1461,
+   "frames_row": 1463,
+   "note": "the arcade's second player livery (likely the other transmission)"
+  },
+  {
+   "key": "hornetlink",
+   "title": "Hornet, no number (red)",
+   "kind": "player",
+   "raced": true,
+   "body_row": 1835,
+   "frames_row": 1793,
+   "note": "the player car of linked play, without its number decal"
+  },
+  {
+   "key": "link1",
+   "title": "Linked-play Hornet #1 (red)",
+   "kind": "linked",
+   "raced": true,
+   "body_row": 1803,
+   "frames_row": null,
+   "note": "the linked-play cars' body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "link2",
+   "title": "Linked-play Hornet #2 (blue)",
+   "kind": "linked",
+   "raced": true,
+   "body_row": 1807,
+   "frames_row": null,
+   "note": "the linked-play cars' body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "link3",
+   "title": "Linked-play Hornet #3 (yellow)",
+   "kind": "linked",
+   "raced": true,
+   "body_row": 1811,
+   "frames_row": null,
+   "note": "the linked-play cars' body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "link4",
+   "title": "Linked-play Hornet #4 (green)",
+   "kind": "linked",
+   "raced": true,
+   "body_row": 1815,
+   "frames_row": null,
+   "note": "the linked-play cars' body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "link5",
+   "title": "Linked-play Hornet #5 (brown)",
+   "kind": "linked",
+   "raced": true,
+   "body_row": 1819,
+   "frames_row": null,
+   "note": "the linked-play cars' body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "link6",
+   "title": "Linked-play Hornet #6 (pink)",
+   "kind": "linked",
+   "raced": true,
+   "body_row": 1823,
+   "frames_row": null,
+   "note": "the linked-play cars' body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "link7",
+   "title": "Linked-play Hornet #7 (cyan)",
+   "kind": "linked",
+   "raced": true,
+   "body_row": 1827,
+   "frames_row": null,
+   "note": "the linked-play cars' body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "link8",
+   "title": "Linked-play Hornet #8 (orange)",
+   "kind": "linked",
+   "raced": true,
+   "body_row": 1831,
+   "frames_row": null,
+   "note": "the linked-play cars' body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp0",
+   "title": "#00 (purple)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 0,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp1",
+   "title": "#1 (green / red / yellow)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 4,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp2",
+   "title": "#2 (black / yellow)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 8,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp3",
+   "title": "#3 (dark blue)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 12,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp4",
+   "title": "#4 (red)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 16,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp5",
+   "title": "#5 (yellow)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 20,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp6",
+   "title": "#6 (white)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 24,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp7",
+   "title": "#7 (orange)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 28,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp8",
+   "title": "#8 (blue)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 32,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp9",
+   "title": "#9 (yellow)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 36,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp10",
+   "title": "#10 (green)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 40,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp11",
+   "title": "#11 (red)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 44,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp12",
+   "title": "#12 (yellow)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 48,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp13",
+   "title": "#13 (blue)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 52,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp14",
+   "title": "#15 (orange)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 56,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp15",
+   "title": "#16 (black / red)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 60,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp16",
+   "title": "#20 (yellow / white)",
+   "kind": "opponent",
+   "raced": false,
+   "body_row": 64,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit); in the ROM but not in the arcade's opponent table"
+  },
+  {
+   "key": "opp17",
+   "title": "#21 (red / white)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 68,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp18",
+   "title": "#23 (green / white)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 72,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp19",
+   "title": "#28 (black / yellow)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 76,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp20",
+   "title": "#31 (blue / white)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 80,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp21",
+   "title": "#32 (red / yellow)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 84,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp22",
+   "title": "#35 (violet / white)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 88,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp23",
+   "title": "#42 (white / red)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 92,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp24",
+   "title": "#46 (black / purple)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 96,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp25",
+   "title": "#51 (green / yellow)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 100,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp26",
+   "title": "#53 (red / blue)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 104,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp27",
+   "title": "#55 (blue / white)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 108,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp28",
+   "title": "#62 (white / red)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 112,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp29",
+   "title": "#66 (teal / white)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 116,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp30",
+   "title": "#68 (red / white)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 120,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp31",
+   "title": "#71 (dark blue / olive)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 124,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp32",
+   "title": "#73 (pink / white)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 128,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp33",
+   "title": "#77 (blue / purple)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 132,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp34",
+   "title": "#78 (white / red / blue)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 136,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp35",
+   "title": "#80 (blue / white)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 140,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp36",
+   "title": "#82 (black / teal / red)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 144,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp37",
+   "title": "#85 (green / teal)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 148,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp38",
+   "title": "#90 (red / purple)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 152,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp39",
+   "title": "#91 (black / lime)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 156,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp40",
+   "title": "#88 (orange / black)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 160,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp41",
+   "title": "#100 (lavender / blue)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 164,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp42",
+   "title": "#208 (lime / orange)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 168,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "opp43",
+   "title": "#99 (blue / orange)",
+   "kind": "opponent",
+   "raced": false,
+   "body_row": 172,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit); in the ROM but not in the arcade's opponent table"
+  },
+  {
+   "key": "opp44",
+   "title": "#69 (yellow / purple)",
+   "kind": "opponent",
+   "raced": true,
+   "body_row": 176,
+   "frames_row": null,
+   "note": "opponent body (simpler than the player car, no cockpit)"
+  },
+  {
+   "key": "car99",
+   "title": "#99 (purple)",
+   "kind": "extra",
+   "raced": false,
+   "body_row": 1836,
+   "frames_row": null,
+   "note": "opponent body; in the ROM, use unknown (rows 1836..1839)"
+  }
+ ]
+}

@@ -18,8 +18,10 @@ What is built (docs/kb/daytona_usa_rom_data.md section 11; carmodel.py for the f
            1024 x 1024 atlas in place of ST205's livery texture: every polygon gets its own cell, the coplanar overlays
            (numbers, logos: Model 2 has no depth buffer) are painted into the cell of the polygon under them; translucent
            polygons (window nets) go into a second atlas with alpha and a copy of ST205's glass material; the glass nodes
-           get empty meshes; lights and exhaust are ST205's meshes moved onto the Daytona body; suspension nodes at the
-           Daytona hubs; shadows scaled to the Daytona size; tail record bounding box recomputed.
+           get empty meshes; rear lamps laid on the body's own rear panel (fit_rear_lamps); front lights and exhaust are
+           ST205's meshes moved onto the Daytona body; suspension nodes at the Daytona hubs; shadows scaled to the
+           Daytona size; tail record bounding box recomputed. Bodies without a cockpit (opponents, linked-play cars) get
+           a dark inner skin, so their window openings and wheel arches do not show through the car.
   wheels   (<name>gravelmodel_data) the Daytona wheels 805 / 806 (tyre + 8-spoke rim) and 793 / 794 for the far LODs,
            with their own atlas; the blur discs = the rim, turned into a radial blur.
   handling (<name>gravel_data) the donor's bespoke_data with the wheel chunk (hub, centre, radius, width per wheel) set
@@ -40,7 +42,7 @@ GAME = car_clone.GAME
 CARS = car_clone.CARS
 ORIG_DB = os.path.join(GAME, "Main_release", "tracks", "_SR3Extras", "original", "arcadedatabase_xdata.sbf")
 
-LIVERIES = {"hornet0": (1460, 1462), "hornet1": (1461, 1463), "hornetlink": (1835, 1793)}
+LIVERIES = {"hornet0": (1460, 1462), "hornet1": (1461, 1463), "hornetlink": (1835, 1793), "car99": (1836, None)}
 DAY_WHEEL = dict(r=0.36, w=0.401, x_out=0.875, zf=1.412, zr=-1.395)
 WHEEL_ROWS = {"l": (805, 793), "r": (806, 794)}
 
@@ -334,6 +336,7 @@ def liveries():
            dict(key="hornetlink", body=1835, frames=1793, label="Hornet red, no number (linked play)")]
     out += [dict(key="opp%d" % k, body=4 * k, frames=None, label="opponent livery %d" % k) for k in range(45)]
     out += [dict(key="link%d" % k, body=1803 + 4 * (k - 1), frames=None, label="linked-play Hornet #%d" % k) for k in range(1, 9)]
+    out += [dict(key="car99", body=1836, frames=None, label="#99 livery (in the ROM, use unknown)")]
     return out
 
 
@@ -407,7 +410,13 @@ def main():
         for i, uv in uvmap.items():
             f = faces[i]; out.append((to_sr3(f["P"]), f["n"], uv))
         return out
-    body_mesh = build_mesh([(livery_mat, sr3_faces(body_uv)), (new_glass_mat, sr3_faces(glass_uv))], mesh_of("bodyshell").hdr)
+    body_faces = sr3_faces(body_uv)
+    if frame_row is None:
+        # the opponent and linked-play bodies are hollow shells (Daytona only shows them from outside): seen through
+        # their window openings and wheel arches the car would be empty; a dark inner skin closes them
+        inner = inner_skin(body_faces, body_img, body_uv)
+        body_faces += inner; report["inner_skin_faces"] = len(inner)
+    body_mesh = build_mesh([(livery_mat, body_faces), (new_glass_mat, sr3_faces(glass_uv))], mesh_of("bodyshell").hdr)
     for nm in ("bodyshell", "bodyshellx02", "bodyshellx03"):
         model.meshes[byname[nm].mesh] = body_mesh
     # Daytona body measurements (SR3 space) for placing ST205's small parts
@@ -699,6 +708,23 @@ def _plane_z(face, P):
     """z of the plane of a body face (SR3 space, points P (N, 3) give x, y)"""
     n = face["n"]; c = face["Q"].mean(0)
     return c[2] - (n[0] * (P[:, 0] - c[0]) + n[1] * (P[:, 1] - c[1])) / n[2]
+
+
+INNER_INSET = 0.01      # the inner skin of a hollow body sits this far inside the outer surface (m)
+
+
+def inner_skin(body_faces, img, uvmap):
+    """a hollow body's inside: every opaque face again, INNER_INSET inwards, facing in, in one dark colour (the centre of
+    the darkest large polygon of the body's own atlas, e.g. the windscreen)"""
+    H, W = img.shape[:2]; best = None
+    for uv in uvmap.values():
+        x0, y0 = np.floor(uv.min(0) * [W, H]).astype(int); x1, y1 = np.ceil(uv.max(0) * [W, H]).astype(int)
+        if x1 - x0 < 12 or y1 - y0 < 12: continue
+        reg = img[y0 + 3:y1 - 3, x0 + 3:x1 - 3, :3]
+        key = float(reg.mean() + reg.std())
+        if best is None or key < best[0]: best = (key, (uv.min(0) + uv.max(0)) / 2)
+    duv = best[1]
+    return [(P[::-1] - n * INNER_INSET, -n, np.tile(duv, (len(P), 1))) for P, n, uv in body_faces]
 
 
 class RearCaster:
