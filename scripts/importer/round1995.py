@@ -299,7 +299,7 @@ def round_natural(faces, level=1, origin=None, passes=2, lam=0.5, weld=0.02, log
         pk_.append(corner_keys(Pg)); pa_.append(Ag); pi_.append(ids[good])
         out_nat += [(faces[i][0], faces[i][1], [tuple(q) for q in p], [tuple(q) for q in u]) for i, p, u in zip(il, Pl, Ul)]
     if pk_:
-        hk = np.concatenate(pk_); PATCH['ab'] = np.concatenate(pa_); PATCH['id'] = np.concatenate(pi_).astype(np.int64); PATCH['corner'] = hk; PATCH['row'] = {b_.tobytes(): r_ for r_, b_ in enumerate(np.sort(hk, axis=1))}
+        hk = np.concatenate(pk_); PATCH['ab'] = np.concatenate(pa_); PATCH['id'] = np.concatenate(pi_).astype(np.int64); PATCH['corner'] = hk; PATCH['row'] = {b_.tobytes(): r_ for r_, b_ in enumerate(canon_keys(hk))}
     out = [fc for i, fc in enumerate(faces) if not isnat[i]] + out_nat
     stat.update(polygons_after=len(out_nat), corners=tot['corners'], corners_moved=tot['free'], kept_because_shared_with_other_things=tot['kept_shared'], kept_on_borders=tot['kept_border'],
                 mean_move_m=round(tot['moved'] / max(tot['free'], 1), 3), largest_move_m=round(tot['most'], 2), held_back_by_reach=tot['held_by_reach'], held_to_their_side_of_road_and_fills=tot['held_by_order'], kept_on_the_road_apron=tot.get('apron', 0), kept_where_people_stand=tot.get('stands', 0), put_back_because_folded=tot.get('unfolded', 0), polygons_left_whole_because_flat=tot.get('flat', 0), largest_gap_at_their_edges_m=tot.get('seam', 0.0), schedule=sched)
@@ -518,29 +518,39 @@ def _emit(faces, isnat, grp, orig, AB, coarse, level, stat, log, what):
         out_nat += [(faces[i][0], faces[i][1], [tuple(q) for q in p], [tuple(q) for q in u]) for i, p, u in zip(il, Pl, Ul)]
     PATCH.clear()
     if pk_:
-        hk = np.concatenate(pk_); PATCH['ab'] = np.concatenate(pa_); PATCH['id'] = np.concatenate(pi_).astype(np.int64); PATCH['corner'] = hk; PATCH['row'] = {b_.tobytes(): r_ for r_, b_ in enumerate(np.sort(hk, axis=1))}
+        hk = np.concatenate(pk_); PATCH['ab'] = np.concatenate(pa_); PATCH['id'] = np.concatenate(pi_).astype(np.int64); PATCH['corner'] = hk; PATCH['row'] = {b_.tobytes(): r_ for r_, b_ in enumerate(canon_keys(hk))}
     out = [fc for i, fc in enumerate(faces) if not isnat[i]] + out_nat; stat['polygons_after'] = len(out_nat)
     log('       %s: %s' % (what, stat))
     return out, stat
 
 # ---------------------------------------------------------------- the pieces of a rounded polygon share its light-map rectangle
 PATCH = {}                                                           # filled by round_natural: 'row' piece (its corners, sorted) -> row ; 'corner' (n, 4) the corners' numbers in the order they were written ; 'ab' (n, 4, 2) where they lie in the square of the polygon the piece was cut from ; 'id' (n) that polygon
+def canon_keys(K4):
+    """(n, 4) corner numbers -> one key a polygon whatever order its corners run in: sorted, a corner written twice (a triangle) counted once and the
+    fourth place filled with the largest number. (Sorted as they were, a triangle turned round for its other side, corners 0 2 1 1, did not match the
+    piece it is, 0 1 2 2: every other-side triangle piece missed its polygon's rectangle and was lit alone; owner's shot SR3_20261015_003943.)"""
+    s = np.sort(np.asarray(K4, np.int64), axis=1); d = np.zeros(s.shape, bool); d[:, 1:] = s[:, 1:] == s[:, :-1]
+    return np.sort(np.where(d, np.iinfo(np.int64).max, s), axis=1)
 def corner_keys(P4):
     """(n, 4, 3) corners -> (n, 4) one number per corner: its place to the millimetre, taken from the float32 the mesh writer stores"""
     q = np.round(np.asarray(P4, np.float32).astype(np.float64) * 1000.0).astype(np.int64) + (1 << 20); return (q[..., 0] << 42) | (q[..., 1] << 21) | q[..., 2]
 def patch_lookup(P4, back=None):
     """(n, 4, 3) corners as the mesh writer has them -> (id per polygon, -1 = not a piece of a rounded polygon ; (n, 4, 2) the corners' places in that
     polygon's square, the unit square where it is none). back[n] = this polygon is the other-side copy of one written once per side: it never
-    shares (its light is another light), and it is known by its corners running the other way round."""
+    shares the front's rectangle (its light is another light), only the other-side copies of the same polygon's pieces share one (the polygon's number +
+    BACK_RECT); it is known by its corners running the other way round."""
     n = len(P4); ids = np.full(n, -1, np.int64); ab = np.tile(np.array([(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]), (n, 1, 1))
     if not n or 'row' not in PATCH: return ids, ab
-    hq = corner_keys(P4); hs = np.sort(hq, axis=1); get = PATCH['row'].get; rows = np.array([get(b_.tobytes(), -1) for b_ in hs], np.int64); m = np.nonzero(rows >= 0)[0]
+    hq = corner_keys(P4); hs = canon_keys(hq); get = PATCH['row'].get; rows = np.array([get(b_.tobytes(), -1) for b_ in hs], np.int64); m = np.nonzero(rows >= 0)[0]
     if not len(m): return ids, ab
     st = PATCH['corner'][rows[m]]; sa = PATCH['ab'][rows[m]]; got = np.zeros((len(m), 4, 2))
     for c in range(4): j = (st == hq[m][:, c:c + 1]).argmax(1); got[:, c] = sa[np.arange(len(m)), j]
     area = 0.5 * sum(got[:, c, 0] * got[:, (c + 1) % 4, 1] - got[:, (c + 1) % 4, 0] * got[:, c, 1] for c in range(4))      # the corners as cut run one way round the square, a polygon turned round the other
-    keep = np.ones(len(m), bool) if back is None else ~(np.asarray(back, bool)[m] & (area < 0))
-    ids[m[keep]] = PATCH['id'][rows[m]][keep]; ab[m[keep]] = got[keep]; return ids, ab
+    bk = np.zeros(len(m), bool) if back is None else (np.asarray(back, bool)[m] & (area < 0))
+    # the other-side copies of a polygon's pieces share a rectangle of THEIR OWN (the polygon's number + BACK_RECT): alone, each piece of a side seen only
+    # from a free camera was lit in a rectangle of 2 x 2 texels, and the light broke into blotches along the pieces (owner's shot SR3_20261015_003943)
+    ids[m] = PATCH['id'][rows[m]] + np.where(bk, BACK_RECT, 0); ab[m] = got; return ids, ab
+BACK_RECT = 1 << 40
 
 # compiled / array versions of the slow functions above (fastround.py, checked to give the same bytes; SR3_FASTGEO=0 switches them off)
 import sys as _sys, fastround as _fr_mod; _fr_mod.install(_sys.modules[__name__])
