@@ -344,6 +344,7 @@ CAR = MGR_OWNER + 0xA000; MAT = CAR + 0x135C; car = {}
 def set_car(pos, yaw, scale=1.0):
     c, s = math.cos(yaw), math.sin(yaw); car.update(R=(c, 0, -s), U=(0, 1, 0), F=(s, 0, c), P=pos)
     u.mem_write(MAT, struct.pack('<16f', *(x * scale for x in car['R']), 0, *(x * scale for x in car['U']), 0, *(x * scale for x in car['F']), 0, *pos, 1))
+    u.mem_write(CAR + 0xAC, struct.pack('<3f', *pos))                  # the drawn position (here the same: no physics steps)
 def world(p, point=True): return tuple(p[0] * car['R'][i] + p[1] * car['U'][i] + p[2] * car['F'][i] + (car['P'][i] if point else 0) for i in range(3))
 deg = math.pi / 180
 VIEWS = dict(daytona=((0.3, 1.9, -4.7), (0, 1.0, -0.87), (0, 1, 0), 72 * deg), drone=((-0.2, 4.6, -6.9), (0, 1.0, -0.87), (0, 1, 0), 87 * deg),
@@ -465,7 +466,7 @@ def set_car_pr(pos, yaw, pitch, roll):
     c, s = math.cos(yaw), math.sin(yaw); R0, U0, F0 = (c, 0, -s), (0, 1, 0), (s, 0, c)
     F1 = tuple(F0[i] * math.cos(pitch) + U0[i] * math.sin(pitch) for i in range(3)); U1 = tuple(U0[i] * math.cos(pitch) - F0[i] * math.sin(pitch) for i in range(3))
     R2 = tuple(R0[i] * math.cos(roll) + U1[i] * math.sin(roll) for i in range(3)); U2 = tuple(U1[i] * math.cos(roll) - R0[i] * math.sin(roll) for i in range(3))
-    car.update(R=R2, U=U2, F=F1, P=pos); u.mem_write(MAT, struct.pack('<16f', *R2, 0, *U2, 0, *F1, 0, *pos, 1))
+    car.update(R=R2, U=U2, F=F1, P=pos); u.mem_write(MAT, struct.pack('<16f', *R2, 0, *U2, 0, *F1, 0, *pos, 1)); u.mem_write(CAR + 0xAC, struct.pack('<3f', *pos))
 def yawframe():                              # the car's heading and place, as the block makes them
     f = (car['F'][0], 0.0, car['F'][2]); n = norm(f); f = tuple(x / n for x in f); r = (f[2], 0.0, -f[0])
     if sum(r[i] * car['R'][i] for i in range(3)) < 0: r = tuple(-x for x in r)
@@ -497,7 +498,7 @@ def step_frame(k):                                       # frame k at k / 60 s: 
     j = k // 2; frac = (k % 2) * 0.5; c, s_ = math.cos(YAW_), math.sin(YAW_)
     u.mem_write(MAT, struct.pack('<16f', c, 0, -s_, 0, 0, 1, 0, 0, s_, 0, c, 0, *at_(j / 30), 1))
     drawn = at_((j - 1) / 30 + frac / 30)                # drawn between the step before and this one
-    car.update(R=(c, 0, -s_), U=(0, 1, 0), F=(s_, 0, c), P=drawn); return frac
+    car.update(R=(c, 0, -s_), U=(0, 1, 0), F=(s_, 0, c), P=drawn); u.mem_write(CAR + 0xAC, struct.pack('<3f', *drawn)); return frac
 setup(0.5, 0x510, 'daytona', 3)
 for k in range(4): render(1 / 60, alpha=step_frame(k))
 frm = carframe_y(view()); press(4); shown[0x510] = 'drone'
@@ -506,7 +507,7 @@ for n in range(30):
     a_ = step_frame(5 + n); v = render(1 / 60, alpha=a_); eyes.append(v[0]); t = n * game['dt'] / 0.5
     if t < 1: worst = max(worst, max(err(v, blended_y(frm, ease(t)))))
 acc = max(norm(tuple(eyes[k + 1][i] - 2 * eyes[k][i] + eyes[k - 1][i] for i in range(3))) for k in range(1, len(eyes) - 1))
-check('car at 200 km/h whose matrix moves in 30 Hz steps, drawn at 60 Hz between them: the kept view rides with the car as drawn (worst %.2g m off that path) and the eye moves evenly (its step changes by at most %.3f m from frame to frame; the matrix itself jumps 1.85 m every second frame)' % (worst, acc),
+check('car at 200 km/h whose matrix moves in 30 Hz steps, drawn at 60 Hz between them (the drawn position at car + 0xAC): the kept view rides with the car as drawn (worst %.2g m off that path) and the eye moves evenly (its step changes by at most %.3f m from frame to frame; the matrix itself jumps 1.85 m every second frame)' % (worst, acc),
       worst < 1e-3 and acc < 0.05)
 
 # 6. View Change again while a blend runs: on from where the view is, no jump

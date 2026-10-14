@@ -140,11 +140,14 @@ the worse)". Cause: the game moves the car's matrix in physics steps and draws i
 the frame's fraction (0x5C93DB works it out from the clock; 0x5F1690 and 0x5BA410 take it); the old view carried by the
 matrix itself jumped by a step's travel. A first fix carried it by the NEW camera instead; owner: "the camera jumps
 almost to the final position and then lerps the rest" (the new camera has not moved yet on the blend's first frame, so
-the offset taken from it was nearly 0; it then rode that camera's own spring). Now: the blend keeps the car's matrix per
-step (block + 0x3F00: the one seen last, the one before) and carries the old view by their mix at the frame's fraction
-(saved by the hook from 0x5F1690's float), as the game draws the car. cycle_emu.py: matrix in 30 Hz steps, drawn at
-60 Hz: the view stays on the car-carried path (7.1e-06 m) and the eye's step changes by at most 0.022 m; 48 checks.
-Assumed: at most one physics step between two drawn frames (not measured in game). The block grew to 0x4000 bytes for it. Settings and state: block + 0x2280; second code area: block + 0x2800 .. 0x4000.
+the offset taken from it was nearly 0; it then rode that camera's own spring). A second try mixed the last two matrices by the frame's fraction; owner: "the camera jankiness is back": measured in
+game, the fraction runs from about -0.94 to +0.25 in steps of 1/16, not 0..1. Now the old view is carried by the car AS
+DRAWN: car + 0xAC, the fifth of five position records (before / after the step, the two the frame lies between, the drawn
+one, as in the camera states). Measured in game (1 ms samples, 2.5 s at speed): the matrix and the first four records
+change about 63 times a second and evenly per step; +0xAC and the camera's own eye change 60 times a second and in the
+same uneven way (a frame holds one step or two), so the drawn car and the camera move together and the matrix does not.
+VERIFIED in game: the owner, "Looks perfect now"; through a blend between the car-following cameras the eye's step
+relative to the drawn car changes by 0.02 .. 0.07 m (p95), as without a blend. The heading is still the matrix's. The block grew to 0x4000 bytes for it. Settings and state: block + 0x2280; second code area: block + 0x2800 .. 0x4000.
 
 What the per-frame entry does: extends the race camera list (Chase + the game's cameras + one Chase entry per profile + the
 hidden cameras; an entry `0x80000000 | offset` adds a camera a second time as a patched variant, the driver's-seat

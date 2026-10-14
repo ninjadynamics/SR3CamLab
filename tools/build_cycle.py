@@ -105,7 +105,7 @@ Blend between cameras (K_BLEND seconds; 0 = cut, as before): BLEND runs after th
 cameras for the frame and keeps the view of every frame in the car's frame (eye, direction, look distance, up,
 field of view). After a View Change it rewrites the interpolated eye / look-at / up / field of view of the camera
 the frame is drawn from: the view the change left from, carried along by the car's heading and place as the game draws
-the car (between its last two physics steps by the frame's fraction; not its pitch and roll, which the cameras' springs
+the car (the drawn position car + 0xAC, which moves as the cameras do; not its pitch and roll, which the cameras' springs
 smooth: carried by those it shook, carried by the stepped matrix it jumped at speed), towards the camera's own,
 by t x t x (3 - 2t) of the way, t = real time since the start / K_BLEND (QueryPerformanceCounter). At t = 1 it
 stops writing, so the camera's own values are shown untouched. Only a View Change this block accepted starts
@@ -151,9 +151,8 @@ D = dict(MAGIC=0x00, FONT=0x08, FONTH=0x0C, FRAMES=0x10, SHOWFRAMES=0x14, SIZE=0
          # the car's frame the blend carries views in: heading and place only, no pitch or roll (4 rows of 4 floats:
          # right, up, forward, position), between the switcher's strings (up to 0x27C0) and the second code area
          BYAW=0x27C0,
-         # the car as the game draws it: its last two physics states (the matrix seen most recently and the one before),
-         # their mix for this frame, the frame's fraction between them, whether the two are filled and for which car
-         CURM=0x3F00, PREVM=0x3F40, INTM=0x3F80, BALPHA=0x3FC0, BMHAVE=0x3FC4, BMCAR=0x3FC8)
+         # the car as the game draws it: the matrix's axes with the drawn position (car + 0xAC)
+         INTM=0x3F80)
 SLOT_PARAMS = 0x5C          # 11 + 12 dwords copied into the cave
 MAX_SLOTS = 21              # the game's list holds 21 pointers
 MAX_GAMECAMS = 12
@@ -522,65 +521,21 @@ bs_unit:
     mov dword ptr [ebp + {D['BT']}], 0
     mov dword ptr [ebp + {D['BACTIVE']}], 1
 bs_live:
-    ; -- the car as the game draws this frame. The game moves the car's matrix in physics steps and draws its cameras
-    ; between the last two steps by the frame's fraction (0x5F1690's float); carried by the matrix itself the old view
-    ; jumped by a step, the more the faster the car (owner, 2026-10-14). So the matrix is kept per step (when it differs
-    ; from the one seen last, that one becomes the one before) and mixed by the same fraction
-    push esi
-    push edi
-    cld
-    cmp dword ptr [ebp + {D['BMHAVE']}], 0
-    je bm_take
-    cmp edx, dword ptr [ebp + {D['BMCAR']}]
-    jne bm_take
-    mov esi, edx
-    lea edi, [ebp + {D['CURM']}]
-    mov ecx, 16
-    repe cmpsd dword ptr [esi], dword ptr es:[edi]
-    je bm_mix
-    lea esi, [ebp + {D['CURM']}]
-    lea edi, [ebp + {D['PREVM']}]
-    mov ecx, 16
-    rep movsd dword ptr es:[edi], dword ptr [esi]
-    mov esi, edx
-    lea edi, [ebp + {D['CURM']}]
-    mov ecx, 16
-    rep movsd dword ptr es:[edi], dword ptr [esi]
-    jmp bm_mix
-bm_take:
-    mov dword ptr [ebp + {D['BMHAVE']}], 1
-    mov dword ptr [ebp + {D['BMCAR']}], edx
-    mov esi, edx
-    lea edi, [ebp + {D['CURM']}]
-    mov ecx, 16
-    rep movsd dword ptr es:[edi], dword ptr [esi]
-    mov esi, edx
-    lea edi, [ebp + {D['PREVM']}]
-    mov ecx, 16
-    rep movsd dword ptr es:[edi], dword ptr [esi]
-bm_mix:
-    movss xmm6, dword ptr [ebp + {D['BALPHA']}]
-    xorps xmm0, xmm0
-    comiss xmm6, xmm0
-    jb bm_one
-    jp bm_one
-    comiss xmm6, dword ptr [ebp + {C2['ONE']}]
-    jbe bm_a
-bm_one:
-    movss xmm6, dword ptr [ebp + {C2['ONE']}]
-bm_a:
-    shufps xmm6, xmm6, 0
-    xor ecx, ecx
-bm_l:
-    movups xmm0, xmmword ptr [ebp + ecx + {D['PREVM']}]
-    movups xmm1, xmmword ptr [ebp + ecx + {D['CURM']}]
-    call lerp
-    movups xmmword ptr [ebp + ecx + {D['INTM']}], xmm0
-    add ecx, 0x10
-    cmp ecx, 0x40
-    jb bm_l
-    pop edi
-    pop esi
+    ; -- the car as the game draws this frame. Its matrix moves in physics steps (about 63 a second, measured) and the
+    ; game draws between steps (0x5BA410 has every object interpolate by the frame's fraction). The drawn position is
+    ; car + 0xAC (the fifth of five position records: before and after the step, the two the frame lies between, the
+    ; drawn one; car = the matrix - 0x135C): measured in game, it moves frame by frame exactly as the camera does, while
+    ; the matrix holds one step in some frames and two in others. Carried by the matrix, the old view jumped by a step,
+    ; the more the faster the car (owner, 2026-10-14). The heading stays the matrix's.
+    movups xmm0, xmmword ptr [edx]
+    movups xmmword ptr [ebp + {D['INTM']}], xmm0
+    movups xmm0, xmmword ptr [edx + 0x10]
+    movups xmmword ptr [ebp + {D['INTM'] + 0x10}], xmm0
+    movups xmm0, xmmword ptr [edx + 0x20]
+    movups xmmword ptr [ebp + {D['INTM'] + 0x20}], xmm0
+    movups xmm0, xmmword ptr [edx - 0x135c + 0xac]
+    andps xmm0, xmm7
+    movups xmmword ptr [ebp + {D['INTM'] + 0x30}], xmm0
     lea edx, [ebp + {D['INTM']}]
     ; -- the car's frame the views are carried in: its heading and its place, without pitch and roll. Carried by the
     ; whole body matrix, the view a blend leaves from shook with every bump and lean of the car, which the cameras'
@@ -769,7 +724,6 @@ bs_none:
     ; no blend (off, no clock, no camera, no car, a view that is no view): nothing kept, nothing pending
     xor eax, eax
     mov dword ptr [ebp + {D['BHAVE']}], eax
-    mov dword ptr [ebp + {D['BMHAVE']}], eax
     mov dword ptr [ebp + {D['BACTIVE']}], eax
     mov dword ptr [ebp + {D['BGO']}], eax
     mov dword ptr [ebp + {D['BWAIT']}], eax
@@ -788,8 +742,6 @@ blend_wrap:
 bw_base:
     pop ebp
     sub ebp, BWBASE
-    mov eax, dword ptr [esp + 40]
-    mov dword ptr [ebp + {D['BALPHA']}], eax
     call blend_step
     popad
     popfd
