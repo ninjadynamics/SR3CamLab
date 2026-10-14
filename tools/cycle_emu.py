@@ -369,10 +369,10 @@ names['QueryPerformanceFrequency'] = STUB + 0xE0; names['QueryPerformanceCounter
 stub(STUB + 0xE0, 1, lambda a: u.mem_write(a[0], struct.pack('<q', QF)) or 1)
 def qpc(a): state['qpcalls'] += 1; u.mem_write(a[0], struct.pack('<q', state['qpc'])); return 1
 stub(STUB + 0xE8, 1, qpc)
-ALPHA = struct.unpack('<I', struct.pack('<f', 0.375))[0]
-def render(dt=1 / 60, mgr=MGR):              # one drawn frame: the hooked call at 0x5C948C. Returns what the view is then built from
+ALPHA = struct.unpack('<I', struct.pack('<f', 1.0))[0]        # the frame's fraction between the last two physics steps (1: at the latest)
+def render(dt=1 / 60, mgr=MGR, alpha=None):              # one drawn frame: the hooked call at 0x5C948C. Returns what the view is then built from
     state['qpc'] += round(dt * QF); game['calls'].clear(); game['dt'] = round(dt * QF) / QF
-    esp = STACK - 4; w32(esp, ALPHA); esp -= 4; w32(esp, DONE); regs = (UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_EDX, UC_X86_REG_EDI, UC_X86_REG_EBP)
+    esp = STACK - 4; w32(esp, ALPHA if alpha is None else struct.unpack('<I', struct.pack('<f', alpha))[0]); esp -= 4; w32(esp, DONE); regs = (UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_EDX, UC_X86_REG_EDI, UC_X86_REG_EBP)
     u.reg_write(UC_X86_REG_ESP, esp); u.reg_write(UC_X86_REG_ESI, mgr)
     for k, r in enumerate(regs): u.reg_write(r, 0x51510000 + k)
     u.emu_start(BASE + j['blendOff'], DONE, count=200000)
@@ -479,50 +479,35 @@ def blended_y(frm, s):
     e = mix(wy(frm[0]), e1, s); d = mix(wy(frm[1], False), tuple(x / n1 for x in d1), s); n = norm(d); dist = frm[3] + (n1 - frm[3]) * s
     return e, tuple(e[i] + d[i] / n * dist for i in range(3)), mix(wy(frm[2], False), u1, s), frm[4] + (f1 - frm[4]) * s
 bounce = lambda k: set_car_pr((100.0 + 0.9 * k, 5.0 + 0.05 * math.sin(k * 0.6), -40.0 + 0.3 * k), 0.3 + 0.01 * k, 6 * deg * math.sin(k * 0.6), 4 * deg * math.sin(k * 0.45 + 1))
-# Since the second fix the old view rides with the NEW camera: on the blend's first frame the kept view (carried by the
-# car's heading and place) becomes an offset from the new camera's eye in that camera's level heading frame, and each
-# frame it is that camera's eye + the offset turned with it. The model of that:
-def headframe(e1, d1):
-    f = (d1[0], 0.0, d1[2]); n = norm(f); y = yawframe()
-    if n < 1e-3: return dict(R=y['R'], U=y['U'], F=y['F'], P=e1)
-    f = tuple(x / n for x in f); r = (f[2], 0.0, -f[0])
-    if sum(r[i] * y['R'][i] for i in range(3)) < 0: r = tuple(-x for x in r)
-    return dict(R=r, U=(0.0, 1.0, 0.0), F=f, P=e1)
-def ownview():
-    e1, a1, u1, f1 = pose(shown[r32(MGR + 0x184) - MGR]); d1 = sub(a1, e1); n1 = norm(d1); return e1, tuple(x / n1 for x in d1), u1, n1, f1
-def offset_from(frm):                                    # the first frame: the kept view, carried by the car, as an offset in the new camera's frame
-    e, a, up, fov = blended_y(frm, 0.0); d = sub(a, e); n = norm(d); e1, d1, u1, n1, f1 = ownview(); H = headframe(e1, d1)
-    th = lambda p: tuple(sum(p[i] * H[ax][i] for i in range(3)) for ax in 'RUF')
-    return th(sub(e, e1)), th(tuple(x / n for x in d)), th(up), n, fov
-def blended_h(off, s):
-    e1, d1, u1, n1, f1 = ownview(); H = headframe(e1, d1); hw = lambda p: tuple(p[0] * H['R'][i] + p[1] * H['U'][i] + p[2] * H['F'][i] for i in range(3))
-    e = mix(tuple(e1[i] + hw(off[0])[i] for i in range(3)), e1, s); d = mix(hw(off[1]), d1, s); n = norm(d); dist = off[3] + (n1 - off[3]) * s
-    return e, tuple(e[i] + d[i] / n * dist for i in range(3)), mix(hw(off[2]), u1, s), off[4] + (f1 - off[4]) * s
 setup(0.5, 0x510, 'daytona', 3); bounce(0); render(); frm = carframe_y(view()); press(4); shown[0x510] = 'drone'
-worst, rigid = 0.0, 0.0; t = 0.0; off = None
+worst, rigid = 0.0, 0.0; t = 0.0
 for k in range(34):
-    bounce(k + 1)
-    if off is None: off = offset_from(frm)
-    v = render(1 / 60); t = k * game['dt'] / 0.5
+    bounce(k + 1); v = render(1 / 60); t = k * game['dt'] / 0.5
     if t < 1:
-        worst = max(worst, max(err(v, blended_h(off, ease(t))))); rigid = max(rigid, err(v, blended(frm, ease(t)))[0] if t < 0.4 else 0)
-check('car bouncing through the blend (pitch 6 deg, roll 4 deg, 5 cm, at 6 Hz): the old view rides with the new camera, its eye and level heading (worst %.2g m off that path); carried by the whole body it would have been up to %.2f m off in the first 0.2 s' % (worst, rigid),
+        worst = max(worst, max(err(v, blended_y(frm, ease(t))))); rigid = max(rigid, err(v, blended(frm, ease(t)))[0] if t < 0.4 else 0)
+check('car bouncing through the blend (pitch 6 deg, roll 4 deg, 5 cm, at 6 Hz): the old view rides with the heading and place only (worst %.2g m off that path); carried by the whole body it would have been up to %.2f m off in the first 0.2 s' % (worst, rigid),
       worst < 1e-3 and rigid > 0.05)
 
-# 5c. the game moves the car's matrix in physics steps and interpolates the cameras for each drawn frame: here the
-# matrix moves every second frame (30 Hz) at 200 km/h while the camera moves every frame. The blended eye must move as
-# evenly as the camera's (carried by the stepped matrix it jumped 1.85 m every second frame: the owner's "janky when the
-# car is moving, the faster the worse")
-def drive_stepped(k):
-    yaw = 0.3 + 0.004 * k; pos = (100.0 + 0.926 * math.sin(yaw) * k, 5.0, -40.0 + 0.926 * math.cos(yaw) * k)
-    c, s_ = math.cos(yaw), math.sin(yaw); car.update(R=(c, 0, -s_), U=(0, 1, 0), F=(s_, 0, c), P=pos)
-    if k % 2 == 0: u.mem_write(MAT, struct.pack('<16f', c, 0, -s_, 0, 0, 1, 0, 0, s_, 0, c, 0, *pos, 1))
-setup(0.5, 0x510, 'daytona', 3); drive_stepped(0); render(); press(4); shown[0x510] = 'drone'
-eyes = []
-for k in range(1, 31):
-    drive_stepped(k); v = render(1 / 60); eyes.append(v[0])
+# 5c. the game moves the car's matrix in physics steps (here 30 a second) and draws at 60 a second between the last two
+# steps by the frame's fraction; its cameras are drawn the same way. The kept view must ride with the car as drawn,
+# not with the stepped matrix (owner, 2026-10-14: "janky when the car is moving, the faster the worse")
+V_ = 55.6; YAW_ = 0.3
+def at_(t): return (100.0 + V_ * t * math.sin(YAW_), 5.0, -40.0 + V_ * t * math.cos(YAW_))
+def step_frame(k):                                       # frame k at k / 60 s: the matrix = the step at or before it, the fraction since it
+    j = k // 2; frac = (k % 2) * 0.5; c, s_ = math.cos(YAW_), math.sin(YAW_)
+    u.mem_write(MAT, struct.pack('<16f', c, 0, -s_, 0, 0, 1, 0, 0, s_, 0, c, 0, *at_(j / 30), 1))
+    drawn = at_((j - 1) / 30 + frac / 30)                # drawn between the step before and this one
+    car.update(R=(c, 0, -s_), U=(0, 1, 0), F=(s_, 0, c), P=drawn); return frac
+setup(0.5, 0x510, 'daytona', 3)
+for k in range(4): render(1 / 60, alpha=step_frame(k))
+frm = carframe_y(view()); press(4); shown[0x510] = 'drone'
+worst = 0.0; eyes = []; t = 0.0
+for n in range(30):
+    a_ = step_frame(5 + n); v = render(1 / 60, alpha=a_); eyes.append(v[0]); t = n * game['dt'] / 0.5
+    if t < 1: worst = max(worst, max(err(v, blended_y(frm, ease(t)))))
 acc = max(norm(tuple(eyes[k + 1][i] - 2 * eyes[k][i] + eyes[k - 1][i] for i in range(3))) for k in range(1, len(eyes) - 1))
-check('car at 200 km/h whose matrix moves in 30 Hz steps while the camera moves every frame: the blended eye moves evenly (largest change of its step from one frame to the next %.3f m; the matrix itself jumps 1.85 m every second frame)' % acc, acc < 0.05)
+check('car at 200 km/h whose matrix moves in 30 Hz steps, drawn at 60 Hz between them: the kept view rides with the car as drawn (worst %.2g m off that path) and the eye moves evenly (its step changes by at most %.3f m from frame to frame; the matrix itself jumps 1.85 m every second frame)' % (worst, acc),
+      worst < 1e-3 and acc < 0.05)
 
 # 6. View Change again while a blend runs: on from where the view is, no jump
 setup(0.5, 0x510, 'daytona', 3); frm = carframe(view()); press(4); shown[0x510] = 'drone'; tr = travel(0.5, 1 / 60, 12, frm); midv = tr[-1][1]; frm2 = carframe(midv)

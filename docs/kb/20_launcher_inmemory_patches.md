@@ -136,12 +136,15 @@ of the way at 1/3 s of 0.5 s) that raw body motion dominated. Since then it is c
 the car's whole matrix must be numbers. cycle_emu.py check: a car bouncing (pitch 6 deg, roll 4 deg, 5 cm, 6 Hz) keeps the
 old view on the heading-carried path (7.7e-06 m), where the body matrix would have moved it up to 0.48 m in the first 0.2 s.
 Owner's second look (same day): "perfectly smooth when the car is stopped, but janky when the car is moving (the faster,
-the worse)". Cause: the game moves the car's matrix in physics steps and interpolates the cameras for every drawn frame
-(0x5C93DB works out the fraction from the clock; 0x5F1690 and 0x5BA410 take it); the old view carried by the matrix
-jumped by a step's travel. Now, on the blend's first frame, the kept view becomes an offset from the NEW camera's eye in
-that camera's level heading (block + 0x3F00), and rides with that camera. cycle_emu.py: a matrix moving in 30 Hz steps
-at 200 km/h while the camera moves every frame: the blended eye's step changes by at most 0.020 m from frame to frame;
-48 checks pass. The block grew to 0x4000 bytes for it. Settings and state: block + 0x2280; second code area: block + 0x2800 .. 0x4000.
+the worse)". Cause: the game moves the car's matrix in physics steps and draws its cameras between the last two steps by
+the frame's fraction (0x5C93DB works it out from the clock; 0x5F1690 and 0x5BA410 take it); the old view carried by the
+matrix itself jumped by a step's travel. A first fix carried it by the NEW camera instead; owner: "the camera jumps
+almost to the final position and then lerps the rest" (the new camera has not moved yet on the blend's first frame, so
+the offset taken from it was nearly 0; it then rode that camera's own spring). Now: the blend keeps the car's matrix per
+step (block + 0x3F00: the one seen last, the one before) and carries the old view by their mix at the frame's fraction
+(saved by the hook from 0x5F1690's float), as the game draws the car. cycle_emu.py: matrix in 30 Hz steps, drawn at
+60 Hz: the view stays on the car-carried path (7.1e-06 m) and the eye's step changes by at most 0.022 m; 48 checks.
+Assumed: at most one physics step between two drawn frames (not measured in game). The block grew to 0x4000 bytes for it. Settings and state: block + 0x2280; second code area: block + 0x2800 .. 0x4000.
 
 What the per-frame entry does: extends the race camera list (Chase + the game's cameras + one Chase entry per profile + the
 hidden cameras; an entry `0x80000000 | offset` adds a camera a second time as a patched variant, the driver's-seat

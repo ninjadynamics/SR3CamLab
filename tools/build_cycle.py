@@ -104,10 +104,9 @@ of the way to their value per update, so a movement starts and stops softly.
 Blend between cameras (K_BLEND seconds; 0 = cut, as before): BLEND runs after the game has interpolated its
 cameras for the frame and keeps the view of every frame in the car's frame (eye, direction, look distance, up,
 field of view). After a View Change it rewrites the interpolated eye / look-at / up / field of view of the camera
-the frame is drawn from: the view the change left from, towards the camera's own. On the blend's first frame the kept
-view (carried by the car's heading and place) becomes an offset from the new camera's eye in that camera's level
-heading; from then on it rides with the new camera, which the game interpolates for every drawn frame (the car's matrix
-moves in physics steps and pitches and rolls: carried by it, the old view shook and stepped at speed), towards the camera's own,
+the frame is drawn from: the view the change left from, carried along by the car's heading and place as the game draws
+the car (between its last two physics steps by the frame's fraction; not its pitch and roll, which the cameras' springs
+smooth: carried by those it shook, carried by the stepped matrix it jumped at speed), towards the camera's own,
 by t x t x (3 - 2t) of the way, t = real time since the start / K_BLEND (QueryPerformanceCounter). At t = 1 it
 stops writing, so the camera's own values are shown untouched. Only a View Change this block accepted starts
 one; a camera change of the game's own (intro, time over, replay) stays a cut and ends a running blend.
@@ -152,9 +151,9 @@ D = dict(MAGIC=0x00, FONT=0x08, FONTH=0x0C, FRAMES=0x10, SHOWFRAMES=0x14, SIZE=0
          # the car's frame the blend carries views in: heading and place only, no pitch or roll (4 rows of 4 floats:
          # right, up, forward, position), between the switcher's strings (up to 0x27C0) and the second code area
          BYAW=0x27C0,
-         # the frame the old view rides in during a blend: the new camera's own level heading at its own eye (4 rows),
-         # and whether the kept view has been turned into an offset from the new camera yet (at the end of the block)
-         BHEAD=0x3F00, BCONV=0x3F40)
+         # the car as the game draws it: its last two physics states (the matrix seen most recently and the one before),
+         # their mix for this frame, the frame's fraction between them, whether the two are filled and for which car
+         CURM=0x3F00, PREVM=0x3F40, INTM=0x3F80, BALPHA=0x3FC0, BMHAVE=0x3FC4, BMCAR=0x3FC8)
 SLOT_PARAMS = 0x5C          # 11 + 12 dwords copied into the cave
 MAX_SLOTS = 21              # the game's list holds 21 pointers
 MAX_GAMECAMS = 12
@@ -167,7 +166,7 @@ strip = lambda a: "\n".join(l.split(';')[0].rstrip() for l in a.splitlines() if 
 # ---- the second code area (the first one, below, is nearly full): constants, then code. Everything here is reached
 # with ebp = the block's base; the first area calls these routines by their offsets, so they are assembled first.
 CODE2 = 0x2800              # after the track switcher's strings (0x2400 .. 0x27C0)
-CODE2_END = 0x3F00         # (0x3F00 .. 0x4000: BHEAD, BCONV)
+CODE2_END = 0x3F00         # (0x3F00 .. 0x4000: the car's states, see CURM)
 C2 = dict(ONE=CODE2, THREE=CODE2 + 4, DTBIG=CODE2 + 8, DTMAX=CODE2 + 0xC, TINY2=CODE2 + 0x10, UNIT2=CODE2 + 0x14, MASK=CODE2 + 0x20,
           S_QPC=CODE2 + 0x30, S_QPF=CODE2 + 0x48, XZ=CODE2 + 0x70, UPY=CODE2 + 0x80, RSIGN=CODE2 + 0x90)
 consts2 = (struct.pack('<6f', 1.0, 3.0,
@@ -522,8 +521,67 @@ bs_unit:
     pop esi
     mov dword ptr [ebp + {D['BT']}], 0
     mov dword ptr [ebp + {D['BACTIVE']}], 1
-    mov dword ptr [ebp + {D['BCONV']}], 0
 bs_live:
+    ; -- the car as the game draws this frame. The game moves the car's matrix in physics steps and draws its cameras
+    ; between the last two steps by the frame's fraction (0x5F1690's float); carried by the matrix itself the old view
+    ; jumped by a step, the more the faster the car (owner, 2026-10-14). So the matrix is kept per step (when it differs
+    ; from the one seen last, that one becomes the one before) and mixed by the same fraction
+    push esi
+    push edi
+    cld
+    cmp dword ptr [ebp + {D['BMHAVE']}], 0
+    je bm_take
+    cmp edx, dword ptr [ebp + {D['BMCAR']}]
+    jne bm_take
+    mov esi, edx
+    lea edi, [ebp + {D['CURM']}]
+    mov ecx, 16
+    repe cmpsd dword ptr [esi], dword ptr es:[edi]
+    je bm_mix
+    lea esi, [ebp + {D['CURM']}]
+    lea edi, [ebp + {D['PREVM']}]
+    mov ecx, 16
+    rep movsd dword ptr es:[edi], dword ptr [esi]
+    mov esi, edx
+    lea edi, [ebp + {D['CURM']}]
+    mov ecx, 16
+    rep movsd dword ptr es:[edi], dword ptr [esi]
+    jmp bm_mix
+bm_take:
+    mov dword ptr [ebp + {D['BMHAVE']}], 1
+    mov dword ptr [ebp + {D['BMCAR']}], edx
+    mov esi, edx
+    lea edi, [ebp + {D['CURM']}]
+    mov ecx, 16
+    rep movsd dword ptr es:[edi], dword ptr [esi]
+    mov esi, edx
+    lea edi, [ebp + {D['PREVM']}]
+    mov ecx, 16
+    rep movsd dword ptr es:[edi], dword ptr [esi]
+bm_mix:
+    movss xmm6, dword ptr [ebp + {D['BALPHA']}]
+    xorps xmm0, xmm0
+    comiss xmm6, xmm0
+    jb bm_one
+    jp bm_one
+    comiss xmm6, dword ptr [ebp + {C2['ONE']}]
+    jbe bm_a
+bm_one:
+    movss xmm6, dword ptr [ebp + {C2['ONE']}]
+bm_a:
+    shufps xmm6, xmm6, 0
+    xor ecx, ecx
+bm_l:
+    movups xmm0, xmmword ptr [ebp + ecx + {D['PREVM']}]
+    movups xmm1, xmmword ptr [ebp + ecx + {D['CURM']}]
+    call lerp
+    movups xmmword ptr [ebp + ecx + {D['INTM']}], xmm0
+    add ecx, 0x10
+    cmp ecx, 0x40
+    jb bm_l
+    pop edi
+    pop esi
+    lea edx, [ebp + {D['INTM']}]
     ; -- the car's frame the views are carried in: its heading and its place, without pitch and roll. Carried by the
     ; whole body matrix, the view a blend leaves from shook with every bump and lean of the car, which the cameras'
     ; own springs smooth away: the first part of each blend was jerky (owner, 2026-10-14). Made here, after the start
@@ -613,90 +671,7 @@ bs_right:
     mulss xmm1, xmm6
     mulss xmm6, xmm1
     shufps xmm6, xmm6, 0
-    ; -- the frame the old view rides in: the new camera's own level heading at its own eye. The game interpolates the
-    ; cameras for every drawn frame but moves the car's matrix in physics steps: carried by the car, the old view jumped
-    ; by the distance of a step, the more the faster the car (owner, 2026-10-14: "perfectly smooth when the car is
-    ; stopped, but janky when the car is moving"). The car's heading frame (edx) is kept for the end of the frame.
-    push edx
-    movups xmm0, xmmword ptr [ebp + {D['BNOW'] + 0x10}]
-    andps xmm0, xmm7
-    mulps xmm0, xmmword ptr [ebp + {C2['XZ']}]
-    movaps xmm2, xmm0
-    mulps xmm2, xmm2
-    call hsum
-    comiss xmm2, dword ptr [ebp + {C2['TINY2']}]
-    jbe bh_car
-    sqrtss xmm2, xmm2
-    shufps xmm2, xmm2, 0
-    divps xmm0, xmm2
-    movups xmmword ptr [ebp + {D['BHEAD'] + 0x20}], xmm0
-    movups xmm1, xmmword ptr [ebp + {C2['UPY']}]
-    movups xmmword ptr [ebp + {D['BHEAD'] + 0x10}], xmm1
-    movaps xmm1, xmm0
-    shufps xmm1, xmm1, 0xC6
-    mulps xmm1, xmmword ptr [ebp + {C2['RSIGN']}]
-    movups xmm2, xmmword ptr [edx]
-    mulps xmm2, xmm1
-    call hsum
-    xorps xmm3, xmm3
-    comiss xmm2, xmm3
-    jae bh_right
-    subps xmm3, xmm1
-    movaps xmm1, xmm3
-bh_right:
-    movups xmmword ptr [ebp + {D['BHEAD']}], xmm1
-    jmp bh_pos
-bh_car:
-    ; (a camera looking straight up or down has no heading of its own: the car's)
-    movups xmm0, xmmword ptr [edx]
-    movups xmmword ptr [ebp + {D['BHEAD']}], xmm0
-    movups xmm0, xmmword ptr [edx + 0x10]
-    movups xmmword ptr [ebp + {D['BHEAD'] + 0x10}], xmm0
-    movups xmm0, xmmword ptr [edx + 0x20]
-    movups xmmword ptr [ebp + {D['BHEAD'] + 0x20}], xmm0
-bh_pos:
-    movups xmm0, xmmword ptr [ebp + {D['BNOW']}]
-    movups xmmword ptr [ebp + {D['BHEAD'] + 0x30}], xmm0
-    ; -- the first frame of a blend: the kept view (in the car's frame) once into the world, then as an offset from the
-    ; new camera's eye in that camera's frame; from then on it rides with the new camera
-    cmp dword ptr [ebp + {D['BCONV']}], 0
-    jne bh_go
-    mov dword ptr [ebp + {D['BCONV']}], 1
-    lea eax, [ebp + {D['BFROM']}]
-    lea ecx, [ebp + {D['BTMP']}]
-    call c2w
-    movups xmm0, xmmword ptr [ebp + {D['BTMP']}]
-    andps xmm0, xmm7
-    movups xmm1, xmmword ptr [edx + 0x30]
-    andps xmm1, xmm7
-    addps xmm0, xmm1
-    movups xmm1, xmmword ptr [ebp + {D['BNOW']}]
-    andps xmm1, xmm7
-    subps xmm0, xmm1
-    movups xmmword ptr [ebp + {D['BTMP']}], xmm0
-    lea edx, [ebp + {D['BHEAD']}]
-    lea eax, [ebp + {D['BTMP']}]
-    lea ecx, [ebp + {D['BFROM']}]
-    call w2c
-    mov edx, dword ptr [esp]
-    lea eax, [ebp + {D['BFROM'] + 0x10}]
-    lea ecx, [ebp + {D['BTMP']}]
-    call c2w
-    lea edx, [ebp + {D['BHEAD']}]
-    lea eax, [ebp + {D['BTMP']}]
-    lea ecx, [ebp + {D['BFROM'] + 0x10}]
-    call w2c
-    mov edx, dword ptr [esp]
-    lea eax, [ebp + {D['BFROM'] + 0x20}]
-    lea ecx, [ebp + {D['BTMP']}]
-    call c2w
-    lea edx, [ebp + {D['BHEAD']}]
-    lea eax, [ebp + {D['BTMP']}]
-    lea ecx, [ebp + {D['BFROM'] + 0x20}]
-    call w2c
-bh_go:
-    lea edx, [ebp + {D['BHEAD']}]
-    ; -- the view the blend left from, in the world now (the new camera's eye + the offset in its frame), s of the way on
+    ; -- the view the blend left from sits in the car's frame: where is it in the world now, and s of the way on
     lea eax, [ebp + {D['BFROM']}]
     lea ecx, [ebp + {D['BTMP']}]
     call c2w
@@ -751,7 +726,7 @@ bs_dir:
     xorps xmm3, xmm3
     mulss xmm2, xmm3
     ucomiss xmm2, xmm3
-    jp bh_none
+    jp bs_none
     ; -- into the camera's interpolated state, which is what the view is built from (3 floats each, no more)
     movlps qword ptr [ebx + 0x30], xmm0
     movhlps xmm0, xmm0
@@ -765,11 +740,7 @@ bs_dir:
     movss dword ptr [ebx + 0x128], xmm0
     mov eax, dword ptr [ebp + {D['BNOW'] + 0x34}]
     mov dword ptr [ebx + 0x178], eax
-    pop edx
     jmp bs_keep
-bh_none:
-    pop edx
-    jmp bs_none
 bs_end:
     mov dword ptr [ebp + {D['BACTIVE']}], 0
 bs_keep:
@@ -798,6 +769,7 @@ bs_none:
     ; no blend (off, no clock, no camera, no car, a view that is no view): nothing kept, nothing pending
     xor eax, eax
     mov dword ptr [ebp + {D['BHAVE']}], eax
+    mov dword ptr [ebp + {D['BMHAVE']}], eax
     mov dword ptr [ebp + {D['BACTIVE']}], eax
     mov dword ptr [ebp + {D['BGO']}], eax
     mov dword ptr [ebp + {D['BWAIT']}], eax
@@ -816,6 +788,8 @@ blend_wrap:
 bw_base:
     pop ebp
     sub ebp, BWBASE
+    mov eax, dword ptr [esp + 40]
+    mov dword ptr [ebp + {D['BALPHA']}], eax
     call blend_step
     popad
     popfd
