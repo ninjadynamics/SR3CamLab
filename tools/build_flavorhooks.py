@@ -8,25 +8,20 @@ Layout of each blob: data first, then code, so no forward label arithmetic is ne
    "\\main_release\\car1\\%s%s_data" (digit at DIGIT_AT, written by the launcher), else SEGA's 0x6C630C. eax, ecx, edx
    are free at that point (sprintf follows at 0x5C614E). Data: 10 x {u32 name, u32 length, u32 flag}, then a 0 terminator.
    All cars: every flag 1, or just the one-character switch at 0x6C631D ('s' -> digit) without this routine.
-2) STEER: steering return for the player. The human driver's update (0x5E9D20, driver vtable 0x6ED0C8) hands the
-   steering to the vehicle in 0x5CFE90:  fld [esi+0x18] ; push ecx ; mov ecx, [esi+4] ; fstp [esp] ;
+2) STEER: the player's steering as a turn rate (the owner, 2026-10-15: "replace those knobs with rad/s steering rate.
+   let's try 1.5. 1:1 was a bad idea"; the steering return before it is gone). The human driver's update (0x5E9D20, driver
+   vtable 0x6ED0C8) hands the steering to the vehicle in 0x5CFE90:  fld [esi+0x18] ; push ecx ; mov ecx, [esi+4] ; fstp [esp]
      0x5CFF32  E8 C9 8C E7 FF   call 0x448C00   (the vehicle's SetSteer: controls + 8 and the wheel angles)
-   in every input mode (mode 1, the TeknoParrot pad, gets its value from 0x5E0B20, not 0x5D4D10: a hook on 0x5D4D10's
-   exits never ran, in game 2026-10-14). The call becomes `call <blob + ENTRY>`. Only the player's vehicle is limited:
-   ecx (the physics wrapper, controls + 4) must be [[0x9DBAC8 + 4] + 0x858], record 0's driver, a human driver (vtable
-   0x6ED0C8); every other caller (the Classic opponent runs this code too) passes unchanged. The routine takes s at
-   [esp+4], keeps the player's last output o, passes s at once when it lies farther from the centre on the same side
-   (pressing stays instant), else moves o toward s by at most RATE per call, and hands the result to the vehicle only:
-   controls + 0x18 stays the game's own raw value (mode 1's 0x5E0B20 builds its next value from it, so writing it back
-   held the steering, in game 2026-10-14). ecx is untouched; eax, edx and xmm0..5 are free there.
-   RATE = 1 / (return seconds x 60): full lock to centre in that time; 0 = off (SEGA's behaviour).
-   LINEAR (float at +8, 2026-10-14; the owner: "the wheels tracking the analog pad 1:1 (as much as possible) just like
-   SRC"): when above 0 the player's value is made from the stick itself, s = clamp((b1 - b0) x LINEAR, -1, 1) with the
-   pad's two steering bytes at driver + 0x1C84 / + 0x1C85 (0..255 each, left / right, linear in the stick: 0.25 -> 63,
-   0.5 -> 127, 1.0 -> 253..255, in game), instead of SEGA's 0x5E0B20 value (b1 - b0) / 300 x lock (0.8 .. 0.6 with
-   speed) x the car's speed table (1.5 at rest .. 0.5 from 110 mph), which leaves a full stick a quarter of the lock at
-   180 km/h. LINEAR = 1/255: full stick = full lock (wheel + 0x184, 0.345 rad) at every speed. 0 = SEGA's value. The
-   return limit then works on that value as before. Constants 1.0 / -1.0 at +0xC / +0x10.
+   in every input mode. The call becomes `call <blob + ENTRY>`. Only the player's vehicle: ecx (the physics wrapper,
+   controls + 4) must be [[0x9DBAC8 + 4] + 0x858], record 0's driver, a human driver (vtable 0x6ED0C8); every other caller
+   (the Classic opponent runs this code too) passes unchanged, and so does the player while A = 0 (SEGA's own chain).
+   With A > 0 the value handed on is  u x min(1, A / v + B x v):  u = the stick, (b1 - b0) / 255 from the pad's two steering
+   bytes (driver + 0x1C84 / + 0x1C85), clamped to +-1; v = the car's speed in m/s, |vector| of the wrapper's vtable + 0x30
+   (what 0x5E0B20 itself calls for its speed), at least 1. The value is a fraction of the full lock (wheel + 0x184), so with
+   A = R x L / lock and B = R x K / lock (the launcher writes them: R the rate at full stick in rad/s, L the wheelbase, K the
+   understeer term) the wheel angle at full stick is min(lock, R x (L + K v^2) / v): a steady turn of about R rad/s at full
+   stick at any speed, linear in the stick. Data: +0 A (0 = off), +4 B, +8 1/255, +0xC 1.0, +0x10 -1.0, +0x14 1.0 (lowest
+   speed), +0x18 the last speed and +0x1C the last full-stick fraction (for tests). ecx is kept; eax, edx, xmm0..2 are free.
     python build_flavorhooks.py      prints both blobs (hex) with their entry and data offsets"""
 import struct
 from keystone import Ks, KS_ARCH_X86, KS_MODE_32
@@ -76,8 +71,9 @@ def carpath():
     return bytes(data) + code, entry, fmt_off + fmt.index(b'car1') + 3
 
 def steer():
-    data = struct.pack('<fffff', 0.0, 0.0, 0.0, 1.0, -1.0)                # RATE +0, last output +4, LINEAR +8, 1.0, -1.0
-    entry = len(data); here = entry + 5                                   # call l2 (5 bytes)
+    data = struct.pack('<8f', 0.0, 0.0, 1 / 255.0, 1.0, -1.0, 1.0, 0.0, 0.0)
+    entry = len(data); here = entry + 5                                   # call l2 (5 bytes): eax = blob + here
+    d = lambda o: here - o
     code = asm("""
         call l2
     l2: pop eax
@@ -88,49 +84,50 @@ def steer():
         jne pass
         cmp dword ptr [edx + 0x858], ecx
         jne pass
-        movss xmm0, dword ptr [esp + 4]
         movss xmm1, dword ptr [eax - %d]
         xorps xmm2, xmm2
         comiss xmm1, xmm2
-        jbe nolin
+        jbe pass
+        push ecx
+        push eax
+        push edx
+        mov eax, dword ptr [ecx]
+        call dword ptr [eax + 0x30]
+        movss xmm0, dword ptr [eax]
+        mulss xmm0, xmm0
+        movss xmm1, dword ptr [eax + 4]
+        mulss xmm1, xmm1
+        addss xmm0, xmm1
+        movss xmm1, dword ptr [eax + 8]
+        mulss xmm1, xmm1
+        addss xmm0, xmm1
+        sqrtss xmm0, xmm0
+        pop edx
+        pop eax
+        pop ecx
+        maxss xmm0, dword ptr [eax - %d]
+        movss dword ptr [eax - %d], xmm0
+        movss xmm1, dword ptr [eax - %d]
+        divss xmm1, xmm0
+        movss xmm2, dword ptr [eax - %d]
+        mulss xmm2, xmm0
+        addss xmm1, xmm2
+        minss xmm1, dword ptr [eax - %d]
+        movss dword ptr [eax - %d], xmm1
         push ecx
         movzx ecx, byte ptr [edx + 0x1C85]
         movzx edx, byte ptr [edx + 0x1C84]
         sub ecx, edx
         cvtsi2ss xmm0, ecx
         pop ecx
-        mulss xmm0, xmm1
+        mulss xmm0, dword ptr [eax - %d]
         minss xmm0, dword ptr [eax - %d]
         maxss xmm0, dword ptr [eax - %d]
-    nolin:
-        movss xmm1, dword ptr [eax - %d]
-        xorps xmm2, xmm2
-        comiss xmm1, xmm2
-        jbe sto
-        movss xmm3, dword ptr [eax - %d]
-        movaps xmm4, xmm0
-        mulss xmm4, xmm3
-        comiss xmm4, xmm2
-        jb lm
-        movaps xmm4, xmm0
-        mulss xmm4, xmm0
-        movaps xmm5, xmm3
-        mulss xmm5, xmm3
-        comiss xmm4, xmm5
-        jae sto
-    lm: movaps xmm4, xmm0
-        subss xmm4, xmm3
-        minss xmm4, xmm1
-        xorps xmm5, xmm5
-        subss xmm5, xmm1
-        maxss xmm4, xmm5
-        addss xmm3, xmm4
-        movaps xmm0, xmm3
-    sto: movss dword ptr [eax - %d], xmm0
+        mulss xmm0, xmm1
         movss dword ptr [esp + 4], xmm0
     pass: mov eax, 0x448C00
         jmp eax
-    """ % (here - 8, here - 0xC, here - 0x10, here - 0, here - 4, here - 4))
+    """ % (d(0), d(0x14), d(0x18), d(0), d(4), d(0xC), d(0x1C), d(8), d(0xC), d(0x10)))
     return data + code, entry
 
 if __name__ == '__main__':
@@ -138,5 +135,5 @@ if __name__ == '__main__':
     print('CARPATH %d bytes: entry +0x%X; flag of car i at +0x%X + 12 x i = its folder digit (ASCII, 0 = SEGA files) (%s)' % (len(blob), entry, 8, ', '.join(LABELS)))
     print(blob.hex())
     s, e = steer()
-    print('STEER %d bytes: entry +0x%X (called from 0x5CFF32 instead of 0x448C00); RATE float at +0x0 (0 = off), last output at +0x4, LINEAR at +0x8 (0 = the game value)' % (len(s), e))
+    print('STEER %d bytes: entry +0x%X (called from 0x5CFF32 instead of 0x448C00); A at +0x0 (0 = the game value), B at +0x4' % (len(s), e))
     print(s.hex())

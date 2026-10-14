@@ -6,7 +6,7 @@
     "Delta_HF": "src"
   },
   "flavors": {
-    "src": {"digit": "1", "grip_file": true},
-    "realism": {"digit": "2", "grip_file": false}
+    "src": {"digit": "1", "grip_file": true, "steer_rate": 1.5},
+    "realism": {"digit": "2", "grip_file": false, "steer_rate": 0}
   }
 }

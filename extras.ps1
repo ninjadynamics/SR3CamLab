@@ -1125,28 +1125,27 @@ function Get-HandlingCars([string]$tracks) {
     }
     return $cars
 }
-# @{ Default; Cars = @{ name -> flavor }; Steer = seconds of SRC's steering return (0 = off, the default); Linear = SRC's steering follows the stick 1:1
-#    (handling.json flavors.src.steer_linear, default on; owner 2026-10-14: "the wheels tracking the analog pad 1:1 ... just like SRC") }
+# @{ Default; Cars = @{ name -> flavor }; Rates = @{ flavor -> steering rate, rad/s at full stick (handling.json flavors.<name>.steer_rate;
+#    0 = the game's own steering; SRC 1.5 by default; owner 2026-10-15: "replace those knobs with rad/s steering rate. let's try 1.5") } }
+$script:SteerRateDefault = @{ sr3 = 0.0; src = 1.5; realism = 0.0 }
 function Read-HandlingFile {
-    $h = @{ Default = 'sr3'; Cars = @{}; Steer = 0.0; Linear = $true }
+    $h = @{ Default = 'sr3'; Cars = @{}; Rates = $script:SteerRateDefault.Clone() }
     $f = Get-HandlingFile
     if (-not (Test-Path -LiteralPath $f)) { return $h }
     try { $j = [IO.File]::ReadAllText($f) | ConvertFrom-Json } catch { return $h }
     if ($script:HandlingFlavors.Contains("$($j.default)".ToLower())) { $h.Default = "$($j.default)".ToLower() }
     if ($j.cars) { foreach ($p in $j.cars.PSObject.Properties) { if ($script:HandlingFlavors.Contains("$($p.Value)".ToLower())) { $h.Cars[$p.Name] = "$($p.Value)".ToLower() } } }
-    if ($j.flavors -and $j.flavors.src) {
-        $h.Steer = if ($j.flavors.src.steer_return_s) { [double]$j.flavors.src.steer_return_s } else { 0.0 }
-        if ($j.flavors.src.PSObject.Properties['steer_linear']) { $h.Linear = [bool]$j.flavors.src.steer_linear }
-    }
+    if ($j.flavors) { foreach ($p in $j.flavors.PSObject.Properties) { if ($h.Rates.ContainsKey($p.Name) -and $p.Value.PSObject.Properties['steer_rate']) { $h.Rates[$p.Name] = [double]$p.Value.steer_rate } } }   # (steer_return_s, steer_linear of older files: ignored)
     return $h
 }
 function Write-HandlingFile($h) {
     $flavors = [ordered]@{}
     foreach ($k in $script:HandlingFlavors.Keys) {
         $v = $script:HandlingFlavors[$k]; if (-not $v.Digit) { continue }
-        $e = [ordered]@{ digit = $v.Digit; grip_file = [bool]$v.Grip }; if ($k -eq 'src' -and $h.Steer -gt 0) { $e.steer_return_s = $h.Steer }; if ($k -eq 'src' -and -not $h.Linear) { $e.steer_linear = $false }
+        $e = [ordered]@{ digit = $v.Digit; grip_file = [bool]$v.Grip; steer_rate = [math]::Round([double]$h.Rates[$k], 2) }
         $flavors[$k] = $e
     }
+    if ($h.Rates.sr3 -gt 0) { $flavors.sr3 = [ordered]@{ steer_rate = [math]::Round([double]$h.Rates.sr3, 2) } }
     $cars = [ordered]@{}; foreach ($c in $h.Cars.Keys) { if ($h.Cars[$c] -ne $h.Default) { $cars[$c] = $h.Cars[$c] } }
     if ($h.Default -eq 'sr3' -and -not $cars.Count) { $f = Get-HandlingFile; if (Test-Path -LiteralPath $f) { [IO.File]::Delete($f) }; return }
     [IO.File]::WriteAllText((Get-HandlingFile), ([ordered]@{ version = 1; default = $h.Default; cars = $cars; flavors = $flavors } | ConvertTo-Json -Depth 4))
@@ -1190,7 +1189,7 @@ function Build-HandlingFlavor([string]$tracks, [string]$key) {
     [IO.Directory]::Delete($stage, $true)
     return ,@("$($v.Title): built from your game's files into $($notes -join ' and ').")
 }
-# The handling pop-up (Options tab): one handling for every car (the default), or car by car; SRC's steering return;
+# The handling pop-up (Options tab): one handling for every car (the default), or car by car; SRC's steering rate;
 # building a handling's files. Returns what to write into handling.json (Write-HandlingFile), or $null for Cancel.
 # $OnShown runs when the pop-up is on screen (pictures, tests).
 function Show-HandlingDialog($owner, [string]$tracks, [scriptblock]$OnShown) {
@@ -1216,8 +1215,14 @@ function Show-HandlingDialog($owner, [string]$tracks, [scriptblock]$OnShown) {
     $rAll.Checked = -not $odd; $rPer.Checked = [bool]$odd
     $sync = { $cAll.Enabled = $rAll.Checked; $grid.Enabled = $rPer.Checked }.GetNewClosure(); & $sync
     $rAll.Add_CheckedChanged($sync); $rPer.Add_CheckedChanged($sync)
-    $cSteer = New-Object Windows.Forms.CheckBox; $cSteer.AutoSize = $true; $cSteer.Checked = $hf.Linear; $cSteer.Margin = New-Object Windows.Forms.Padding(0, 4, 0, 0)
-    $cSteer.Text = "SEGA Rally Championship: the wheels follow the stick 1:1 at any speed, as in the arcade`n(off: the game's own steering, which turns the wheels less the faster you go)"
+    $cSteer = New-Object Windows.Forms.FlowLayoutPanel; $cSteer.AutoSize = $true; $cSteer.WrapContents = $false; $cSteer.Margin = New-Object Windows.Forms.Padding(0, 4, 0, 0)
+    $lSteer = New-Object Windows.Forms.Label; $lSteer.AutoSize = $true; $lSteer.Margin = New-Object Windows.Forms.Padding(0, 6, 6, 0)
+    $lSteer.Text = "SEGA Rally Championship: steering rate at full stick (rad/s)"
+    $nSteer = New-Object Windows.Forms.NumericUpDown; $nSteer.DecimalPlaces = 1; $nSteer.Increment = 0.1; $nSteer.Minimum = 0; $nSteer.Maximum = 3; $nSteer.Width = 60
+    $nSteer.Value = [decimal][Math]::Min(3.0, [Math]::Max(0.0, [double]$hf.Rates.src))
+    $lSteer2 = New-Object Windows.Forms.Label; $lSteer2.AutoSize = $true; $lSteer2.Margin = New-Object Windows.Forms.Padding(6, 6, 0, 0)
+    $lSteer2.Text = "0 = the game's own steering (it turns the wheels less the faster you go); in a race keys 4 / 6 / 5"
+    $cSteer.Controls.AddRange(@($lSteer, $nSteer, $lSteer2))
     $note = New-Object Windows.Forms.Label; $note.AutoSize = $true; $note.MaximumSize = New-Object Drawing.Size(560, 0); $note.Margin = New-Object Windows.Forms.Padding(0, 10, 0, 6)
     $note.Text = "A handling marked 'not built yet' needs its files first: 'Build the files' makes them from your own game files (Python needed) into new folders; the game's own car files are never changed. A car on a handling that isn't built drives with the game's own. The choice takes effect the next time the game is started with PLAY.bat."
     $btns = New-Object Windows.Forms.FlowLayoutPanel; $btns.AutoSize = $true; $btns.WrapContents = $false; $btns.Margin = New-Object Windows.Forms.Padding(0, 6, 0, 0)
@@ -1240,7 +1245,8 @@ function Show-HandlingDialog($owner, [string]$tracks, [scriptblock]$OnShown) {
     })
     if ($OnShown) { $d.Add_Shown($OnShown) }
     $ok = $d.ShowDialog($owner) -eq 'OK'
-    $h = @{ Default = $keys[$cAll.SelectedIndex]; Cars = @{}; Steer = $hf.Steer; Linear = $cSteer.Checked }
+    $rates = $hf.Rates.Clone(); $rates.src = [math]::Round([double]$nSteer.Value, 1)
+    $h = @{ Default = $keys[$cAll.SelectedIndex]; Cars = @{}; Rates = $rates }
     if ($rPer.Checked) {                                               # car by car: the most used handling becomes the default
         $h.Default = @($per.Values | ForEach-Object { $keys[$_.SelectedIndex] } | Group-Object | Sort-Object Count -Descending)[0].Name
         foreach ($c in $per.Keys) { $h.Cars[$c] = $keys[$per[$c].SelectedIndex] }
