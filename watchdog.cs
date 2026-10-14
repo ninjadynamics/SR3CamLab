@@ -16,6 +16,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -245,7 +246,7 @@ public static class Sr3Watchdog {
                     if (WaitForSingleObject(hProc, 0) == 0) {
                         uint xc; if (!GetExitCodeProcess(hProc, out xc)) xc = 0;
                         Line(string.Format("the process ended, exit code 0x{0:X8} (no end event from Windows: seen on the process handle)", xc));
-                        if (!sawCrash && xc >= 0xC0000000 && FromWindowsDump(xc) == null) News(string.Format("the game ended with error code 0x{0:X8} ({1}).", xc, Rel(logName)));
+                        if ((!sawCrash || !recordDone) && xc >= 0xC0000000 && FromWindowsDump(xc) == null) News(string.Format("the game ended with error code 0x{0:X8} ({1}).", xc, Rel(logName)));
                         Summary(); attached = false; DebugActiveProcessStop(pid);
                         return;
                     }
@@ -277,7 +278,7 @@ public static class Sr3Watchdog {
                     } else if (code == 5) {                                 // the game has ended
                         uint xc = (uint)Marshal.ReadInt32(ev, off);
                         Line(string.Format("the process ended, exit code 0x{0:X8}", xc));
-                        if (!sawCrash && xc >= 0xC0000000 && FromWindowsDump(xc) == null) News(string.Format("the game ended with error code 0x{0:X8} ({1}).", xc, Rel(logName)));
+                        if ((!sawCrash || !recordDone) && xc >= 0xC0000000 && FromWindowsDump(xc) == null) News(string.Format("the game ended with error code 0x{0:X8} ({1}).", xc, Rel(logName)));
                         Summary();
                         attached = false;
                         ContinueDebugEvent(epid, tid, DBG_CONTINUE);
@@ -325,8 +326,17 @@ public static class Sr3Watchdog {
         Line(string.Format("first chance (the game may handle it): {0} 0x{1:X8} at {2}{3}, thread {4}", ExceptionName(ec), ec, Name(addr), AvText(ec, info), tid));
         if (ec == 0xC0000005 && n <= 2) DescribeThread(tid, false, null, 2, "  ", "");
     }
+    // The game stands still at its second chance while the record is written; at most 30 s, then it is let go (it ends,
+    // and Windows' crash dump is read at the end if the record is not complete).
     static void Crash(uint ec, ulong addr, ulong[] info, int tid) {
-        busy = true;
+        busy = true; sawCrash = true;
+        var t = new Thread(() => { try { CrashRecord(ec, addr, info, tid); recordDone = true; } catch (Exception x) { Line("  crash record stopped: " + x.Message); } });
+        t.IsBackground = true; recordDone = false; t.Start();
+        if (!t.Join(30000)) Line("  (the crash record took more than 30 s; the game is let go)");
+        busy = false;
+    }
+    static volatile bool recordDone = true;
+    static void CrashRecord(uint ec, ulong addr, ulong[] info, int tid) {
         try {
             sawCrash = true;
             string what = string.Format("{0} 0x{1:X8} at {2}{3}", ExceptionName(ec), ec, Name(addr), AvText(ec, info));
@@ -339,7 +349,7 @@ public static class Sr3Watchdog {
             string dump = Dump("crash");
             Line("==== end of the crash record");
             News("the game crashed: " + what + ". Details: " + Rel(logName) + (dump != null ? ", minidump " + Rel(dump) : "") + ".");
-        } finally { busy = false; }
+        } finally { }
     }
     static void Output(IntPtr p, bool uni, int n) {
         if (p == IntPtr.Zero || n <= 0) return;
@@ -576,8 +586,13 @@ public static class Sr3Watchdog {
     static string Name(ulong a) { var m = ModuleOf(a); return m == null ? a.ToString("X8") : string.Format("{0:X8} ({1}+0x{2:X})", a, m.Name, a - m.Base); }
     static string ImagePath() { var s = new StringBuilder(1024); int n = s.Capacity; return QueryFullProcessImageName(hProc, 0, s, ref n) ? s.ToString() : "?"; }
 
+    // MiniDumpWriteDump can itself crash on a badly damaged game (2026-10-14: after a graphics driver crash in the game,
+    // dbgcore.dll raised an access violation and took PowerShell, the launcher, down with it): such an exception is
+    // caught here (HandleProcessCorruptedStateExceptions) and the dump is skipped.
+    [HandleProcessCorruptedStateExceptions, System.Security.SecurityCritical]
     static string Dump(string kind) {
-        lock (dumpLock) {
+        if (!Monitor.TryEnter(dumpLock, 20000)) { Line("  minidump skipped (another one is still being written)"); return null; }
+        try {
             string name = kind + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".dmp", path = Path.Combine(folder, name);
             try {
                 bool ok; int err = 0;
@@ -588,7 +603,8 @@ public static class Sr3Watchdog {
                 if (!ok) { Line("  minidump failed (error 0x" + err.ToString("X") + ")"); try { File.Delete(path); } catch { } return null; }
                 Line("  minidump: " + name + " (" + (new FileInfo(path).Length / 1024) + " KB)");
                 return name;
-            } catch (Exception x) { Line("  minidump failed: " + x.Message); return null; }
-        }
+            } catch (AccessViolationException) { Line("  minidump failed: Windows' dump code crashed on the damaged game; no minidump"); try { File.Delete(path); } catch { } return null; }
+            catch (Exception x) { Line("  minidump failed: " + x.Message); return null; }
+        } finally { Monitor.Exit(dumpLock); }
     }
 }

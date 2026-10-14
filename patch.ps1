@@ -1169,6 +1169,11 @@ function Set-CarLists($game) {
             try { foreach ($s in $todo) { $j = CallTo $s[0] ($cave + $s[1]); $j[0] = 0xE9; [Sr3Mem]::Write($h, $s[0], $j, $false); $n++ } }   # jmp rel32
             finally { [Sr3Mem]::Resume($h) }
         }
+        # A car the game does not know by name (an added one, e.g. a Daytona car) gets the speedo's top speed like the ten:
+        # 0x599A20 compares the car's name with the ten and sets vehicle +0x1708 for each; for any other name it skipped the
+        # last write (jne at 0x599D7A), so +0x1708 stayed 0 and the speedo showed 0. All ten values are made the same way.
+        $sp = [Sr3Mem]::Read($h, 0x599D78, 4)
+        if (Same $sp (HexToBytes '3bc87510')) { [Sr3Mem]::Write($h, 0x599D7A, [byte[]]@(0x90, 0x90), $false) }
     } catch { Log "Car lists: $($_.Exception.Message)" } finally { [Sr3Mem]::Close($h) }
     Log $(if ($n -eq $CarListSites.Count) { 'Car lists: every car in every mode (each mode''s own cars first).' } else { "Car lists: $n of $($CarListSites.Count) changed." })
 }
