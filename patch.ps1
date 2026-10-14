@@ -596,7 +596,8 @@ function Read-TrackSwitch([string]$gameExe) {
             if ($d -notmatch '^[1-9]$') { continue }
             if (-not (Test-Path -LiteralPath (Join-Path $dir "Main_release\track$d\$($p.Name)"))) { Log "Alternative tracks: $($a.title) is listed but Main_release\track$d\$($p.Name) is missing; skipped."; continue }
             $video = "$($a.video)"
-            if ($video -and @(Get-ChildItem -LiteralPath (Join-Path $dir 'frontend\PC\Videos') -Filter "LANG_*_$video.wmv" -ErrorAction SilentlyContinue).Count -lt 1) { $video = '' }
+            # stage cards are LANG_<language>_<video>.wmv, the Classic card classic_<video>.wmv
+            if ($video -and @(Get-ChildItem -LiteralPath (Join-Path $dir 'frontend\PC\Videos') -Filter "*_$video.wmv" -ErrorAction SilentlyContinue).Count -lt 1) { $video = '' }
             $snd = @{}; foreach ($k in 'ambience', 'music', 'events') { $snd[$k] = if ("$($a.$k)" -match '^ID_TRACK_[A-Z]{1,12}_[0-9]$') { "$($a.$k)" } else { '' } }
             # a tune of its own, appended to the game's stream file by SR3 Extras (Set-CourseTune): only when it really is there
             $tune = $null; $t = $a.tune
