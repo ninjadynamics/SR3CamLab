@@ -50,7 +50,8 @@ alternatives must stay below 10").
   Daytona: Three Seven Speedway.
 - `tracks\_SR3Extras\classic_mode.txt` remembers which value of the first menu's selector is "Classic". It is learnt the
   first time Classic is picked (the current track becomes Desert4 right after); until then the hint text shows on all
-  three entries of that menu. The owner's notes record Classic = entry 2.
+  three entries of that menu. The owner's notes record Classic = entry 2. Since 2026-10-14 a value already kept is never
+  overwritten: a scripted run through the menus faster than the poll turned it into 0 and the Classic popup disappeared.
 - An "art" key in `switch.json` turns on the second set of banner / background names (section 5).
 
 ## 4. How the running game is switched (`patch.ps1`, `Watch-Tracks`)

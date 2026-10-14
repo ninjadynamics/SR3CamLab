@@ -42,6 +42,10 @@ roofs and all sorts of weird things"):
   7. NOTHING TURNS OVER: a piece whose drawn triangle ends up turned more than about 78 degrees from the flat polygon it was cut from is folded,
      not rounded (R4: 1 728 pieces, a black line along the rim of that ledge and under a boulder at lap 1866 - their backs). Its corners go
      back to where the stage began, again and again until no piece is folded.
+  8. A CORNER THAT STAYS IS PINNED FIRST (pin=True, course setting round_pin, default on; with round_fade 0.25): the corners 7. puts back and the
+     outlines of the polygons 4. keeps whole are pinned and the stage's smoothing is run again from its start, so 1.'s reach fades the surface into
+     them. Put back AFTER the smoothing they stood out of the sunken ground as horns, and a lid kept whole overhung its shrunken walls (R4, owner's
+     screenshots 2026-10-14). round_pin false + round_fade 0.5 builds the R4 of 2026-10-13 again.
 Everything is done on arrays (the first version walked Python lists: fine for R2, minutes and gigabytes for R16)."""
 import numpy as np
 
@@ -114,7 +118,12 @@ def _gap_over(X, S, cell=4.0):
         v = v[ins]; g = np.abs(X[v, 1] - (A[1] - (n[t, 0] * (X[v, 0] - A[0]) + n[t, 2] * (X[v, 2] - A[2])) / n[t, 1])); np.minimum.at(gap, v, g)
     return gap
 
-def round_natural(faces, level=1, origin=None, passes=2, lam=0.5, weld=0.02, log=print, exclude=(), road=None, cap=CAP, fade=FADE, slide=True, keep_at=None):
+def round_natural(faces, level=1, origin=None, passes=2, lam=0.5, weld=0.02, log=print, exclude=(), road=None, cap=CAP, fade=FADE, slide=True, keep_at=None, pin=False):
+    # pin=True (course setting round_pin, on by default since 2026-10-14; rule 8 below): a corner that has to stay where it started (a folded piece,
+    # rule 7; the outline of a polygon put back whole, rule 4) is PINNED and the stage's smoothing is done again from its start with it pinned, so the
+    # reach (1.) fades the surface into it. Without it such a corner was put back AFTER its neighbours had sunk and stood out of the ground: the
+    # "horns" and lips on R4's rims and tops (owner's screenshots, 2026-10-14; measured: 2 395 corners left standing more than 0.25 m above a
+    # neighbour, 204 more than 1 m; with pin and fade 0.25: 1 078 and 34).
     # slide=False (course setting round_slide): a corner moves only along the normal of the surface it sits in. The smoothing pulls a corner towards the
     # middle of its neighbours, which is partly ALONG the surface: the shape hardly changes by that part, but the picture is fixed to the corners and
     # is stretched on one side and squeezed on the other (owner, 2026-10-13: "watch out for texture warping").
@@ -205,6 +214,42 @@ def round_natural(faces, level=1, origin=None, passes=2, lam=0.5, weld=0.02, log
             fold_ &= np.abs(X - start).max(1) > 0
             if not fold_.any(): break
             X[fold_] = start[fold_]; tot['unfolded'] = tot.get('unfolded', 0) + int(fold_.sum())
+        if pin:                                                    # (8.) the corners that have to stay are pinned and the smoothing is done again around them
+            el_ = np.linalg.norm(start[ea] - start[eb], axis=1)
+            def run_(pinned):
+                fr = free & ~pinned; dist = np.where(fr, np.inf, 0.0)
+                for _ in range(400):
+                    d2 = dist.copy(); np.minimum.at(d2, ea, dist[eb] + el_); np.minimum.at(d2, eb, dist[ea] + el_)
+                    ch = d2 < dist - 1e-9; dist = d2
+                    if not ch.any() or d2[ch].min() > cap / fade: break
+                rch = np.where(fr, np.minimum(cap, fade * dist) if stage == 0 else 0.25, 0.0)
+                def held_(X):
+                    d = X - start; n = np.linalg.norm(d, axis=1); s = np.where(n > rch, rch / np.maximum(n, 1e-12), 1.0); return start + d * s[:, None], int((s < 1.0).sum())
+                X = start.copy()
+                for it in range(ps):
+                    M = np.stack([np.bincount(ea, weights=X[eb, c], minlength=nv) + np.bincount(eb, weights=X[ea, c], minlength=nv) for c in range(3)], 1) * w[:, None]
+                    X = np.where(fr[:, None], X + lam * (M - X), X)
+                    if not slide and (it % 4 == 3 or it == ps - 1): X = along(X)
+                    if it % 8 == 7: X, _ = held_(X)
+                X, nr_ = held_(X)
+                lo, hi = _order_limits(start, X, fr, S); bad = lo > hi; y = np.clip(X[:, 1], lo, np.maximum(hi, lo))
+                no_ = int((np.abs(y - X[:, 1]) > 1e-6).sum() + bad.sum()); X[:, 1] = y; X[bad] = start[bad]
+                return X, nr_, no_
+            def folds_(X):
+                f_ = np.zeros(nv, bool)
+                for k in grp:
+                    vi = grp[k][3]; O = orig[k]; Pk = X[vi]
+                    for a_, b_, c_ in (((0, 1, 2),) if k == 3 else ((0, 1, 2), (0, 2, 3))):
+                        n0 = np.cross(O[:, b_] - O[:, a_], O[:, c_] - O[:, a_]); n1 = np.cross(Pk[:, b_] - Pk[:, a_], Pk[:, c_] - Pk[:, a_]); l0 = np.linalg.norm(n0, axis=1); l1 = np.linalg.norm(n1, axis=1)
+                        f_[vi[(l0 > 1e-9) & ((n0 * n1).sum(1) < FOLD * l0 * l1)].ravel()] = True
+                return f_ & (np.abs(X - start).max(1) > 0)
+            def settle_(pinned):
+                for rnd in range(12):
+                    X, nr_, no_ = run_(pinned); f_ = folds_(X)
+                    if not f_.any(): return X, nr_, no_, pinned
+                    pinned = pinned | f_
+                X[f_] = start[f_]; return X, nr_, no_, pinned | f_
+            X, nreach, nord, pinned_ = settle_(np.zeros(nv, bool)); tot['unfolded'] = int(pinned_.sum())
         mv = np.linalg.norm(X - start, axis=1) * free; tot['moved'] += float(mv.sum()); tot['most'] = max(tot['most'], float(mv.max())); tot['free'] = int(free.sum()); tot['held_by_reach'] += nreach; tot['held_by_order'] += nord
         tot['kept_shared'] = int(shared.sum()); tot['kept_border'] = int((border & ~shared).sum()); tot['corners'] = int(nv)
         if stage == 0: worst = [(tuple(np.round(start[q], 1)), tuple(np.round(X[q], 1)), round(float(mv[q]), 1)) for q in np.argsort(-mv)[:8]]
@@ -222,6 +267,7 @@ def round_natural(faces, level=1, origin=None, passes=2, lam=0.5, weld=0.02, log
                     flat[k] = np.abs(((Xn[vi] - O) * nrm[:, None, :]).sum(2)).max(1).reshape(-1, nper).max(1) < FLAT
             back[:] = False
             for k in grp: m = np.repeat(flat[k], nper); back[grp[k][3][m]] = True; tgt[grp[k][3][m]] = orig[k][m]
+            if pin: X, _, _, pinned_ = settle_(pinned_ | back); tot['lid_pinned'] = int(back.sum())      # (8.) the outlines of the polygons put back whole pinned too: the walls under a lid fade into it
             X = np.where(back[:, None], tgt, X); coarse = flat; tot['flat'] = int(sum(int(f.sum()) for f in flat.values())); tot['flat_pieces'] = tot['flat'] * nper
             tot['seam'] = max([float(np.abs(X[grp[k][3]][np.repeat(flat[k], nper)] - orig[k][np.repeat(flat[k], nper)]).max()) for k in grp if flat[k].any()] or [0.0])      # how far the finely cut neighbours' corners are from the whole polygons' edges: must be 0
         if __import__('os').environ.get('ROUND_DBG') and stage == len(sched) - 1: __import__('pickle').dump({k: X[grp[k][3]] for k in grp}, open(__import__('os').environ['ROUND_DBG'], 'wb'))

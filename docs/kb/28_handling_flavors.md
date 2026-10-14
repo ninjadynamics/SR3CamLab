@@ -112,6 +112,20 @@ The mu meaning is LIKELY (ordering; in game the traction limit scales with it).
 | steering return | 0x5CFF32 `call 0x448C00` (the human driver's steering handed to the vehicle in 0x5CFE90, every input mode) -> STEER routine (142 bytes): only for the player's vehicle (ecx = [[0x9DBAC8 + 4] + 0x858], record 0's human driver, vtable 0x6ED0C8; the Classic opponent runs the same code and passes unchanged), toward / across the centre at most RATE per call, outward at once, result to the vehicle only (controls + 0x18 stays raw: mode 1's 0x5E0B20 builds its next value from it, and writing it back held the steering, in game 2026-10-14); RATE = 1 / (s x 60) written at each race start from the player's car (library node [0x9DBDA0 + 0xC], +4 id). A first hook on 0x5D4D10's exits (0x5D4F28 / 0x5D4F31) never ran: with the TeknoParrot pad (input mode 1) the value comes from 0x5E0B20 (in game 2026-10-14) |
 All take effect when the next race loads. A missing folder or car file: that car keeps SEGA's file (Log line).
 
+### Live keys (owner, 2026-10-14: "Do A and A+, assign to num keys. Live labels ... (camlab style)")
+Whenever a flavor is built (Main_release\car1 / car2), the per-car routine and the steering hook go in even with no
+handling.json (every car on SEGA's handling), and while the game window is in front ([0x728CF4] = the foreground window):
+| Key (number row or keypad) | Does |
+|---|---|
+| 1 / 2 / 3 | SR3's own / SRC / Realism for the car: on the car select the HIGHLIGHTED one (camera block + 0x227C CARSEL: 0x606510 with the hash 0x6EACE04A of "ID_SELECTOR_CARSELECT" = the highlighted entry's data, the car id; 0x606490 gives its place in the list instead, which made the first try pick C4 for the highlighted ST205), anywhere else the player's car ([0x9DBDA0 + 0xC] +4). Its flag in the per-car routine (an added car: the shared 's' at 0x6C6371), the grip file's 's'; from that car's next race; handling.json is written |
+| 4 / 6 | that car's handling's steering return 0.05 s shorter / longer (0 = off, 0.60 s at most); in a race the rate changes at once (the hook's last value kept) |
+| 5 | steering return off / back on (to the value it had) |
+| 0 | show what the car has |
+Each key shows a label for 2.5 s: the camera block's popup (first line at block + 0x2400, second at + 0x2480, the green of the
+alternative-track titles). Steering return is per handling (handling.json `flavors.<name>.steer_return_s`, SR3's own as `sr3`).
+VERIFIED in game 2026-10-14: ST205 highlighted -> 2 -> "Handling: SEGA Rally Championship / Toyota Celica ST205, from its next
+race"; the next car (Focus) -> keypad 3 -> Realism; in a race 6 / 5 / 5 -> rate 0.333 / 0 / 0.333 per frame.
+
 ### SRC flavor numbers (flavor_src.json) and the four in-game tests (ST205, Classic Mountain RT, AT, pad.py pattern)
 | | gears km/h per 1000 rpm (design) | torque | grip | 0-50 / 0-100 / 0-150 / 0-180 s | upshifts km/h | notes |
 |---|---|---|---|---|---|---|

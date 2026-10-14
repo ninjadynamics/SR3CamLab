@@ -217,11 +217,14 @@ print('    hint drawn:', sorted(set(l[1] for l in log if l[0] == 'DrawTextA' and
 seen = []
 stub(0x5470d0, 0, lambda a: seen.append(('hash', cstr(u.reg_read(UC_X86_REG_ECX)), args(1)[0])) or 0x1234)
 stub(0x606490, 0, lambda a: seen.append(('selector', hex(u.reg_read(UC_X86_REG_EDI)))) or 0x55AA)
+stub(0x606510, 0, lambda a: seen.append(('selector data', hex(u.reg_read(UC_X86_REG_EDI)))) or 0x0A)
 frame('no menu system: no selector asked')
-print('    highlighted', hex(r32(BASE + D['HILITE'])), '(want 0xffffffff), calls', seen)
+print('    highlighted', hex(r32(BASE + D['HILITE'])), '(want 0xffffffff), car', hex(r32(BASE + D['CARSEL'])), '(want 0xffffffff), calls', seen)
+assert r32(BASE + D['CARSEL']) == 0xFFFFFFFF and not any(s[0] == 'selector data' for s in seen), 'no menu system: the car select must not be asked, CARSEL -1'
 w32(0x9C0F48, 1)
 frame('stage selector asked')
-print('    highlighted', hex(r32(BASE + D['HILITE'])), '(want 0x55aa), calls', seen)
+print('    highlighted', hex(r32(BASE + D['HILITE'])), '(want 0x55aa), car', hex(r32(BASE + D['CARSEL'])), '(want 0xa), calls', seen)
+assert r32(BASE + D['CARSEL']) == 0x0A and ('selector data', '0x6eace04a') in seen, 'the car select is asked by its hash 0x6EACE04A (0x606510): CARSEL = the car id'
 VOBJ = 0xAD2F90 + 5 * 0x16C; COM = RVT + 0x400
 def com(a, name): seen.append((name, hex(a[0]))); return 0
 stub(STUB + 0xD0, 1, lambda a: com(a, 'Release')); stub(STUB + 0xD4, 1, lambda a: com(a, 'Run')); stub(STUB + 0xD8, 1, lambda a: com(a, 'Stop'))

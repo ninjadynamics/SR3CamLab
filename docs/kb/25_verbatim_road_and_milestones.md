@@ -107,6 +107,23 @@ Lighting is flat through every milestone; all lighting is left to RT.
 | BASE | authored geometry only: the forest patches, the mesa / plateau, the cliff side, the castle picture flipped correctly | |
 | R4 | rounded polygons, nature only | CHOSEN 2026-10-13: the owner drove R1, R2 and R4 with baked light (scene v11) and took R4 ("R4 is the way to go!!! make it the default step"). Every edge cut in four (16 pieces a polygon), corners moved along the surface's normal only (`round: 4`, `round_slide: false`), with the two rules added that day: the ground stays where spectators stand, and no piece turns over (round1995.py, rules 6 and 7) |
 | RT | ray-traced light from R4 | installed 2026-10-13 as Classic 1 "Mountain RT" (R1 and R2 kept after it for comparison). The build route makes R4 unless told otherwise |
+| R4 (pinned) | R4 without its horns | INSTALLED 2026-10-14 as the only Mountain entry, Classic "Mountain R4" (track1\Desert4 = `step99_mountain_r4nv11h_d_desert4`: scene v11, baked light, shadows 27 % = `light_split 0.72`); the owner had the other Mountain variants deleted from the game. See 5.1 |
+
+### 5.1 R4's horns and lips, and the fix (2026-10-14)
+The owner's screenshots of R4 RT showed horns standing up on rims and tops, an overhanging lip on a pillar's top and odd
+raised blocks / pits. Measured on the rounding itself (a measuring copy of round1995.py dumped every piece before and after;
+a corner "stands" when it did not move while a neighbour sank more than 0.25 m along its normal): 2 395 corners, 204 more
+than 1 m. Why they stayed: rule 7 put a folding piece's corners back to where they began AFTER their neighbours had sunk
+(62 %, 80 % of the over-1 m ones); open borders of the Blender patch (31 %, kept by design; only ~5 % of them have a partner
+within 10 cm, so welding would not join them); the road apron / spectators (5 %); lids put back whole by rule 4 (2 %, the
+lip: the walls under a lid shrink 0.3 - 0.5 m while the lid stays). Filled hollows (corners pushed out of a concave crease) are
+NOT a defect: smoothing should fill them, and a plain "moved outward" measure counts them too.
+Fix (round1995.py rule 8, course settings `round_pin` default true and `round_fade` default 0.25 with it): the corners that have
+to stay are pinned and the stage's smoothing is run again from its start, so rule 1's reach fades the surface into them; the
+fade is halved (0.25 m per metre from a kept corner). Standing corners 2 395 / 870 / 204 (> 0.25 / 0.5 / 1 m) -> 1 078 / 249 / 34;
+mean move 0.166 -> 0.157 m. `round_pin false` + `round_fade 0.5` builds the old R4 byte for byte (checked). Left: tops may still
+sink up to `CAP` 2.5 m, which leaves a pit with a step where a few corners are held (spectators); lowering the cap to about 1 m
+was proposed, not done.
 
 - "Full island infill is a waste of polygons": authored geometry only, and see whether that is enough.
 - The code for rounding, fill, baked light and light maps is all still in the importer, switched off by the RAW settings.

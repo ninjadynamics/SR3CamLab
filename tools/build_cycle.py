@@ -49,6 +49,8 @@ Game facts used (found in the disassembly):
              of "ID_SELECTOR_TRACKSELECT" (0x6E53FC), guarded by [0x9C0F48].
   MODESEL:   the same question for "ID_SELECTOR_MODESELECT" (0x6E5E14): what the first menu
              (Championship / Quick Race / Classic) is on, -1 when there is none.
+  CARSEL:    the same for the car select "ID_SELECTOR_CARSELECT" (lookup2 hash 0x6EACE04A, given as is): the highlighted
+             car's id (its library id: the highlighted entry's data, 0x606510 as the confirm does; 0x606490 gives its place), -1 when there is none (patch.ps1, the handling keys).
   PHINT: when not 0, the text of the popup's second line (instead of the built-in hint).
   [0xA65794] PVS off: the scene manager's visibility refresh (0x500EA0) marks every node
              visible instead of using the camera's BSP leaf. The PVS is built for eyes near
@@ -133,7 +135,7 @@ D = dict(MAGIC=0x00, FONT=0x08, FONTH=0x0C, FRAMES=0x10, SHOWFRAMES=0x14, SIZE=0
          HINT=0xFA0, TEXT=0xFA4, KEEP=0xFA8, S_HINT=0xFB0, K_TILTS=0xFD0, RESETPREV=0xFD8, K_RDMIN=0xFE0, K_RDMAX=0xFE4, K_RHMIN=0xFE8, K_RHMAX=0xFEC,
          GAMENAMES=0x2000, ORIG=0x2180, CAMOFF=0x21B0, EXTRA=0x21E0, CAMCOLOR=0x2210,
          MIRROR=0x2240, SAVEDPTR=0x2258, PATCHIDX=0x225C, NGAME=0x2260, LOADVIDEOS=0x2264, PHINT=0x2268,
-         HILITE=0x226C, REOPEN=0x2270, REOPENPATH=0x2274, MODESEL=0x2278,
+         HILITE=0x226C, REOPEN=0x2270, REOPENPATH=0x2274, MODESEL=0x2278, CARSEL=0x227C,
          # settings (seconds, written by patch.ps1): mouse and key smoothing of the steerable cameras, blend time
          K_LOOKTAU=0x2280, K_MOVETAU=0x2284, K_BLEND=0x2288,
          # smoothing: mouse movement not handed out yet (x, y pixels), smoothed keys (free cams forward, sideways,
@@ -799,6 +801,15 @@ hilite_store:
     call eax
 modesel_store:
     mov dword ptr [ebp + {D['MODESEL']}], eax
+
+    or eax, -1
+    cmp dword ptr [0x9c0f48], 0
+    je carsel_store
+    mov edi, 0x6eace04a
+    mov eax, 0x606510
+    call eax
+carsel_store:
+    mov dword ptr [ebp + {D['CARSEL']}], eax
 
     mov eax, dword ptr [ebp + {D['REOPEN']}]
     test eax, eax

@@ -276,8 +276,8 @@ foreach ($p in $Patches) {
 # A block of code and data allocated in the game (see build_cycle.py): every frame it keeps the
 # race camera list extended with our chase slots, loads the selected slot's settings into the
 # cave and draws the camera name with a D3DX font for 2 seconds after a change.
-$CycleCode = '9c60e8000000005d81ed0710000083bd64220000007411c7856422000000000000b800166200ffd083c8ff833d480f9c0000741a6a17b9fc536e00b8d0705400ffd083c40489c7b890646000ffd089856c22000083c8ff833d480f9c0000741a6a16b9145e6e00b8d0705400ffd083c40489c7b890646000ffd08985782200008b857022000085c00f84d10000004883f8140f83bd0000005069f86c01000081c7902fad00837f0400746c8b872001000085c074068b0850ff5124bb2c0100008b041f85c0740dc7041f000000008b0850ff510883eb0481fb1c01000073e18b874401000085c07410c78744010000000000008b0850ff5108c7873001000000000000c70700000000c7470400000000c74708000000008b8d7422000055b880dc4d00ffd05d85c074288b87200100008b0850ff511c85c07c06c707000000008b04246a016a0050b870e34d00ffd083c40c83c404c78570220000000000008b35ecb49e0085f60f844003000083c61881be1005000008b86e000f852d0300008dbe1005000039be340200000f851b0300008b862c0200003b452875093975580f849e01000083f8010f82fe020000c7855c2200000000000083f8150f87eb02000031c931d239c173288b9c8e3402000039fb741a83fa0c731539755875083b95bc0000007308899c95802100004241ebd439755874098995bc00000089455c89956022000031c983f90c735d8b9c8de021000083fbff745185db782b01f3833b0074215131c939d1730c399c8d80210000741041ebf083fa0c7308899c9580210000425941ebc081e3ffffff7f01f3833b0074f083fa0c73eb899c95802100004289955c220000ebdb8b4d208d1c1183fb150f873402000083bd5c22000000740749018d5c22000089552c89755889be34020000bb0100000031c93b8d6022000073128b848d8021000089849e340200004341ebe6b9010000003b4d20730b89bc9e340200004341ebf08b8d6022000039d173128b848d8021000089849e340200004341ebea899e2c020000895d288b85a80f000085c074054839d8722e8b452483f8fe751c8d8ec408000031c039d8730c398c8634020000741140ebf031c0eb0a85c07406038560220000898630020000c7451cffffffffc785b0000000010000008b86300200003b451c0f845a0100008b4d1c83f9ff74358d51013b5528720231d239d074278b948634020000399690010000750d8b948e34020000899690010000898e30020000e91d0100003b862c0200000f831101000089451c8d4801898da80f00008b8c863402000029f131d281f9ec0e0000741081f9780c0000740881f9681d00007501428995a00f0000e8bf01000031c985c074093b8560220000760141890d9457a60085c074173b8560220000762d89c12b8d602200003b4d20732089c8e80b0200008b8c85000e0000898d600e0000c1e0058d840500010000eb668b9c8634020000813bb8b86e0075095031c0e8db0100005829f33b855c220000750681cb000000808d85e0000000c785600e0000ffffffff31c983f90c7327399c8db0210000751b8b848d102200008985600e000089c8c1e0058d840500200000eb0341ebd48945508b8db0000000c785b00000000000000085c9750b8b4514894510e820150000e816030000837d10000f8ed2000000ff4d108b451885c00f8ec4000000f72578db7e00b938040000f7f183f8087d05b808000000508d5d08e8720100005985c00f849400000089c351a178db7e00b90e000000f7e1b964000000f7f18985b40000008b45508985a40f00008b04248b8d600e0000e8bb0100005883bda00f000000745e506bc00b31d2b90a000000f7f10185b400000058d1e883f8087d05b808000000508d9d980f0000e8000100005985c0742d89c38b956822000085d275068d95b00f00008995a40f000089c8b9e0e0e0ffe85c010000eb07c7451000000000619da10cd17e00c3608dbe381a0000813ff0bd6e0075708d95402200008b9d5c22000085db744c39d875488b8f9401000039d1745285c9744e898d582200008b01350000008089028b41048942048b41088942088b410c350000008089420c8b41108942108b4114894214899794010000eb14399794010000750c8b8d58220000898f9401000061c3565751526bd05c8db41500050000bf883c6700b90b000000f3a5bfd03c6700b90c000000f3a5833de83c67000075118b555885d2740ac782c0080000000070425a595f5ec33b430475038b03c3508b0b85c9740c518b11ff5208c70300000000588943048b555485d275228d4d6051ff15f441670085c074418d4d705150ff150442670085c0743289455489c2538d8d80000000516a006a046a006a016a006a0168bc0200006a00ff7304ff350cd17e00ffd285c07c038b03c3c70300000000c743040000000031c0c35131d2b916000000f7f185c075014089c76bc00731d2b90a000000f7f185c07501408985b800000089f9f7d931d2e86200000089f931d2e85900000031c989faf7dae84e00000031c989fae8450000008b8db800000089cae8380000008b8db800000089caf7dae8290000008b8db800000089caf7d9e81a0000008b8db8000000f7d989cae80b00000031c931d258e806000000c3b8000000d056898da00000008bb5b400000001d689b5a40000008b3574db7e0001ce89b5a80000008b3578db7e0001d689b5ac000000506a218db5a0000000566affffb5a40f00006a00538b33ff56385ec38b35ecb49e0085f6742a83c6188bbe900100008d86ec0e000039c774168d86780c000039c7740c8d86681d000039c77402eb01c38b35ecb49e0085f60f846f04000083c61881be1005000008b86e000f855c0400008bbe900100008d86ec0e0000bb0100000039c774288d86780c0000bb0200000039c774198d86681d000039c7740fc785300f000001000000e91f04000083bd8c0e0000000f85f60000008d8da00e000051ff15f441670085c00f84fd03000089c2528d8db00e00005152ff15044267005a8985800e0000528d8dc00e00005152ff15044267005a8985840e0000528d8dd00e00005152ff15044267005a8985880e0000528d8d400f00005152ff15044267005a8985900e00008d8d600f00005251ff15f44167005a85c0745b8d8d700f0000525150ff15044267005a8985940e00008d8df00e00005152ff150442670089858c0e000083bd800e000000742883bd840e000000741f83bd880e000000741683bd900e000000740d83bd940e000000740485c07519c7858c0e000000000000c785300f000002000000e91c030000ff958c0e00008d8d380f0000c701000000005150ff95900e0000ff95940e00003b85380f0000740fc785300f000003000000e9e5020000c785300f000004000000c785340f000000000000a174db7e00d1e88985280f0000a178db7e00d1e889852c0f00008d8d700e000051ff95800e000031c08985200f00008985240f000083bd680e00000075248b85700e00002b85280f00008985200f00008b85740e00002b852c0f00008985240f0000c785680e000000000000ffb52c0f0000ffb5280f0000ff95840e0000c785640e00000100000068c0000000ff95880e00005068dc000000ff95880e00005909c825008000008b8dd80f00008985d80f000085c0741085c9750c89f98b07ff5004e8350f0000f30f2a85200f0000f30f2a8d240f0000e89a0e0000f30f5985100f0000f30f598d100f000083fb010f8510010000f30f108dac220000f30f598dd00f0000f30f10160f57db0f2fd3761ef30f10daf30f599d140f0000f30f5ec3f30f5995180f0000f30f5ecaeb060f57c00f57c9f30f1186a8010000f30f118eb80100006a536a57e8df0100008d85a4220000e8700e0000f30f1186ac0100000f57c0f30f1186bc010000f30f10160f57db0f2fd30f8688000000f30f5995180f00008b860c05000085c07476f30f1086ac010000f30f59c2f30f584720f30f5800f30f5f85e00f0000f30f5d85e40f0000f30f5c00f30f5c4720f30f5ec2f30f1186ac010000f30f1086b8010000f30f59c2f30f584748f30f584004f30f5f85e80f0000f30f5d85ec0f0000f30f5c4004f30f5c4748f30f5ec2f30f1186b8010000c3f30f1097300200000f57db0f2fd3760af30f5ec2f30f5ecaeb12f30f59851c0f0000f30f598d1c0f0000eb30f30f10d9f30f59daf30f589f68020000f30f5d9d900f0000f30f5f9d940f0000f30f5c9f68020000f30f5edaf30f10cbf30f1186a8010000f30f118eac0100000f57c0f30f1186c40100006a576a53e8a80000008d8598220000e8390d0000f30f1186b00100006a446a41e88c0000008d859c220000e81d0d0000f30f1186b40100006a206a11e8700000008d85a0220000e8010d0000f30f1186b8010000c3c785680e00000100000083bd640e0000007448c785640e000000000000e8090d00008b755885f6743231c08986a80100008986ac0100008986b00100008986b40100008986b80100008986bc0100008986c00100008986c4010000c35331dbff74240cff95880e0000660985340f000066a90080740143ff742408ff95880e000066a9008074014bf30f2ac35bc208009c60e8000000005d81ed101d0000e8e0faffff619d68001e5f00c39c60e8000000005d81ed2b1d0000e8c5faffff619d68e03f5f00c39c60e8000000005d81ed461d00008b4d0885c97414518b11ff5208c7450800000000c7450c000000008b8d980f000085c9741a518b11ff5208c785980f000000000000c7859c0f000000000000619d6820125900c3'
-$CycleSize = 0x4000; $CycleDraw = 0x1000; $CycleLost = 0x1d3f; $CycleRot = 0x1d09; $CycleFree = 0x1d24
+$CycleCode = '9c60e8000000005d81ed0710000083bd64220000007411c7856422000000000000b800166200ffd083c8ff833d480f9c0000741a6a17b9fc536e00b8d0705400ffd083c40489c7b890646000ffd089856c22000083c8ff833d480f9c0000741a6a16b9145e6e00b8d0705400ffd083c40489c7b890646000ffd089857822000083c8ff833d480f9c0000740cbf4ae0ac6eb810656000ffd089857c2200008b857022000085c00f84d10000004883f8140f83bd0000005069f86c01000081c7902fad00837f0400746c8b872001000085c074068b0850ff5124bb2c0100008b041f85c0740dc7041f000000008b0850ff510883eb0481fb1c01000073e18b874401000085c07410c78744010000000000008b0850ff5108c7873001000000000000c70700000000c7470400000000c74708000000008b8d7422000055b880dc4d00ffd05d85c074288b87200100008b0850ff511c85c07c06c707000000008b04246a016a0050b870e34d00ffd083c40c83c404c78570220000000000008b35ecb49e0085f60f844003000083c61881be1005000008b86e000f852d0300008dbe1005000039be340200000f851b0300008b862c0200003b452875093975580f849e01000083f8010f82fe020000c7855c2200000000000083f8150f87eb02000031c931d239c173288b9c8e3402000039fb741a83fa0c731539755875083b95bc0000007308899c95802100004241ebd439755874098995bc00000089455c89956022000031c983f90c735d8b9c8de021000083fbff745185db782b01f3833b0074215131c939d1730c399c8d80210000741041ebf083fa0c7308899c9580210000425941ebc081e3ffffff7f01f3833b0074f083fa0c73eb899c95802100004289955c220000ebdb8b4d208d1c1183fb150f873402000083bd5c22000000740749018d5c22000089552c89755889be34020000bb0100000031c93b8d6022000073128b848d8021000089849e340200004341ebe6b9010000003b4d20730b89bc9e340200004341ebf08b8d6022000039d173128b848d8021000089849e340200004341ebea899e2c020000895d288b85a80f000085c074054839d8722e8b452483f8fe751c8d8ec408000031c039d8730c398c8634020000741140ebf031c0eb0a85c07406038560220000898630020000c7451cffffffffc785b0000000010000008b86300200003b451c0f845a0100008b4d1c83f9ff74358d51013b5528720231d239d074278b948634020000399690010000750d8b948e34020000899690010000898e30020000e91d0100003b862c0200000f831101000089451c8d4801898da80f00008b8c863402000029f131d281f9ec0e0000741081f9780c0000740881f9681d00007501428995a00f0000e8bf01000031c985c074093b8560220000760141890d9457a60085c074173b8560220000762d89c12b8d602200003b4d20732089c8e80b0200008b8c85000e0000898d600e0000c1e0058d840500010000eb668b9c8634020000813bb8b86e0075095031c0e8db0100005829f33b855c220000750681cb000000808d85e0000000c785600e0000ffffffff31c983f90c7327399c8db0210000751b8b848d102200008985600e000089c8c1e0058d840500200000eb0341ebd48945508b8db0000000c785b00000000000000085c9750b8b4514894510e802150000e816030000837d10000f8ed2000000ff4d108b451885c00f8ec4000000f72578db7e00b938040000f7f183f8087d05b808000000508d5d08e8720100005985c00f849400000089c351a178db7e00b90e000000f7e1b964000000f7f18985b40000008b45508985a40f00008b04248b8d600e0000e8bb0100005883bda00f000000745e506bc00b31d2b90a000000f7f10185b400000058d1e883f8087d05b808000000508d9d980f0000e8000100005985c0742d89c38b956822000085d275068d95b00f00008995a40f000089c8b9e0e0e0ffe85c010000eb07c7451000000000619da10cd17e00c3608dbe381a0000813ff0bd6e0075708d95402200008b9d5c22000085db744c39d875488b8f9401000039d1745285c9744e898d582200008b01350000008089028b41048942048b41088942088b410c350000008089420c8b41108942108b4114894214899794010000eb14399794010000750c8b8d58220000898f9401000061c3565751526bd05c8db41500050000bf883c6700b90b000000f3a5bfd03c6700b90c000000f3a5833de83c67000075118b555885d2740ac782c0080000000070425a595f5ec33b430475038b03c3508b0b85c9740c518b11ff5208c70300000000588943048b555485d275228d4d6051ff15f441670085c074418d4d705150ff150442670085c0743289455489c2538d8d80000000516a006a046a006a016a006a0168bc0200006a00ff7304ff350cd17e00ffd285c07c038b03c3c70300000000c743040000000031c0c35131d2b916000000f7f185c075014089c76bc00731d2b90a000000f7f185c07501408985b800000089f9f7d931d2e86200000089f931d2e85900000031c989faf7dae84e00000031c989fae8450000008b8db800000089cae8380000008b8db800000089caf7dae8290000008b8db800000089caf7d9e81a0000008b8db8000000f7d989cae80b00000031c931d258e806000000c3b8000000d056898da00000008bb5b400000001d689b5a40000008b3574db7e0001ce89b5a80000008b3578db7e0001d689b5ac000000506a218db5a0000000566affffb5a40f00006a00538b33ff56385ec38b35ecb49e0085f6742a83c6188bbe900100008d86ec0e000039c774168d86780c000039c7740c8d86681d000039c77402eb01c38b35ecb49e0085f60f846f04000083c61881be1005000008b86e000f855c0400008bbe900100008d86ec0e0000bb0100000039c774288d86780c0000bb0200000039c774198d86681d000039c7740fc785300f000001000000e91f04000083bd8c0e0000000f85f60000008d8da00e000051ff15f441670085c00f84fd03000089c2528d8db00e00005152ff15044267005a8985800e0000528d8dc00e00005152ff15044267005a8985840e0000528d8dd00e00005152ff15044267005a8985880e0000528d8d400f00005152ff15044267005a8985900e00008d8d600f00005251ff15f44167005a85c0745b8d8d700f0000525150ff15044267005a8985940e00008d8df00e00005152ff150442670089858c0e000083bd800e000000742883bd840e000000741f83bd880e000000741683bd900e000000740d83bd940e000000740485c07519c7858c0e000000000000c785300f000002000000e91c030000ff958c0e00008d8d380f0000c701000000005150ff95900e0000ff95940e00003b85380f0000740fc785300f000003000000e9e5020000c785300f000004000000c785340f000000000000a174db7e00d1e88985280f0000a178db7e00d1e889852c0f00008d8d700e000051ff95800e000031c08985200f00008985240f000083bd680e00000075248b85700e00002b85280f00008985200f00008b85740e00002b852c0f00008985240f0000c785680e000000000000ffb52c0f0000ffb5280f0000ff95840e0000c785640e00000100000068c0000000ff95880e00005068dc000000ff95880e00005909c825008000008b8dd80f00008985d80f000085c0741085c9750c89f98b07ff5004e8170f0000f30f2a85200f0000f30f2a8d240f0000e87c0e0000f30f5985100f0000f30f598d100f000083fb010f8510010000f30f108dac220000f30f598dd00f0000f30f10160f57db0f2fd3761ef30f10daf30f599d140f0000f30f5ec3f30f5995180f0000f30f5ecaeb060f57c00f57c9f30f1186a8010000f30f118eb80100006a536a57e8df0100008d85a4220000e8520e0000f30f1186ac0100000f57c0f30f1186bc010000f30f10160f57db0f2fd30f8688000000f30f5995180f00008b860c05000085c07476f30f1086ac010000f30f59c2f30f584720f30f5800f30f5f85e00f0000f30f5d85e40f0000f30f5c00f30f5c4720f30f5ec2f30f1186ac010000f30f1086b8010000f30f59c2f30f584748f30f584004f30f5f85e80f0000f30f5d85ec0f0000f30f5c4004f30f5c4748f30f5ec2f30f1186b8010000c3f30f1097300200000f57db0f2fd3760af30f5ec2f30f5ecaeb12f30f59851c0f0000f30f598d1c0f0000eb30f30f10d9f30f59daf30f589f68020000f30f5d9d900f0000f30f5f9d940f0000f30f5c9f68020000f30f5edaf30f10cbf30f1186a8010000f30f118eac0100000f57c0f30f1186c40100006a576a53e8a80000008d8598220000e81b0d0000f30f1186b00100006a446a41e88c0000008d859c220000e8ff0c0000f30f1186b40100006a206a11e8700000008d85a0220000e8e30c0000f30f1186b8010000c3c785680e00000100000083bd640e0000007448c785640e000000000000e8eb0c00008b755885f6743231c08986a80100008986ac0100008986b00100008986b40100008986b80100008986bc0100008986c00100008986c4010000c35331dbff74240cff95880e0000660985340f000066a90080740143ff742408ff95880e000066a9008074014bf30f2ac35bc208009c60e8000000005d81ed2e1d0000e8e0faffff619d68001e5f00c39c60e8000000005d81ed491d0000e8c5faffff619d68e03f5f00c39c60e8000000005d81ed641d00008b4d0885c97414518b11ff5208c7450800000000c7450c000000008b8d980f000085c9741a518b11ff5208c785980f000000000000c7859c0f000000000000619d6820125900c3'
+$CycleSize = 0x4000; $CycleDraw = 0x1000; $CycleLost = 0x1d5d; $CycleRot = 0x1d27; $CycleFree = 0x1d42
 # the block's second code area (constants, then code): the smoothing of the steerable cameras and the blend between cameras
 $CycleCode2 = '0000803f000040400000803ecdcccc3dbd3786350000803d0000000000000000ffffffffffffffffffffffff000000005175657279506572666f726d616e6365436f756e746572005175657279506572666f726d616e63654672657175656e63790000000000000000000000000000000000803f000000000000803f00000000000000000000803f00000000000000000000803f00000000000080bf00000000f30f1095002800000f57db0f2f1873427a40f30f10260f2fe376370f2fa508280000772ed906d830d9e0d9eadec9d9c0d9fcdce9d9c9d9f0d9e8dec1d9fdddd9d9e8dee1d99db4220000f30f1095b4220000c3f30f58000f28d8f30f59c2f30f5cd80f28e3f30f59e40f2fa5102800007307f30f58c30f57dbf30f1118c38d8584220000e877fffffff30f1195b02200008d8580220000e864ffffff8d8590220000e8acfffffff30f1185a82200000f28c18d8594220000e896fffffff30f1185ac2200000f28c8f30f1085a8220000c3f30f1095b02200000f28e8f30f5c00f30f59c2f30f58000f28ddf30f5cd8f30f59db0f2f9d1028000073030f28c5f30f1100c35031c089859022000089859422000089859822000089859c2200008985a02200008985a422000058c3508b86300200008b8486340200003b85f022000074128985e8220000c785ec2200007800000058c3c785e422000001000000c785e82200000000000058c30f28da0fc6db55f30f58da0f12d2f30f58d3c30f5cc80f59ce0f58c1c35331dbf30f1000f30f59049af30f104804f30f594c9a04f30f58c1f30f104808f30f594c9a08f30f58c1f30f11041983c30483fb0c72cc5bc35331dbf30f1000f30f59041af30f104804f30f594c1a10f30f58c1f30f104808f30f594c1a20f30f58c1f30f11041983c30483fb0c72cc5bc3c785d82200000000000083bdb82200000075528d85600f000050ff15f441670085c00f84bd00000089c78d8d482800005157ff150442670085c00f84a50000008d8dc022000051ffd08d8d302800005157ff150442670085c00f84860000008985b82200008d85c822000050ff95b82200008b85c82200008b95cc2200008b8dd02200008b9dd42200008985d02200008995d422000089cf09df744929c819da753785c078338985c8220000db85c8220000dfadc0220000def9d99dd8220000f30f1085d8220000f30f5d850c280000f30f1185d8220000c38b850c2800008985d8220000c3a1ecb49e0085c00f84fe04000083c01839f00f85f3040000a110ce7e003b0514ce7e00750a83f827741283f81c740d833d00b89d00000f84cf0400000f57c90f2f8d882200000f83a50400000f8a9f040000e8c3feffff83bdb8220000000f848d0400008bbe8401000085ff0f847f04000089f98b07ff505c89c38b96c801000085d20f846804000081c25c1300000f10bd202800003bbdf0220000741d89bdf02200003bbde8220000745ac785e022000000000000e9c300000083bde422000000754283bde8220000007412ff8dec2200007f0ac785e82200000000000083bde0220000000f8492000000f30f1085dc220000f30f5885d8220000f30f1185dc220000eb78c785e422000000000000c785e82200000000000083bdf422000000745b31c90f10140a0f54d70f59d2e857fdfffff30f5c9500280000f30f59d20f2f951428000077357a3383c11083f93072d256578db5002300008dbd40230000b910000000f3a55f5ec785dc22000000000000c785e0220000010000000f10020f1185803f00000f1042100f1185903f00000f1042200f1185a03f00000f108250edffff0f54c70f1185b03f00008d95803f00000f10020f54c70f104a100f54cf0f58c10f104a200f54cf0f58c10f104a300f54cf0f58c10f57c90f59c10f28d0e8a4fcffff0f2ed10f8a010300000f1042200f54c70f5985702800000f28d00f59d2e882fcffff0f2f95102800000f86db020000f30f51d20fc6d2000f5ec20f1185e02700000f108d802800000f118dd02700000f28c80fc6c9c60f598d902800000f10120f54d70f59d1e839fcffff0f57db0f2fd373060f5cd90f28cb0f118dc02700000f1042300f1185f02700008d95c02700000f1043300f54c70f1185802300000f104b6c0f54cf0f5cc80f28d10f59d2e8f0fbffff0f2f95102800000f8649020000f30f51d2f30f1195b02300000fc6d2000f5eca0f118d902300000f1083200100000f54c70f1185a02300008b83780100008985b423000083bde0220000000f8497010000f30f10b5dc220000f30f5eb5882200000f2fb5002800000f83700100000f28c6f30f58c0f30f108d04280000f30f5cc8f30f59cef30f59f10fc6f6008d85402300008d8dd0230000e8a8fbffff0f1085d02300000f54c70f104a300f54cf0f58c10f108d80230000e845fbffff0f1185802300008d8550230000e876fbffff0f1085d02300000f54c70f108d90230000e81dfbffff0f28d00f59d2e8fffaffff0f2f95102800007612f30f51d20fc6d2000f5ec20f1185902300008d8560230000e82ffbffff0f1085d02300000f54c70f108da0230000e8d6faffff0f1185a02300000f1085702300000f108db0230000e8bcfaffff0f1385b0230000f30f1085b02300000fc6c0000f108d902300000f59c80f1085802300000f58c80f118dc02300000f1095a02300000f58d10f58d0e869fafffff30f5895b42300000f57dbf30f59d30f2ed30f8ab70000000f1343300f12c0f30f1143380f134b6c0f12c9f30f114b740f1085a02300000f1383200100000f12c0f30f1183280100008b85b4230000898378010000eb0ac785e0220000000000000f1085802300000f104a300f54cf0f5cc10f1185d02300008d85d02300008d8d00230000e8fcf9ffff8d85902300008d8d10230000e8ebf9ffff8d85a02300008d8d20230000e8daf9ffff8b85b02300008985302300008b85b4230000898534230000c785f422000001000000c331c08985f42200008985e02200008985e42200008985e8220000c3ff742404b890165f00ffd09c60e8000000005d81ed9e300000e8d6faffff619dc20400'
 $CycleCode2At = 0x2800; $CycleBlend = 0x308c
@@ -978,6 +978,8 @@ public static class Sr3Pad {
     [StructLayout(LayoutKind.Sequential)] public struct XState { public uint Packet; public ushort Buttons; public byte LT, RT; public short LX, LY, RX, RY; }
     [DllImport("xinput1_4.dll")] public static extern int XInputGetState(int index, ref XState state);
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+    [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vk);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
 }
 '@
     }
@@ -1005,6 +1007,7 @@ public static class Sr3Pad {
         $classicFile = Join-Path (Split-Path -Parent $gameExe) 'Main_release\tracks\_SR3Extras\classic_mode.txt'
         if (Test-Path -LiteralPath $classicFile) { $t = ([IO.File]::ReadAllText($classicFile)).Trim(); if ($t -match '^-?\d+$') { $classicVal = [int]$t } }
         $dirNow = 's'; $wasDown = $false; $wasMenu = $false; $deep = $false; $showing = $false; $shown = ''; $timesNow = ''
+        $keysDown = @{}; $labelUntil = [datetime]::MinValue; $labelLines = @('', '')
         while (-not $game.HasExited) {
             $g = [Sr3Mem]::Read($h, 0x9D6E3C, 1)
             if ($null -eq $g) { break }
@@ -1041,7 +1044,9 @@ public static class Sr3Pad {
             # tracks\_SR3Extras\classic_mode.txt; until then the text shows on all three.
             $modeVal = Read-GameInt $h ($base + 0x2278)
             if ($mode -and $modeVal -ne -1) { if ($modeVal -ne $modeSeen) { Log "Alternative tracks: first menu is on entry $modeVal."; $modeSeen = $modeVal } ; $modeLast = $modeVal }
-            if ($name -eq $ClassicSlot -and $nameWas -and $nameWas -ne $ClassicSlot -and $null -ne $modeLast -and $classicVal -ne $modeLast) {
+            # (learnt once: a value already kept is never overwritten. Menus gone through quickly, as a script does, can leave the poll
+            # without the last steps, and on 2026-10-14 such a run turned Classic = 2 into 0 and the Classic popup went away)
+            if ($name -eq $ClassicSlot -and $nameWas -and $nameWas -ne $ClassicSlot -and $null -ne $modeLast -and $null -eq $classicVal) {
                 $classicVal = $modeLast; Log "Alternative tracks: Classic is entry $classicVal of the first menu."
                 try { [IO.File]::WriteAllText($classicFile, "$classicVal") } catch { }
             }
@@ -1116,7 +1121,30 @@ public static class Sr3Pad {
             }
             if ($script:RaceExit) { Step-RaceExit $h (Get-Date) }
             Show-WatchdogNews
-            if ($mode) {
+            if ($script:Handling -and $script:Handling.Flavors.Count -and [Sr3Pad]::GetForegroundWindow() -eq [IntPtr][long](Read-GamePtr $h $GameWindowVA)) {     # the handling keys (Set-Handling)
+                foreach ($vk in $HandlingKeyCodes) {
+                    $dn = ([Sr3Pad]::GetAsyncKeyState($vk) -band 0x8000) -ne 0
+                    if ($dn -and -not $keysDown[$vk]) {
+                        $car = Get-KeyCar $h $base $menu; $lines = $null
+                        if (-not $car) { $lines = @('No car yet', 'pick one on the car select') }
+                        elseif ($HandlingKeys.ContainsKey($vk)) { $lines = Set-CarHandlingLive $h $car $HandlingKeys[$vk] }
+                        elseif ($SteerKeys.ContainsKey($vk)) { $lines = Set-SteerLive $h $car $SteerKeys[$vk] (-not $menu) }
+                        else { $lines = Show-CarHandling $h $car }
+                        if ($lines) { $labelLines = $lines; $labelUntil = (Get-Date).AddSeconds(2.5) }
+                    }
+                    $keysDown[$vk] = $dn
+                }
+            }
+            if ($labelUntil -gt (Get-Date)) {                         # a handling key's label, over everything else for 2.5 s
+                $lt = $labelLines -join '|'
+                if ($lt -ne $shown) { [Sr3Mem]::Write($h, $text, (Str $labelLines[0] 48), $true); [Sr3Mem]::Write($h, $text + 0x80, (Str $labelLines[1] 64), $true); $shown = $lt }
+                [Sr3Mem]::Write($h, $base + 0x50, ([BitConverter]::GetBytes([int]$text)), $true)
+                [Sr3Mem]::Write($h, $base + 0xE60, ([BitConverter]::GetBytes([uint32]4288479034)), $true)
+                [Sr3Mem]::Write($h, $base + 0x2268, ([BitConverter]::GetBytes([int]($text + 0x80))), $true)
+                [Sr3Mem]::Write($h, $base + 0xFA0, ([BitConverter]::GetBytes([int]1)), $true)
+                [Sr3Mem]::Write($h, $base + 0x10, ([BitConverter]::GetBytes([int]20)), $true)
+                $showing = $true
+            } elseif ($mode) {
                 $title = 'Classic: ' + $slots[$ClassicSlot][$choice[$ClassicSlot]].Title
                 if ($title -ne $shown) { [Sr3Mem]::Write($h, $text, (Str $title 48), $true); $shown = $title }
                 [Sr3Mem]::Write($h, $base + 0x50, ([BitConverter]::GetBytes([int]$text)), $true)
@@ -1380,8 +1408,10 @@ function Set-DirChar($h, [long]$va, [string]$ch, [string]$what) {
     if ($cur[0] -ne [byte][char]$ch) { [Sr3Mem]::Write($h, $va, [byte[]]@([byte][char]$ch), $true) }
 }
 function Set-Handling($game) {
-    $script:Handling = Read-Handling $script:GameExePath; $script:SteerCave = $null; $script:SteerRateWas = 0
+    $script:Handling = Read-Handling $script:GameExePath; $script:SteerCave = $null; $script:SteerRateWas = 0; $script:CarPathCave = $null
     $cfg = $script:Handling
+    if (-not $cfg) { $cfg = New-HandlingLive $script:GameExePath; $script:Handling = $cfg }      # nothing asked for, but a flavor is built: every car on SEGA's, ready for the keys
+    if ($cfg) { $script:SteerSec = Read-SteerSeconds $cfg }
     $h = [Sr3Mem]::Open($game.Id)
     try {
         $site = [Sr3Mem]::Read($h, $CarPathSite, 5)
@@ -1393,7 +1423,7 @@ function Set-Handling($game) {
         }
         $plan = $cfg.Plan; $fl = $cfg.Flavors
         $one = @($HandlingCarNames | ForEach-Object { $plan[$_] } | Sort-Object -Unique)
-        if ($one.Count -eq 1 -and -not $hooked) {
+        if ($one.Count -eq 1 -and -not $hooked -and -not $fl.Count) {   # (with a flavor built the per-car routine goes in, so the keys can change a car)
             $ch = 's'; if ($one[0] -ne 'sr3') { $ch = $fl[$one[0]].Digit; Log "Handling: every known car on flavor $($one[0]) (Main_release\car$ch)." }
             Set-DirChar $h $CarDirSite $ch 'Handling (known cars)'
         } else {
@@ -1412,6 +1442,7 @@ function Set-Handling($game) {
                     [Sr3Mem]::Write($h, $cave + 8 + 12 * $i, [byte[]]@([byte]$b), $true)
                 }
                 Log ('Handling per car: ' + (($HandlingCarNames | ForEach-Object { "$_ $($plan[$_])" }) -join ', ') + '.')
+                $script:CarPathCave = $cave
             }
         }
         $added = @($plan.Keys | Where-Object { $HandlingCarNames -notcontains $_ })
@@ -1425,8 +1456,124 @@ function Set-Handling($game) {
         $gch = 's'
         if ($grip.Count) { $gch = $fl[$grip[0]].Digit; if ($grip.Count -gt 1) { Log "Handling: $($grip -join ' and ') each have a grip file; one is read per race: $($grip[0])'s." } }
         Set-DirChar $h $GripDirSite $gch 'Handling (grip file)'
-        if (@($used | Where-Object { $fl[$_].Steer -gt 0 }).Count) { $script:SteerCave = Install-SteerReturn $h }
+        if ($fl.Count -or @($script:SteerSec.Values | Where-Object { $_ -gt 0 }).Count) { $script:SteerCave = Install-SteerReturn $h }      # (in place whenever the keys may want it; its rate is 0 = off otherwise)
+        if ($fl.Count) { Log ('Handling keys (game window in front): 1 / 2 / 3 = ' + (($FlavorTitles.Keys | ForEach-Object { $FlavorTitles[$_] + $(if ($_ -ne 'sr3' -and -not $fl.ContainsKey($_)) { ' (not built)' } else { '' }) }) -join ' / ') + ' for the highlighted car (car select) or your car; 4 / 6 = steering return -/+ 0.05 s, 5 = off / on, 0 = show.') }
     } catch { Log "Handling: $($_.Exception.Message)" } finally { [Sr3Mem]::Close($h) }
+}
+# Live handling keys (the owner, 2026-10-14: "Do A and A+, assign to num keys. Live labels for live value changes (camlab style)").
+# While the game window is in front: 1 / 2 / 3 (number row or keypad) = SEGA Rally 3's own handling / SEGA Rally Championship's / Realism
+# for one car: on the car select the highlighted one (camera block + 0x227C, CARSEL), anywhere else the player's car. It takes effect at
+# that car's next race load (its flag in the per-car routine; the added cars' path character; the grip file's character) and is written
+# to handling.json. 4 / 6 = that car's handling's steering return 0.05 s shorter / longer (0 = off, at most 0.60 s), 5 = off / back on:
+# in a race it changes at once. 0 = show what the car has. Every key shows a label (the camera block's popup, as the camera names do).
+$HandlingKeys = @{ 0x31 = 'sr3'; 0x32 = 'src'; 0x33 = 'realism'; 0x61 = 'sr3'; 0x62 = 'src'; 0x63 = 'realism' }
+$SteerKeys = @{ 0x34 = -0.05; 0x36 = 0.05; 0x64 = -0.05; 0x66 = 0.05; 0x35 = 0.0; 0x65 = 0.0 }   # 0 = off / back on
+$InfoKeys = @(0x30, 0x60)
+$CarTitles = @{ C4 = 'Citroen C4 WRC'; RSFocus = 'Ford Focus RS WRC 07'; SubaruImpreza = 'Subaru Impreza WRC2008'; SX4 = 'Suzuki SX4 WRC'; MitsubishiEvo = 'Mitsubishi Lancer Evolution X'; '207' = 'Peugeot 207 Super 2000'; ST205 = 'Toyota Celica ST205'; Delta_HF = 'Lancia Super Delta HF integrale'; Bowler = 'Bowler Nemesis'; Enduro = 'McRae Enduro' }
+function Get-CarTitle([string]$car) { if ($CarTitles.ContainsKey($car)) { return $CarTitles[$car] }; return (Get-Culture).TextInfo.ToTitleCase($car) }      # the labels' names: the menu's
+$HandlingKeyCodes = @($HandlingKeys.Keys) + @($SteerKeys.Keys) + $InfoKeys
+$FlavorTitles = [ordered]@{ sr3 = "SEGA Rally 3's own"; src = 'SEGA Rally Championship'; realism = 'Realism' }
+$DefaultFlavors = [ordered]@{ src = @{ Digit = '1'; Grip = $true; Steer = 0.25 }; realism = @{ Digit = '2'; Grip = $false; Steer = 0.0 } }
+# no handling.json (or nothing on a flavor): the flavors that are built, every car on SEGA's handling; $null when none is built
+function New-HandlingLive([string]$gameExe) {
+    if (-not $gameExe) { return $null }
+    $gameDir = Split-Path -Parent $gameExe; $fl = @{}
+    foreach ($k in $DefaultFlavors.Keys) {
+        $v = $DefaultFlavors[$k]; $dir = Join-Path $gameDir "Main_release\car$($v.Digit)"
+        if (@(Get-ChildItem -LiteralPath $dir -Filter '*_data.sbf' -ErrorAction SilentlyContinue).Count) {
+            $fl[$k] = @{ Name = $k; Digit = $v.Digit; Dir = $dir; Grip = ($v.Grip -and (Test-Path -LiteralPath (Join-Path $gameDir "SurfacePairEffect$($v.Digit)\surfacepairdata_xdata.sbf"))); Steer = $v.Steer }
+        }
+    }
+    if (-not $fl.Count) { return $null }
+    $plan = @{}; foreach ($c in $HandlingCarNames) { $plan[$c] = 'sr3' }
+    foreach ($f in @(Get-ChildItem -LiteralPath (Join-Path $gameDir 'Main_release\cars') -Filter '*gravel_data.sbf' -ErrorAction SilentlyContinue)) {
+        $n = $f.Name -replace '(?i)gravel_data\.sbf$', ''; if ($HandlingCarNames -notcontains $n) { $plan[$n] = 'sr3' }
+    }
+    return @{ Plan = $plan; Flavors = $fl }
+}
+# each handling's steering return in seconds (handling.json "steer_return_s", SEGA's own included as "sr3"; a flavor that has none: 0)
+function Read-SteerSeconds($cfg) {
+    $s = @{ sr3 = 0.0 }; foreach ($k in $cfg.Flavors.Keys) { $s[$k] = [double]$cfg.Flavors[$k].Steer }
+    try { $j = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'handling.json')) | ConvertFrom-Json; if ($j.flavors -and $j.flavors.sr3 -and $j.flavors.sr3.steer_return_s) { $s.sr3 = [double]$j.flavors.sr3.steer_return_s } } catch { }
+    return $s
+}
+# handling.json as the settings app writes it (default = the handling most of SEGA's ten have, cars = the others)
+function Save-Handling {
+    $cfg = $script:Handling; if (-not $cfg) { return }
+    $known = @($HandlingCarNames | ForEach-Object { $cfg.Plan[$_] })
+    $default = @($known | Group-Object | Sort-Object Count -Descending)[0].Name
+    $cars = [ordered]@{}; foreach ($c in @($cfg.Plan.Keys | Sort-Object)) { if ($cfg.Plan[$c] -ne $default) { $cars[$c] = $cfg.Plan[$c] } }
+    $flv = [ordered]@{}
+    foreach ($k in $DefaultFlavors.Keys) {
+        $v = $DefaultFlavors[$k]; $e = [ordered]@{ digit = $v.Digit; grip_file = [bool]$v.Grip }
+        if ($script:SteerSec[$k] -gt 0) { $e.steer_return_s = [math]::Round($script:SteerSec[$k], 2) }
+        $flv[$k] = $e
+    }
+    if ($script:SteerSec.sr3 -gt 0) { $flv.sr3 = [ordered]@{ steer_return_s = [math]::Round($script:SteerSec.sr3, 2) } }
+    try { [IO.File]::WriteAllText((Join-Path $PSScriptRoot 'handling.json'), ([ordered]@{ version = 1; default = $default; cars = $cars; flavors = $flv } | ConvertTo-Json -Depth 4)) }
+    catch { Log "Handling: handling.json can't be written: $($_.Exception.Message)" }
+}
+# the car library's name of a car id: SEGA's ten by their file names, an added car by its node's LANG_ID_<NAME> (handling.json's name for it)
+function Get-HandlingCarName($h, [int]$id) {
+    if ($id -ge 0 -and $id -lt $HandlingCarNames.Count) { return $HandlingCarNames[$id] }
+    $p = Read-GamePtr $h 0xB2A850; if (-not $p) { return $null }
+    $n = (Read-GamePtr $h ($p + 4)) + 8
+    for ($i = 0; $i -lt 64 -and $n -gt 8; $i++) {
+        if ((Read-GameInt $h ($n + 4)) -eq $id) { return (Get-AddedCarName $h $n) }
+        $n = Read-GamePtr $h $n
+    }
+    return $null
+}
+function Get-AddedCarName($h, [long]$node) {
+    $s = Read-GameString $h ($node + 0x40) 32
+    if ($s -notmatch '^[A-Za-z0-9_]+$') { $q = Read-GamePtr $h ($node + 0x40); if ($q) { $s = Read-GameString $h $q 32 } }
+    $s = $s -replace '^(?i)LANG_ID_', ''
+    foreach ($k in @($script:Handling.Plan.Keys)) { if ($k -ieq $s) { return $k } }
+    return $s.ToLower()
+}
+# the car a key is for: the highlighted one on the car select, else the player's car (its library node, set on the car select)
+function Get-KeyCar($h, [long]$base, [bool]$menu) {
+    if ($menu) { $id = Read-GameInt $h ($base + 0x227C); if ($id -ge 0) { return (Get-HandlingCarName $h $id) } }
+    $node = Read-GamePtr $h (0x9DBDA0 + 0xC); if (-not $node) { return $null }
+    return (Get-HandlingCarName $h (Read-GameInt $h ($node + 4)))
+}
+# a car on a handling: its flag in the per-car routine (SEGA's ten) or the added cars' character, the grip file's character; handling.json
+function Set-CarHandlingLive($h, [string]$car, [string]$f) {
+    $cfg = $script:Handling; $fl = $cfg.Flavors
+    if ($f -ne 'sr3' -and -not $fl.ContainsKey($f)) { return @("$($FlavorTitles[$f]) isn't built", 'build it in the settings app: Options, Handling...') }
+    $known = $HandlingCarNames -contains $car
+    if ($known) {
+        if (-not $script:CarPathCave) { return @('Handling per car is off', 'see play.log') }
+        $i = [Array]::IndexOf($CarPathOrder, $car); $b = 0; if ($f -ne 'sr3') { $b = [byte][char]$fl[$f].Digit }
+        if ($f -ne 'sr3' -and -not (Test-Path -LiteralPath (Join-Path $fl[$f].Dir "$($car.ToLower())bespoke_data.sbf"))) { return @("$($FlavorTitles[$f]): no file", "$(Get-CarTitle $car) keeps its handling") }
+        [Sr3Mem]::Write($h, $script:CarPathCave + 8 + 12 * $i, [byte[]]@([byte]$b), $true)
+    } else {
+        if ($f -ne 'sr3' -and -not (Test-Path -LiteralPath (Join-Path $fl[$f].Dir "$($car.ToLower())gravel_data.sbf"))) { return @("$($FlavorTitles[$f]): no file", "$(Get-CarTitle $car) keeps its handling") }
+        foreach ($c in @($cfg.Plan.Keys)) { if ($HandlingCarNames -notcontains $c) { $cfg.Plan[$c] = $f } }       # (the added cars share one path pattern)
+        $ch = 's'; if ($f -ne 'sr3') { $ch = $fl[$f].Digit }; Set-DirChar $h $AddedCarDirSite $ch 'Handling (added cars)'
+    }
+    $cfg.Plan[$car] = $f
+    $grip = @($cfg.Plan.Values | Where-Object { $_ -ne 'sr3' -and $fl[$_].Grip } | Sort-Object -Unique)
+    $gch = 's'; if ($grip.Count) { $gch = $fl[$grip[0]].Digit }; Set-DirChar $h $GripDirSite $gch 'Handling (grip file)'
+    Save-Handling; Log "Handling: $car on $f (from its next race)."
+    return @("Handling: $($FlavorTitles[$f])", "$(Get-CarTitle $car), from its next race")
+}
+# a handling's steering return: 4 / 6 shorter / longer, 5 off / back on; at once when the player's car drives that handling
+function Set-SteerLive($h, [string]$car, [double]$step, [bool]$race) {
+    if (-not $script:SteerCave) { return @('Steering return is off', 'see play.log') }
+    $f = $script:Handling.Plan[$car]; if (-not $f) { $f = 'sr3' }
+    $s = [double]$script:SteerSec[$f]
+    if (-not $script:SteerOff) { $script:SteerOff = @{} }
+    if ($step -eq 0) { if ($s -gt 0) { $script:SteerOff[$f] = $s; $s = 0.0 } else { $s = 0.25; if ($script:SteerOff[$f]) { $s = $script:SteerOff[$f] } } }
+    else { $s = [math]::Round([math]::Min(0.6, [math]::Max(0.0, $s + $step)), 2) }
+    $script:SteerSec[$f] = $s; Save-Handling
+    if ($race) { Set-SteerRate $h -Live }
+    $v = if ($s -gt 0) { '{0:0.00} s' -f $s } else { 'off' }
+    return @("Steering return: $v", "$($FlavorTitles[$f]) handling, $(Get-CarTitle $car)" + $(if (-not $race) { ' (from the race)' } else { '' }))
+}
+function Show-CarHandling($h, [string]$car) {
+    $f = $script:Handling.Plan[$car]; if (-not $f) { $f = 'sr3' }; $s = [double]$script:SteerSec[$f]
+    return @("Handling: $($FlavorTitles[$f])", "$(Get-CarTitle $car), steering return " + $(if ($s -gt 0) { '{0:0.00} s' -f $s } else { 'off' }))
 }
 function Install-SteerReturn($h) {
     $a = [Sr3Mem]::Read($h, $SteerSite, 5)
@@ -1443,15 +1590,16 @@ function Install-SteerReturn($h) {
     return $cave
 }
 # at each race start (the menus closing): the steering return of the player's car's flavor, or off
-function Set-SteerRate($h) {
+function Set-SteerRate($h, [switch]$Live) {
     if (-not $script:SteerCave) { return }
     $name = ''; $node = Read-GamePtr $h (0x9DBDA0 + 0xC)
-    if ($node) { $id = Read-GameInt $h ($node + 4); if ($id -ge 0 -and $id -lt $HandlingCarNames.Count) { $name = $HandlingCarNames[$id] } else { $name = Read-GameString $h ($node + 0x40) 32 } }
+    if ($node) { $id = Read-GameInt $h ($node + 4); if ($id -ge 0 -and $id -lt $HandlingCarNames.Count) { $name = $HandlingCarNames[$id] } else { $name = Get-AddedCarName $h $node } }
     $f = 'sr3'; $sec = 0.0
     if ($script:Handling) { foreach ($k in $script:Handling.Plan.Keys) { if ($k -ieq $name) { $f = $script:Handling.Plan[$k] } } }
-    if ($f -ne 'sr3') { $sec = $script:Handling.Flavors[$f].Steer }
+    if ($script:SteerSec -and $script:SteerSec.ContainsKey($f)) { $sec = [double]$script:SteerSec[$f] }
     $rate = 0.0; if ($sec -gt 0) { $rate = 1.0 / ($sec * 60.0) }
-    [Sr3Mem]::Write($h, $script:SteerCave, ([BitConverter]::GetBytes([single]$rate) + [BitConverter]::GetBytes([single]0)), $true)
+    if ($Live) { [Sr3Mem]::Write($h, $script:SteerCave, ([BitConverter]::GetBytes([single]$rate)), $true) }      # a key in a race: the rate only, the car's last value stays
+    else { [Sr3Mem]::Write($h, $script:SteerCave, ([BitConverter]::GetBytes([single]$rate) + [BitConverter]::GetBytes([single]0)), $true) }
     if ($rate -gt 0) { Log ("Steering return: {0} ({1}): {2:0.00} s from full lock to centre." -f $name, $f, $sec) }
     elseif ($script:SteerRateWas -gt 0) { Log "Steering return: off for $name." }
     $script:SteerRateWas = $rate

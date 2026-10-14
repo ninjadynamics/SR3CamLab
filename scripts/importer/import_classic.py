@@ -430,7 +430,8 @@ def stage_build(cfg, variant, name):
             if cfg['game'] == 'src' and cfg.get('crowd', True):
                 import crowd as _cw
                 if str(cfg['course']) in _cw.SRC_TABLES: keep_ = [s_[:3] for s_ in _cw.classic_spots(str(cfg['course']), np.asarray(rd['V'][:, rd['hw']], float), rd['ox'], rd['oz'], zs=BC.ZS)]
-            all_, ri_ = round1995.round_natural(faces + sky + extra, level=lv_, passes=int(cfg.get('round_passes', 2 * 8 ** (lv_ - 1))), log=log, exclude=cfg.get('round_exclude', ()), road=np.asarray(rd['V'], float), slide=bool(cfg.get('round_slide', True)), keep_at=keep_)      # (the limits that keep a strong rounding whole: round1995.py)
+            all_, ri_ = round1995.round_natural(faces + sky + extra, level=lv_, passes=int(cfg.get('round_passes', 2 * 8 ** (lv_ - 1))), log=log, exclude=cfg.get('round_exclude', ()), road=np.asarray(rd['V'], float), slide=bool(cfg.get('round_slide', True)), keep_at=keep_,
+                                                    pin=bool(cfg.get('round_pin', True)), fade=float(cfg.get('round_fade', 0.25 if cfg.get('round_pin', True) else round1995.FADE)))      # (the limits that keep a strong rounding whole: round1995.py; round_pin false + round_fade 0.5 = the R4 of 2026-10-13)
             faces, sky, extra = all_, [], []
             if cfg.get('seal_after_round', False) and cfg.get('fill', True) and cfg.get('seal', True):       # (OFF by default: it took 3 minutes of a 10 minute build and closed 3 places; what holds the road's edge is round1995's apron) ... and sealed again: rounded ground shrinks away from the road and sinks (looking straight down beside the road, the ground had dropped more than 0.3 m
                 import gapfill_weld as _GW2, overlay_bake as _OB2     # in 5 000 places of build BASE), which opened holes along the tarmac where it meets rock and walls (user, 2026-10-08, who had asked for this after Z15R8: "a second poly-fill pass after rounding")
