@@ -32,7 +32,8 @@ not yet exercised; OFFLINE = only run against the emulator / fake-game tests.
 
 ## Menus
 
-- [0x9D6E3C] == 1 while the menus are up. CONFIRMED.
+- [0x9D6E3C] == 1 while the menus are up. CONFIRMED. (It is the number of menu scenes in the list at 0x9D6E38, raised
+  by 0x62DD00 right after the scene is built at the start of a game; [0x9D6E50] = the scene. kb 20, section 10b.)
 - [0x9C442C] = number of entries of the menu on screen: mode 3, cars 6 (10 with every car listed), transmission 2,
   stages 3. Order in the game: mode -> car -> AT/MT -> stage -> race. Each screen has a
   ~15 s timer (turned off by the launcher since 2026-10-14). Stage select = "3 entries, after having seen 6 or 2". CONFIRMED.

@@ -395,7 +395,7 @@ the graph lifetime itself is possible but unnecessary.
 ### Leaving a race: the main state machine *(static)*
 
 The game runs as one state machine, and a race is left through a flag its race update polls.
-Read in the disassembly (2026-10-14); SR3CamLab's long START press uses it (`patch.ps1`,
+Read in the disassembly (2026-10-14); SR3CamLab's long VIEW CHANGE press uses it (a long START until 2026-10-14; `patch.ps1`,
 `Request-RaceExit`), not yet seen in the running game.
 
 | | |

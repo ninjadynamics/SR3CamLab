@@ -1,5 +1,5 @@
-# Runs patch.ps1's START logic without a game: Step-Start (a short press = a screenshot when it is let go, a long one =
-# leave the race) on made-up button and menu timelines, then Request-RaceExit / Step-RaceExit against a fake game memory
+# Runs patch.ps1's START / VIEW CHANGE logic without a game: Step-Start (a short START = a screenshot when it is let go,
+# VIEW CHANGE held = leave the race) on made-up button and menu timelines, then Request-RaceExit / Step-RaceExit against a fake game memory
 # that plays the game's part (the race update taking the flag, the states that follow). Same method as switch_mocktest.ps1:
 # the script is cut before its launch part and the game's memory is a dictionary. Counts on the last line.
 $src = Get-Content (Join-Path $PSScriptRoot '..\patch.ps1') -Raw
@@ -32,42 +32,49 @@ function Check([string]$what, [bool]$ok, [string]$got) {
     '  {0} {1}{2}' -f $v, $what, $(if ($got) { ": $got" } else { '' })
 }
 
-# ---- Step-Start on timelines: ticks of 15 ms like Watch-Tracks; START is down inside the press windows, the menus are up
-# inside the menu windows. Prints what came out and when.
-function Timeline([double]$end, $presses, $menus) {
+# ---- Step-Start on timelines: ticks of 15 ms like Watch-Tracks; START is down inside the press windows, VIEW CHANGE inside
+# the view windows, the menus are up inside the menu windows. Prints what came out and when.
+function Timeline([double]$end, $presses, $menus, $views = @()) {
     $s = New-StartState; $t0 = [datetime]'2026-10-14 12:00:00'; $out = @()
     for ($ms = 0; $ms -le $end * 1000; $ms += 15) {
         $t = $ms / 1000.0
         $down = [bool](@($presses | Where-Object { $t -ge $_[0] -and $t -lt $_[1] }).Count)
+        $view = [bool](@($views | Where-Object { $t -ge $_[0] -and $t -lt $_[1] }).Count)
         $menu = [bool](@($menus | Where-Object { $t -ge $_[0] -and $t -lt $_[1] }).Count)
-        foreach ($a in (Step-Start $s $down $menu $t0.AddMilliseconds($ms))) { $out += ('{0}@{1:0.00}' -f $a, $t) }
+        foreach ($a in (Step-Start $s $down $view $menu $t0.AddMilliseconds($ms))) { $out += ('{0}@{1:0.00}' -f $a, $t) }
     }
     return ,$out
 }
 function Near($out, [string]$act, [double]$at) { return [bool](@($out | Where-Object { $_ -match "^$act@" -and [Math]::Abs([double]($_ -split '@')[1] - $at) -le 0.031 }).Count) }
-"1. START, short and long presses (hold for the exit: $StartHoldSeconds s)"
+"1. START (a picture) and VIEW CHANGE held (the exit: $StartHoldSeconds s)"
 $o = Timeline 6 @(,@(2.0, 2.3)) @(,@(0, 1))
-Check 'short press in a race: one picture when START is let go (2.3 s), saved 1.5 s later' ($o.Count -eq 2 -and (Near $o 'grab' 2.3) -and (Near $o 'save' 3.8)) ($o -join ' ')
+Check 'short START in a race: one picture when START is let go (2.3 s), saved 1.5 s later' ($o.Count -eq 2 -and (Near $o 'grab' 2.3) -and (Near $o 'save' 3.8)) ($o -join ' ')
 $o = Timeline 6 @(,@(2.0, 4.0)) @(,@(0, 1))
-Check 'long press in a race: the exit, once, at 1.2 s of the hold; no picture' ($o.Count -eq 1 -and (Near $o 'exit' 3.2)) ($o -join ' ')
-$o = Timeline 14 @(,@(2.0, 12.0)) @(,@(0, 1))
-Check 'held for 10 s: still one exit' ($o.Count -eq 1 -and (Near $o 'exit' 3.2)) ($o -join ' ')
-$o = Timeline 6 @(@(1.0, 1.2), @(1.5, 3.5), @(4.0, 5.5)) @(,@(0, 6))
-Check 'presses while the menus are up (short, long, longer): nothing' ($o.Count -eq 0) ($o -join ' ')
-$o = Timeline 6 @(,@(2.0, 4.5)) @(,@(0, 3))
-Check 'a press that began in the menus and is held into the race: nothing' ($o.Count -eq 0) ($o -join ' ')
-$o = Timeline 4 @(,@(1.0, 1.1)) @()
+Check 'START held 2 s: nothing (no picture, no exit: the exit is on VIEW CHANGE now)' ($o.Count -eq 0) ($o -join ' ')
+$o = Timeline 6 @(,@(2.0, 3.1)) @(,@(0, 1))
+Check 'START held just under the hold time (1.1 s): a picture' ($o.Count -eq 2 -and (Near $o 'grab' 3.1)) ($o -join ' ')
+$o = Timeline 6 @() @(,@(0, 1)) @(,@(2.0, 4.0))
+Check 'VIEW CHANGE held in a race: the exit, once, at 1.2 s of the hold; no picture' ($o.Count -eq 1 -and (Near $o 'exit' 3.2)) ($o -join ' ')
+$o = Timeline 14 @() @(,@(0, 1)) @(,@(2.0, 12.0))
+Check 'VIEW CHANGE held for 10 s: still one exit' ($o.Count -eq 1 -and (Near $o 'exit' 3.2)) ($o -join ' ')
+$o = Timeline 6 @() @(,@(0, 1)) @(@(2.0, 2.2), @(3.0, 4.1))
+Check 'VIEW CHANGE short (0.2 s) and just under the hold time (1.1 s): nothing (the game''s camera change only)' ($o.Count -eq 0) ($o -join ' ')
+$o = Timeline 6 @(@(1.0, 1.2), @(1.5, 3.5)) @(,@(0, 6)) @(@(2.0, 2.2), @(3.0, 5.5))
+Check 'presses of both while the menus are up (short, long): nothing' ($o.Count -eq 0) ($o -join ' ')
+$o = Timeline 6 @() @(,@(0, 3)) @(,@(2.0, 4.5))
+Check 'a VIEW CHANGE hold that began in the menus and goes on into the race: nothing' ($o.Count -eq 0) ($o -join ' ')
+$o = Timeline 4 @(,@(1.0, 1.1)) @() @(,@(1.5, 3.5))
 Check 'before the menus were ever up (attract after launch): nothing' ($o.Count -eq 0) ($o -join ' ')
 $o = Timeline 9 @(@(2.0, 2.2), @(2.6, 2.8), @(3.5, 3.7), @(4.5, 4.7)) @(,@(0, 1))
-Check 'presses 0.6, 1.5 and 2.5 s after a picture: only the last one takes one (2 s apart)' ($o.Count -eq 4 -and (Near $o 'grab' 2.2) -and (Near $o 'save' 3.7) -and (Near $o 'grab' 4.7) -and (Near $o 'save' 6.2)) ($o -join ' ')
+Check 'START presses 0.6, 1.5 and 2.5 s after a picture: only the last one takes one (2 s apart)' ($o.Count -eq 4 -and (Near $o 'grab' 2.2) -and (Near $o 'save' 3.7) -and (Near $o 'grab' 4.7) -and (Near $o 'save' 6.2)) ($o -join ' ')
 $o = Timeline 6 @(,@(2.0, 2.1)) @(@(0, 1), @(2.5, 6))
 Check 'START began a game (the menus come up 0.4 s later): the picture is dropped, not saved' ($o.Count -eq 2 -and (Near $o 'grab' 2.1) -and (Near $o 'drop' 2.5)) ($o -join ' ')
-$o = Timeline 7 @(,@(2.0, 6.0)) @(@(0, 1), @(4.0, 7))
-Check 'a long press that left the race: the menus come up while START is still held, nothing more on letting go' ($o.Count -eq 1 -and (Near $o 'exit' 3.2)) ($o -join ' ')
-$o = Timeline 8 @(@(2.0, 2.2), @(2.5, 4.0)) @(,@(0, 1))
-Check 'a picture, then a long press while it is held back: the picture is saved, and the race left' ($o.Count -eq 3 -and (Near $o 'grab' 2.2) -and (Near $o 'exit' 3.7) -and (Near $o 'save' 3.7)) ($o -join ' ')
-$o = Timeline 6 @(,@(2.0, 3.1)) @(,@(0, 1))
-Check 'a press just under the hold time (1.1 s): a picture, no exit' ($o.Count -eq 2 -and (Near $o 'grab' 3.1)) ($o -join ' ')
+$o = Timeline 7 @() @(@(0, 1), @(4.0, 7)) @(,@(2.0, 6.0))
+Check 'a VIEW CHANGE hold that left the race: the menus come up while it is still held, nothing more on letting go' ($o.Count -eq 1 -and (Near $o 'exit' 3.2)) ($o -join ' ')
+$o = Timeline 8 @(,@(2.0, 2.2)) @(,@(0, 1)) @(,@(2.5, 4.0))
+Check 'a picture, then VIEW CHANGE held while it is held back: the picture is saved, and the race left' ($o.Count -eq 3 -and (Near $o 'grab' 2.2) -and (Near $o 'exit' 3.7) -and (Near $o 'save' 3.7)) ($o -join ' ')
+$o = Timeline 8 @(,@(2.5, 2.7)) @(,@(0, 1)) @(,@(2.0, 4.0))
+Check 'START pressed during a VIEW CHANGE hold: the picture and the exit' ($o.Count -eq 3 -and (Near $o 'grab' 2.7) -and (Near $o 'exit' 3.2)) ($o -join ' ')
 
 # ---- the exit against a fake game ----
 $h = [IntPtr]::Zero; $t0 = [datetime]'2026-10-14 12:00:00'
@@ -145,6 +152,19 @@ Request-RaceExit $h $t0
 Steps 0.02 6 { param($t) if ($t -ge 0.04 -and (Flag)) { [MockRace]::PutI(0x9DB4F4, 0); [MockRace]::PutI(0x7ECE10, 0x2A); [MockRace]::PutI(0x7ECE14, 0x2A) }
                             if ([MockRace]::I(0x9DB498) -eq 1 -and $t -gt 1) { [MockRace]::PutI(0x7ECE10, 0x1D); [MockRace]::PutI(0x7ECE14, 0x1D) } }   # the teardown waits while the fade runs
 Check 'Classic, a fade that never finishes: let go after 4 s, the game goes on' (($script:Logged -join ' ') -match 'fade to black did not finish' -and ($script:Logged -join ' ') -match 'done' -and $null -eq $script:RaceExit) ($script:Logged -join ' | ')
+
+"3. the camera the VIEW CHANGE hold stepped to is put back (fake camera manager and block)"
+[MockRace]::M.Clear(); [MockRace]::Writes.Clear()
+$mgr = 0x32000000; $blk = 0x33000000
+[MockRace]::PutI(0x9EB4EC, $mgr - 0x18); [MockRace]::PutI($mgr + 0x22C, 4); [MockRace]::PutI($mgr + 0x230, 2)
+for ($i = 0; $i -lt 4; $i++) { [MockRace]::PutI($mgr + 0x234 + 4 * $i, $mgr + 0x510 + 0x100 * $i) }
+[MockRace]::PutI($mgr + 0x190, $mgr + 0x710); [MockRace]::PutI($blk + 0x1C, 2); [MockRace]::PutI($blk + 0xB0, 0)
+Undo-ViewStep $h $blk
+Check 'index 2 -> 1: the camera asked for, the index, the block''s last index cleared, no name shown' ([MockRace]::I($mgr + 0x190) -eq ($mgr + 0x610) -and [MockRace]::I($mgr + 0x230) -eq 1 -and [MockRace]::I($blk + 0x1C) -eq -1 -and [MockRace]::I($blk + 0xB0) -eq 1) ('cam +0x{0:X}, index {1}, last {2}, quiet {3}' -f ([MockRace]::I($mgr + 0x190) - $mgr), [MockRace]::I($mgr + 0x230), [MockRace]::I($blk + 0x1C), [MockRace]::I($blk + 0xB0))
+Check 'the camera goes in before the index (as the block does it)' (([MockRace]::Writes -join ' ') -eq ('{0:X}+4 {1:X}+4 {2:X}+4 {3:X}+4' -f ($mgr + 0x190), ($blk + 0xB0), ($mgr + 0x230), ($blk + 0x1C))) ([MockRace]::Writes -join ' ')
+[MockRace]::PutI($mgr + 0x230, 0); [MockRace]::PutI($mgr + 0x190, $mgr + 0x510)
+Undo-ViewStep $h $blk
+Check 'index 0 -> the last one (3): the list wraps the way View Change does' ([MockRace]::I($mgr + 0x230) -eq 3 -and [MockRace]::I($mgr + 0x190) -eq ($mgr + 0x810)) "index $([MockRace]::I($mgr + 0x230))"
 
 "START CHECKS: $script:pass passed, $script:fail failed"
 '@

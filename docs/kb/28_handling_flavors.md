@@ -60,6 +60,19 @@ The mu meaning is LIKELY (ordering; in game the traction limit scales with it).
   input bytes: s = (b1 - b0) / 255, 2 x (0.8 s + 0.2 s|s|) clamped to +-1 (full lock at about half the range), times
   (1 - f) + 0.9 f with f = km/h / 120 capped at 1 (stored at + 0x1C), times a per-mode speed table when above 1. No time
   smoothing (VERIFIED, code); 0x448C00 / 0x45A9F0 then set the wheel angles (geometry only).
+- Mode 1 (the TeknoParrot pad), 0x5E0B20, measured in game 2026-10-14 (ST205, pad.py steps, one row per physics step):
+  the pad's two steering bytes (driver + 0x1C84 left, + 0x1C85 right, 0..255 each) follow the stick linearly (0.25 -> 63,
+  0.5 -> 127, 0.75 -> 191, 1.0 -> 253..255; 1 at rest on the left byte). s = (b1 - b0) / 300 (0x6EFCAC), clamped to +-1; the
+  cubic term is multiplied by 0 (no curve); times the lock factor 0.8 - 0.2 x min(mph / 100, 1) (mph = |velocity| x 2.2369;
+  stored at + 0x1C, handed to the vehicle by 0x448CA0); times the car's speed table (`[[0x9DB810] + 24 x [0x9DB944] + 0x18]`,
+  pairs {mph, factor}; [0x9DB944] = 6 with the ST205: 1.5 @ 0, 1.4 @ 10, 1.3 @ 25, 1.2 @ 35, 0.72 @ 45, 0.66 @ 55, 0.62 @ 65,
+  0.58 @ 75, 0.54 @ 90, 0.5 @ 110 mph; entries 1 / 2 (Focus, Impreza) end at 0.33; LIKELY one entry per car id), clamped to
+  +- the table factor. No time smoothing or rate limit: a stick step shows on the next physics step. Then 0x448C00: wheel
+  angle (wheel + 0x190) = value x wheel + 0x184 (0.345 rad for the ST205's fronts) + toe, Ackermann (0x45A9F0); 1.012 at rest
+  gives 0.349 rad (20 deg). So a full stick is full lock at rest but 0.253 (5 deg) above 110 mph; half a stick at 180 km/h is
+  0.127. The tail of 0x5E0B20 (0x5E0E00..0x5E19BD, mode 1 only) works out controls + 0x20 / + 0x24 / + 0x28 (assists, not
+  decoded) and does not touch + 0x18. 0x5CFE90 hands the vehicle brake / accelerator (+0xC / +0x14, swapped in reverse),
+  handbrake (+0x10), steering (+0x18 -> 0x448C00) and the lock factor (+0x1C -> 0x448CA0).
 - The player's objects (sr3_recorder): car records 0x9DBAC8 + 0x1F18 x i, record + 4 = driver (human: vtable 0x6ED0C8, made
   at 0x5E73B0; driver + 0x7E4 = its record); controls = driver + 0x854 (+8 mode, +0xC brake, +0x10 handbrake, +0x14
   accelerator, +0x18 steering, +0x1C lock factor; accelerator / brake VERIFIED in game), input bytes driver + 0x1C84 ([2]
@@ -112,6 +125,35 @@ The mu meaning is LIKELY (ordering; in game the traction limit scales with it).
 | steering return | 0x5CFF32 `call 0x448C00` (the human driver's steering handed to the vehicle in 0x5CFE90, every input mode) -> STEER routine (142 bytes): only for the player's vehicle (ecx = [[0x9DBAC8 + 4] + 0x858], record 0's human driver, vtable 0x6ED0C8; the Classic opponent runs the same code and passes unchanged), toward / across the centre at most RATE per call, outward at once, result to the vehicle only (controls + 0x18 stays raw: mode 1's 0x5E0B20 builds its next value from it, and writing it back held the steering, in game 2026-10-14); RATE = 1 / (s x 60) written at each race start from the player's car (library node [0x9DBDA0 + 0xC], +4 id). A first hook on 0x5D4D10's exits (0x5D4F28 / 0x5D4F31) never ran: with the TeknoParrot pad (input mode 1) the value comes from 0x5E0B20 (in game 2026-10-14) |
 All take effect when the next race loads. A missing folder or car file: that car keeps SEGA's file (Log line).
 
+### One handling per race, the stick 1:1 for SRC (2026-10-14)
+The owner: "Ok, let's give SRC handling a chance, but only if the 'pace' applies to all cars in the race (balance) and you fix
+the under steering with the wheels tracking the analog pad 1:1 (as much as possible) just like SRC".
+- Race-wide flavor (`Sync-RaceFlavor`, every pass of Watch-Tracks): all ten flags of the per-car routine, the added cars'
+  character and the grip file's character are set to the flavor of the player's car (the library node [0x9DBDA0 + 0xC],
+  set when the car select is confirmed, before the gearbox page and the load), so the computer's cars load the same files; a
+  car with no file in the flavor keeps SEGA's. It writes only when the player's car or its flavor changes (the next car
+  select, a handling key). Log at the race start: "Handling: this race on <flavor>, the player's car's (<car>); every car in
+  it loads that handling." The per-car choice in handling.json now means "the handling a race gets when you drive this car".
+  VERIFIED in game: with the ST205 on SRC the Classic opponent (record 1, the Lancia) read 2175 x 1.31 = 2844 Nm (the AI's
+  own torque factor: 870 -> 1138 on SEGA's files), max 921.5 rad/s (8800 rpm) and SRC's four gears 2.855 / 1.465 / 1.276 /
+  1.154 (its own wheel radius), where the old per-car flags left it on SEGA's 870 Nm and six speeds.
+- The opponent on SRC (Classic, Desert '95, the player standing at the start, 40 s from the green light, positions every
+  0.25 s): 1855 m, 168 km/h mean, no reset or jump, height range as on SEGA's files; on SEGA's files 1550 m, 140 km/h.
+  It keeps to the road and runs about 20 % faster, as the player's car does.
+- The stick 1:1 (STEER routine's LINEAR, + 8; handling.json `flavors.<name>.steer_linear`, on for src by default, off for
+  realism; SEGA's own never): the player's value becomes (b1 - b0) / 255 from the two pad bytes, clamped to +-1, so full stick
+  = full lock at any speed, at once; SRC's steering return is 0 (off) by default. Log: "Steering: <car> (src) follows the
+  stick 1:1 ...". Emulated (unicorn): stick 0.5 -> 0.498, full -> +-1.0, LINEAR 0 -> the game's value, the return limit still
+  works on top, other vehicles pass unchanged.
+- Yaw response, the same measure for both games: yaw rate regressed on the stick (|stick| < 0.5, best lag), per speed band.
+  SRC (the owner's Mountain laps, ElSemi; stick = (byte - 127) / 95, the pad's range 32..222): Celica 2.49 (100-140 km/h),
+  2.00 (140-180), 2.05 (180-230, r = 0.87) rad/s per full stick, lag 2 frames; Delta 2.37 / 2.20 / 2.07. SR3, ST205 on SRC,
+  a weave of +-0.2 stick at 0.7 Hz on Desert '95's start straight: SEGA's steering chain 1.13 rad/s per stick (118-153 km/h,
+  r = 0.37, its value 0.305 x stick there); with the stick 1:1 1.95 rad/s per stick (159-221 km/h, r = 0.61; value 0.26
+  x stick was the game's own there). So 1:1 brings the yaw gain to SRC's (2.0-2.1) without a change of the tyre force model;
+  SR3's lag is longer (about 10 physics steps, 0.16 s, against 2 frames in SRC).
+- Not tried: the force models 0 / 1 / 3 (chunk 27 + 8) for the lag; they need their own car files and a race each.
+
 ### Live keys (owner, 2026-10-14: "Do A and A+, assign to num keys. Live labels ... (camlab style)")
 Whenever a flavor is built (Main_release\car1 / car2), the per-car routine and the steering hook go in even with no
 handling.json (every car on SEGA's handling), and while the game window is in front ([0x728CF4] = the foreground window):
@@ -148,7 +190,25 @@ power peak and left the Hornet at 141 km/h and the others at 170-218), the Horne
 (SR3 is 2008, R4 came in 2011). Where real numbers do not fit SR3's model: tyre width is not in SR3's grip (mu x load), real
 ratios are not published, the split field's axle is unknown, several rev limits / peak rpms are estimates (marked in the file).
 
+### Realism at SR3's pace (realism_map.py --pace sr3, the default; 2026-10-14)
+The owner: "add a multiplier that matches the accel and speed with SR3 default". With "pace": "sr3" in the table
+build_flavor.py scales each car's peak torque (and the clutch with it) so that a launch model gives the built car the same
+0-100 + 0-150 km/h as SEGA's own file of that car, and gives a car with a design top speed (the Hornet) SEGA's file's top
+speed at the limiter. The model: torque curve x peak x gear x final drive / wheel radius x 0.55 over the mass plus the wheels'
+and engine's inertia, SEGA's shift points and 0.15 s shifts; fitted to the game: ST205 SEGA 1.36 / 3.24 s to 50 / 100 km/h
+(measured 1.21 / 3.42), SRC test 4 0.67 / 1.48 / 2.49 / 3.30 s to 50 / 100 / 150 / 180 (measured 0.62 / 1.44 / 2.50 /
+3.12). Factors (model): C4 x1.53, Focus x1.59, Impreza x1.56, SX4 x1.50, Evo x1.68, 207 x2.36, ST205 x1.70, Delta x1.41,
+Bowler x2.85, Enduro x2.76, Hornet x1.07 (and its top 265 -> 211 km/h, its SR3 file's). Model 0-100 then 3.0-3.35 s
+against SEGA's 3.20-3.32. `--pace real` gives the earlier numbers (real Nm x 1.2664).
+In game 2026-10-14 (Classic, Mountain R4, full throttle from the start, 0-50 / 0-100 km/h from the first movement; the
+installed build had no trim): ST205 SEGA 1.03 / 3.19 s, Realism 0.98 / 3.31 s (1078 Nm read from memory); Bowler SEGA
+1.05 / 3.59 s, Realism (x2.85, 1498 Nm) 1.09 / 3.12 s, so the model misjudges SEGA's Bowler (it gives it the ST205's time)
+and a measured trim x0.84 (`PACE_TRIM` in realism_map.py, `pace_trim` in the table) brings the Bowler to x2.39 for the next
+build; Hornet Realism (x1.07, 948 Nm, 9000 rpm) 1.74 s to 50 km/h: rear-wheel drive, held by wheelspin, which a torque
+factor cannot make up (the model assumes 4WD traction; SEGA's file for it is 4WD). Not measured yet: the other eight cars and
+the trimmed Bowler.
+
 ## 4. Open
 SR3's own cornering grip and slip curve; the SegaRally force model's behaviour; caching of car / grip files between races;
-the AI's pace on flavored cars (they load the same files); SR2 driving data (Supermodel with an external reader); per-car
+the force models 0 / 1 / 3 for SR3's longer yaw lag; SR2 driving data (Supermodel with an external reader); per-car
 grip for Realism (a free tyre class or a per-car grip field still to be found).

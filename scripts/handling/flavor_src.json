@@ -20,7 +20,8 @@
                       "dirt": ["DryMud", "DampMud", "GrassySwamp"],
                       "sand": ["Sand"]},
            "keep_sr3_ratio": ["Cobbles", "WoodenBridge", "WetTarmac", "WetMud", "Ice", "SnowTarmac", "SnowVolcanicAsh", "10mmSnow", "20mmSnow", "ShallowSnow", "SuperSlush"]},
-  "steer_return_seconds": 0.25,
+  "steer_return_seconds": 0.0,
+  "steering": "the stick 1:1 (launcher STEER routine, LINEAR = 1/255, handling.json steer_linear, on for src by default): full stick = full lock at any speed; measured 2026-10-14: yaw gain 1.95 rad/s per full stick at 160-220 km/h, SRC laps 2.0-2.1 (SEGA chain 1.13 at 135 km/h); return limit off (owner: 1:1 supersedes the 0.25 s spring)",
   "calibration_targets": {"0_100_s": 1.2, "0_200_s_mountain": 5.2, "sustained_lat_g_tarmac": 2.70, "sustained_lat_g_gravel": 2.35,
                           "slip_deg_at_1g": 5.3, "slip_deg_above_1.6g": 9.6}
 }

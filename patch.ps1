@@ -39,9 +39,10 @@
   the cameras you can steer). The view travels from the old camera to the new one (cameraBlend).
   Car rotate cam: mouse left/right orbits, forward/back tilts, W/S zoom in and out.
   The key below Esc (~) resets the car rotate and free cams. Free cams: mouse looks, WASD moves, Space/Ctrl up/down.
-  START in a race: a short press saves a screenshot (..\Screenshots) when you let go; held for
-  1.2 seconds it leaves the race for the game's main menu instead (Step-Start; it runs in the
-  alternative tracks' loop, so with SR3 Extras tracks installed).
+  START in a race: a short press saves a screenshot (..\Screenshots) when you let go, with the
+  camera, the car and the track in it (a PNG text chunk "SR3Lab"). VIEW CHANGE held for 1.2
+  seconds leaves the race for the game's main menu (Step-Start; it runs in the alternative
+  tracks' loop, so with SR3 Extras tracks installed).
     -List                          -> show all profiles
     -ProfilesFile <path>           -> read the profiles from another file (CamLab's Launch
                                       uses this to run unsaved slider values)
@@ -838,31 +839,103 @@ function Set-ShaderTest($h, [string]$gameDir, [string]$slot, [string]$dir) {
     Log ("Shader experiment: effect at 0x{0:X}; wall pixel shader 0x{1:X} replaced by the untextured one 0x{2:X} (read back 0x{3:X}). Imported scenery should show without its pictures." -f $base, [BitConverter]::ToUInt32($a, 0), [BitConverter]::ToUInt32($b, 0), [BitConverter]::ToUInt32($back, 0))
 }
 
-# ---- START in a race: a screenshot, or back to the main menu ----
-# A short press takes a screenshot when START is let go; held for $StartHoldSeconds it leaves the race for the game's main
-# menu instead, and no picture is taken. The game has no flag we know that tells a race from the attract loop, so a race is
-# what follows the menus, and the picture is held back 1.5 s: if the menus come up in that time, START was "begin a game"
-# and the picture is dropped. Pictures are at least 2 s apart, and the file name is shown only after the picture was
-# taken, so it is never in it. Step-Start is the decision alone, apart from the game (tools\start_mocktest.ps1 drives it):
-# it returns what to do now, any of 'grab' (take the picture), 'save' (write the held one), 'drop' (forget it), 'exit'.
+# ---- In a race: START = a screenshot, VIEW CHANGE held = back to the main menu ----
+# A short press of START takes a screenshot when START is let go (held for $StartHoldSeconds or more it does nothing: until
+# 2026-10-14 that hold left the race). VIEW CHANGE held for $StartHoldSeconds leaves the race for the game's main menu (owner,
+# 2026-10-14: "Replace long START to exit with long VIEW CHANGE"); a short press is the game's own camera change, and the
+# camera the hold stepped to is put back when the race is left (Undo-ViewStep). The game has no flag we know that tells a
+# race from the attract loop, so a race is what follows the menus, and the picture is held back 1.5 s: if the menus come up
+# in that time, START was "begin a game" and the picture is dropped. Pictures are at least 2 s apart, and the file name is
+# shown only after the picture was taken, so it is never in it. Step-Start is the decision alone, apart from the game
+# (tools\start_mocktest.ps1 drives it): it returns what to do now, any of 'grab' (take the picture), 'save' (write the held
+# one), 'drop' (forget it), 'exit'. Buttons (TeknoParrot's UserProfiles\SR3.xml): Start = XInput 0x10, View Change = 0x1000.
 $StartHoldSeconds = 1.2
-function New-StartState { return @{ Was = $false; At = [datetime]::MinValue; Armed = $false; Long = $false; Race = $false; WasMenu = $false; HeldAt = $null; ShotAt = [datetime]::MinValue } }
-function Step-Start($s, [bool]$down, [bool]$menu, [datetime]$now) {
+function New-StartState { return @{ Was = $false; At = [datetime]::MinValue; Armed = $false; VWas = $false; VAt = [datetime]::MinValue; VArmed = $false; Long = $false; Race = $false; WasMenu = $false; HeldAt = $null; ShotAt = [datetime]::MinValue } }
+function Step-Start($s, [bool]$down, [bool]$view, [bool]$menu, [datetime]$now) {
     $acts = @()
     if ($s.WasMenu -and -not $menu) { $s.Race = $true }
     if ($null -ne $s.HeldAt) {
         if ($menu) { $s.HeldAt = $null; $s.Race = $false; $acts += 'drop' }                  # that START began a new game
         elseif (($now - $s.HeldAt).TotalSeconds -ge 1.5) { $s.HeldAt = $null; $acts += 'save' }
     }
-    if ($menu) { $s.Armed = $false }                                                       # a press that sees the menus does nothing
-    if ($down -and -not $s.Was) { $s.Armed = $s.Race -and -not $menu; $s.At = $now; $s.Long = $false }
-    elseif ($down -and $s.Armed -and -not $s.Long -and ($now - $s.At).TotalSeconds -ge $StartHoldSeconds) { $s.Long = $true; $acts += 'exit' }
+    if ($menu) { $s.Armed = $false; $s.VArmed = $false }                                  # a press that sees the menus does nothing
+    if ($down -and -not $s.Was) { $s.Armed = $s.Race -and -not $menu; $s.At = $now }
     elseif (-not $down -and $s.Was) {
-        if ($s.Armed -and -not $s.Long -and $null -eq $s.HeldAt -and ($now - $s.ShotAt).TotalSeconds -gt 2) { $s.HeldAt = $now; $s.ShotAt = $now; $acts += 'grab' }
+        if ($s.Armed -and ($now - $s.At).TotalSeconds -lt $StartHoldSeconds -and $null -eq $s.HeldAt -and ($now - $s.ShotAt).TotalSeconds -gt 2) { $s.HeldAt = $now; $s.ShotAt = $now; $acts += 'grab' }
         $s.Armed = $false
     }
-    $s.Was = $down; $s.WasMenu = $menu
+    if ($view -and -not $s.VWas) { $s.VArmed = $s.Race -and -not $menu; $s.VAt = $now; $s.Long = $false }
+    elseif ($view -and $s.VArmed -and -not $s.Long -and ($now - $s.VAt).TotalSeconds -ge $StartHoldSeconds) { $s.Long = $true; $acts += 'exit' }
+    elseif (-not $view) { $s.VArmed = $false }
+    $s.Was = $down; $s.VWas = $view; $s.WasMenu = $menu
     return $acts
+}
+# What a screenshot carries (PNG tEXt chunk "SR3Lab", one line of JSON, read when the picture is grabbed). The view: 0x5A1A70
+# builds it every frame from the camera the frame is drawn from ([mgr + 0x184], whatever its class: the game's, CamLab's
+# chase slots, the debug cameras, a blend) and keeps per local player (block 0x9EB930 + 0x4D0 x [0x9F05F0]): +0 the view
+# matrix (D3DXMatrixLookAtLH), +0x40 its inverse, camera to world, rows right / up / forward / eye, +0x478 the field of
+# view in radians (the camera state's +0x178, the value CamLab's profiles set in degrees). The camera's name is the one the
+# camera block shows (its race-list index, as the block's popup works it out). The car: [mgr + 0x1C8], + 0xAC its place as
+# drawn, + 0x135C its matrix (forward row + 0x20).
+function Read-GameFloats($h, [long]$va, [int]$n) {
+    $b = [Sr3Mem]::Read($h, $va, 4 * $n); if (-not $b -or $b.Length -lt 4 * $n) { return $null }
+    $o = New-Object double[] $n; for ($i = 0; $i -lt $n; $i++) { $o[$i] = [Math]::Round([double][BitConverter]::ToSingle($b, 4 * $i), 4) }
+    return ,$o
+}
+function Get-ShotInfo($h, [long]$base, [string]$track, [string]$dir, [string]$title, [datetime]$at) {
+    $info = [ordered]@{ time = $at.ToString('yyyy-MM-ddTHH:mm:ss.fff'); coords = 'game (y up)' }
+    $pl = Read-GameInt $h 0x9F05F0; if ($pl -lt 0 -or $pl -gt 3) { $pl = 0 }
+    $v = Read-GameFloats $h (0x9EB970 + 0x4D0 * $pl) 16
+    $fov = Read-GameFloats $h (0x9EBDA8 + 0x4D0 * $pl) 1
+    $cam = [ordered]@{ source = 'view matrix 0x9EB970 (the frame''s camera to world)' }
+    if ($v) { $cam.eye = @($v[12], $v[13], $v[14]); $cam.forward = @($v[8], $v[9], $v[10]); $cam.up = @($v[4], $v[5], $v[6]) }
+    if ($fov) { $cam.fov_deg = [Math]::Round($fov[0] * 180 / [Math]::PI, 2) }
+    $mgr = Read-GamePtr $h 0x9EB4EC
+    if ($mgr) {
+        $mgr += 0x18; $drawn = Read-GamePtr $h ($mgr + 0x184); $idx = Read-GameInt $h ($mgr + 0x230)
+        $cam.vtable = '0x{0:X}' -f (Read-GamePtr $h $drawn); $cam.list_index = $idx
+        $nm = ''
+        if ($base -and $idx -ge 0 -and $idx -lt 21 -and $drawn -eq (Read-GamePtr $h ($mgr + 0x234 + 4 * $idx))) {   # the race list's camera (the block's popup naming)
+            $ng = Read-GameInt $h ($base + 0x2260); $ns = Read-GameInt $h ($base + 0x20)
+            if ($idx -eq 0) { $nm = Read-GameString $h ($base + 0x100) 32 }
+            elseif ($idx -gt $ng -and ($idx - $ng) -lt $ns) { $nm = Read-GameString $h ($base + 0x100 + 32 * ($idx - $ng)) 32 }
+            else {
+                $off = $drawn - $mgr; if ($idx -eq (Read-GameInt $h ($base + 0x225C))) { $off = $off -bor 0x80000000 }
+                for ($i = 0; $i -lt $CycleGameCams; $i++) { if ((Read-GamePtr $h ($base + 0x21B0 + 4 * $i)) -eq $off) { $nm = Read-GameString $h ($base + 0x2000 + 32 * $i) 32 } }
+            }
+        }
+        $cam.name = $(if ($nm) { $nm } else { 'not a race-list camera (intro, replay, trackside)' })
+        $car = Read-GamePtr $h ($mgr + 0x1C8)
+        if ($car) { $p = Read-GameFloats $h ($car + 0xAC) 3; $f = Read-GameFloats $h ($car + 0x135C + 0x20) 3; if ($p -and $f) { $info.car = [ordered]@{ pos = @($p[0], $p[1], $p[2]); forward = @($f[0], $f[1], $f[2]) } } }
+    }
+    $info.camera = $cam
+    $info.track = [ordered]@{ name = $track; folder = $(if (-not $track) { '' } elseif ($dir -eq 's') { "tracks\$track" } else { "track$dir\$track" }); title = $title }
+    return ($info | ConvertTo-Json -Compress -Depth 5)
+}
+function Add-PngText([byte[]]$png, [string]$key, [string]$text) {             # a tEXt chunk right after IHDR (8 + 25 bytes)
+    if (-not ('Sr3Png' -as [type])) {
+        Add-Type @'
+public static class Sr3Png {
+  public static byte[] Insert(byte[] png, string key, string text) {
+    var l1 = System.Text.Encoding.GetEncoding(28591);
+    byte[] k = l1.GetBytes("tEXt" + key), t = l1.GetBytes(text), d = new byte[k.Length + 1 + t.Length];
+    System.Array.Copy(k, d, k.Length); System.Array.Copy(t, 0, d, k.Length + 1, t.Length);
+    uint crc = 0xFFFFFFFF;
+    foreach (byte b in d) { crc ^= b; for (int i = 0; i < 8; i++) crc = (crc & 1) != 0 ? 0xEDB88320 ^ (crc >> 1) : crc >> 1; }
+    crc ^= 0xFFFFFFFF;
+    var o = new System.IO.MemoryStream(); int n = d.Length - 4;
+    o.Write(png, 0, 33);
+    o.WriteByte((byte)(n >> 24)); o.WriteByte((byte)(n >> 16)); o.WriteByte((byte)(n >> 8)); o.WriteByte((byte)n);
+    o.Write(d, 0, d.Length);
+    o.WriteByte((byte)(crc >> 24)); o.WriteByte((byte)(crc >> 16)); o.WriteByte((byte)(crc >> 8)); o.WriteByte((byte)crc);
+    o.Write(png, 33, png.Length - 33);
+    return o.ToArray();
+  }
+}
+'@
+    }
+    if ($png.Length -lt 33 -or [Text.Encoding]::ASCII.GetString($png, 12, 4) -ne 'IHDR') { return ,$png }
+    return ,([Sr3Png]::Insert($png, $key, $text))
 }
 # Leaving a race the way the game itself does (FINDINGS.md, "Leaving a race"): the race update (0x5C89D0, every frame on
 # the game's thread) watches [0x9DB4F4]; when it is set it clears it and makes the next state 0x1B (CSR_GameMode::Finish),
@@ -877,11 +950,29 @@ function Step-Start($s, [bool]$down, [bool]$menu, [datetime]$now) {
 $RaceExitFlagVA = 0x9DB4F4; $GameStateVA = 0x7ECE10; $GameModeVA = 0x728598; $FadeVA = 0x9DB490; $GameClockVA = 0x9C4A08
 $ChampStageVA = 0x9DB820; $PlayerPositionVA = 0x9DD61C; $RaceModes = @{ 5 = 'Quick Race'; 6 = 'Championship'; 7 = 'Classic race' }
 $script:RaceExit = $null
+# The press that began a VIEW CHANGE hold was also the game's View Change: one step forward in the race camera list
+# (mgr + 0x230 = (index + 1) mod count, mgr + 0x190 = that camera). When the hold leaves the race, the camera before it is
+# put back the way the camera block itself puts a camera back (+0x190, then +0x230), with the block's last index cleared so
+# it takes that camera's settings again (and keeps it for the next race) and QUIET so it shows no name; with the game
+# suspended, so the block never sees half of it.
+function Undo-ViewStep($h, [long]$base) {
+    $mgr = Read-GamePtr $h 0x9EB4EC
+    if (-not $mgr -or -not $base) { return }
+    $mgr += 0x18; $n = Read-GameInt $h ($mgr + 0x22C); $i = Read-GameInt $h ($mgr + 0x230)
+    if ($n -lt 2 -or $n -gt 21 -or $i -lt 0 -or $i -ge $n) { return }
+    $p = ($i - 1 + $n) % $n; $cam = Read-GamePtr $h ($mgr + 0x234 + 4 * $p)
+    if (-not $cam) { return }
+    [Sr3Mem]::Suspend($h)
+    try {
+        Write-GameInt $h ($mgr + 0x190) $cam; Write-GameInt $h ($base + 0xB0) 1
+        Write-GameInt $h ($mgr + 0x230) $p; [Sr3Mem]::Write($h, $base + 0x1C, ([BitConverter]::GetBytes([int]-1)), $true)
+    } finally { [Sr3Mem]::Resume($h) }
+}
 function Request-RaceExit($h, [datetime]$now) {
     $st = [Sr3Mem]::Read($h, $GameStateVA, 8); $mode = Read-GameInt $h $GameModeVA
     if ($null -eq $st) { Log 'Race exit: the game state could not be read; nothing done.'; return }
     $cur = [BitConverter]::ToInt32($st, 0); $next = [BitConverter]::ToInt32($st, 4)
-    if ($cur -ne 0x27 -or $next -ne 0x27 -or -not $RaceModes.ContainsKey($mode)) { Log ("Race exit: START was held, but no race is running (game state 0x{0:X} / 0x{1:X}, mode {2}); nothing done." -f $cur, $next, $mode); return }
+    if ($cur -ne 0x27 -or $next -ne 0x27 -or -not $RaceModes.ContainsKey($mode)) { Log ("Race exit: VIEW CHANGE was held, but no race is running (game state 0x{0:X} / 0x{1:X}, mode {2}); nothing done." -f $cur, $next, $mode); return }
     $x = @{ At = $now; Mode = $mode; Taken = $false; Stage = $null; Fade = $false; Pos = $false }
     if ($mode -eq 6) {
         $n = Read-GameInt $h ((Read-GameInt $h ((Read-GameInt $h 0xB2A850) + 0x10)) + 4)
@@ -903,7 +994,7 @@ function Request-RaceExit($h, [datetime]$now) {
     if ($null -eq $st -or [BitConverter]::ToInt32($st, 0) -ne 0x27 -or [BitConverter]::ToInt32($st, 4) -ne 0x27) { Undo-RaceExit $h $x 'the race ended just then'; return }
     Write-GameInt $h $RaceExitFlagVA 1
     $script:RaceExit = $x
-    Log ("Race exit: START held {0} s: leaving the {1} for the main menu." -f $StartHoldSeconds, $RaceModes[$mode])
+    Log ("Race exit: VIEW CHANGE held {0} s: leaving the {1} for the main menu." -f $StartHoldSeconds, $RaceModes[$mode])
 }
 function Undo-RaceExit($h, $x, [string]$why) {
     Write-GameInt $h $RaceExitFlagVA 0
@@ -966,7 +1057,16 @@ function Stop-Watchdog {
     if (-not [Sr3Watchdog]::WaitFinished(5000)) { [Sr3Watchdog]::Stop(5000) }           # the game has closed: its last events are in
     Show-WatchdogNews
 }
-function Wait-GameExit($game) { while (-not $game.HasExited) { Show-WatchdogNews; Start-Sleep -Milliseconds 250 }; $game.WaitForExit(); Show-WatchdogNews }
+function Wait-GameExit($game) {
+    while (-not $game.HasExited) {
+        if ($script:CarListPending) {                                  # (Set-CarLists: the menus were up when it ran)
+            $hc = [Sr3Mem]::Open($game.Id)
+            try { if (Complete-CarLists $hc) { Log 'Car lists: every car in every mode from this game on.' } } finally { [Sr3Mem]::Close($hc) }
+        }
+        Show-WatchdogNews; Start-Sleep -Milliseconds 250
+    }
+    $game.WaitForExit(); Show-WatchdogNews
+}
 
 # Runs until the game closes.
 function Watch-Tracks($game, [string]$gameExe) {
@@ -984,13 +1084,13 @@ public static class Sr3Pad {
 '@
     }
     [Sr3Pad]::SetProcessDPIAware() | Out-Null
-    $start = New-StartState; $script:RaceExit = $null; $shotUntil = [datetime]::MinValue; $shotName = ''; $shotHeld = $null
+    $start = New-StartState; $script:RaceExit = $null; $shotUntil = [datetime]::MinValue; $shotName = ''; $shotHeld = $null; $shotInfo = $null
     $slots = Read-TrackSwitch $gameExe
     if (-not $slots) { $slots = @{} }                                # no alternative tracks: the loop still runs for START (screenshot, race exit)
     $h = [Sr3Mem]::Open($game.Id)
     try {
         $base = Find-Cycle $h
-        if (-not $base) { Log 'Alternative tracks and the START button need the camera patch; it is not in the game.'; Wait-GameExit $game; return }
+        if (-not $base) { Log 'Alternative tracks, the START screenshot and the VIEW CHANGE race exit need the camera patch; it is not in the game.'; Wait-GameExit $game; return }
         $tdCave = $null; $script:TrackDirLast = $null
         if ($slots.Count) {
             Log ('Alternative tracks: ' + ((@($slots.Keys | Sort-Object) | ForEach-Object { "$_ +$($slots[$_].Count - 1)" }) -join ', ') + '. On the stage-select screen, View Change steps through them.')
@@ -1012,6 +1112,7 @@ public static class Sr3Pad {
             $g = [Sr3Mem]::Read($h, 0x9D6E3C, 1)
             if ($null -eq $g) { break }
             $menu = $g[0] -eq 1
+            if ($script:CarListPending -and -not $menu -and (Complete-CarLists $h)) { Log 'Car lists: every car in every mode from this game on.' }   # (Set-CarLists: the menus were up when it ran)
             if ($menu -and -not $wasMenu) {                           # a new game: every card back to its own track
                 if (-not $cardsOpen) { $cardsOpen = (Open-CarCards $h $base) -ne $false }
                 $deep = $false
@@ -1099,25 +1200,30 @@ public static class Sr3Pad {
             } elseif ($pvsHeld) {
                 [Sr3Mem]::Write($h, 0xA65794, ([BitConverter]::GetBytes([int]$pvsWas)), $true); $pvsHeld = $false
             }
-            # START in a race: a short press takes a screenshot when it is let go, a long one leaves the race (Step-Start)
+            # in a race: START takes a screenshot when it is let go, VIEW CHANGE held leaves the race (Step-Start)
             $pad = New-Object Sr3Pad+XState
-            $startDown = ([Sr3Pad]::XInputGetState(0, [ref]$pad) -eq 0) -and (($pad.Buttons -band 0x10) -ne 0)
-            foreach ($act in (Step-Start $start $startDown $menu (Get-Date))) {
+            $padOk = [Sr3Pad]::XInputGetState(0, [ref]$pad) -eq 0
+            $startDown = $padOk -and (($pad.Buttons -band 0x10) -ne 0); $viewDown = $padOk -and (($pad.Buttons -band 0x1000) -ne 0)
+            foreach ($act in (Step-Start $start $startDown $viewDown $menu (Get-Date))) {
                 if ($act -eq 'grab') {
                     try {
                         $sb = [Windows.Forms.Screen]::PrimaryScreen.Bounds; $shotHeld = New-Object Drawing.Bitmap $sb.Width, $sb.Height
                         $gr = [Drawing.Graphics]::FromImage($shotHeld); $gr.CopyFromScreen($sb.Location, [Drawing.Point]::Empty, $sb.Size); $gr.Dispose()
+                        $shotInfo = $null
+                        try { $shotInfo = Get-ShotInfo $h $base $name $dir $(if ($cur) { $cur.Title } else { '' }) (Get-Date) } catch { Log "Screenshot: no coordinates ($($_.Exception.Message))" }
                     } catch { Log "Screenshot failed: $($_.Exception.Message)"; if ($shotHeld) { $shotHeld.Dispose() }; $shotHeld = $null; $start.HeldAt = $null }
                 } elseif ($act -eq 'save' -and $shotHeld) {
                     try {
                         $shotDir = Join-Path (Split-Path -Parent $PSScriptRoot) 'Screenshots'; New-Item -ItemType Directory -Force $shotDir | Out-Null
                         $shotName = 'SR3_{0:yyyyMMdd_HHmmss}.png' -f $start.ShotAt
-                        $shotHeld.Save((Join-Path $shotDir $shotName), [Drawing.Imaging.ImageFormat]::Png)
+                        $ms = New-Object IO.MemoryStream; $shotHeld.Save($ms, [Drawing.Imaging.ImageFormat]::Png); $png = $ms.ToArray(); $ms.Dispose()
+                        if ($shotInfo) { $png = Add-PngText $png 'SR3Lab' $shotInfo }                # where the picture was taken (Get-ShotInfo)
+                        [IO.File]::WriteAllBytes((Join-Path $shotDir $shotName), $png)
                         $shotUntil = (Get-Date).AddSeconds(3); Log "Screenshot: $shotName"
                     } catch { Log "Screenshot failed: $($_.Exception.Message)" }
                     $shotHeld.Dispose(); $shotHeld = $null
                 } elseif ($act -eq 'drop' -and $shotHeld) { $shotHeld.Dispose(); $shotHeld = $null }  # that START began a new game
-                elseif ($act -eq 'exit') { Request-RaceExit $h (Get-Date) }
+                elseif ($act -eq 'exit') { Request-RaceExit $h (Get-Date); if ($script:RaceExit) { Undo-ViewStep $h $base } }
             }
             if ($script:RaceExit) { Step-RaceExit $h (Get-Date) }
             Show-WatchdogNews
@@ -1177,7 +1283,11 @@ public static class Sr3Pad {
                 [Sr3Mem]::Write($h, $base + 0x2268, ([BitConverter]::GetBytes([int]0)), $true)
                 $showing = $false
             }
-            if ($wasMenu -and -not $menu) { Set-SteerRate $h }          # a race starts: the player's car's steering return (Set-Handling)
+            Sync-RaceFlavor $h                                            # every car of the next race on the player's car's handling
+            if ($wasMenu -and -not $menu) {                               # a race starts: the player's car's steering return (Set-Handling)
+                Set-SteerRate $h
+                if ($script:RaceFlavor) { Log "Handling: this race on $($FlavorTitles[$script:RaceFlavorName]), the player's car's ($($script:RaceFlavor -replace '/.*$', '')); every car in it loads that handling." }
+            }
             $wasDown = $down; $wasMenu = $menu
             Start-Sleep -Milliseconds 15
         }
@@ -1238,7 +1348,7 @@ $CardHookExit = '8b4424145f5e5dc700ffffffff5bc3'
 $ExtraCards = @(,@('CARSLIDE_HORNET_GRAVEL_1', 0x72870C, 'HORNET.wmv'))  # card name, the game's video handle cell it borrows until its own video is open (0x72870C: the TV-static loop), its own video in frontend\PC\Videos (Open-CarCards); (the comma keeps a one-entry list a list of lists)
 $CardCells = 0x800                                         # in the card routine's cave: the handle cells of the cars' own videos
 function Set-CarLists($game) {
-    $h = [Sr3Mem]::Open($game.Id); $n = 0
+    $h = [Sr3Mem]::Open($game.Id); $n = 0; $late = $false; $script:CarListPending = $null
     try {
         $todo = @()
         foreach ($s in $CarListSites) {
@@ -1249,9 +1359,9 @@ function Set-CarLists($game) {
         }
         if ($todo.Count) {
             $cave = [Sr3Mem]::Alloc($h, 0x1000); [Sr3Mem]::Write($h, $cave, (HexToBytes $CarListCode), $true)
-            [Sr3Mem]::Suspend($h)
-            try { foreach ($s in $todo) { $j = CallTo $s[0] ($cave + $s[1]); $j[0] = 0xE9; [Sr3Mem]::Write($h, $s[0], $j, $false); $n++ } }   # jmp rel32
-            finally { [Sr3Mem]::Resume($h) }
+            $script:CarListPending = @{ Cave = $cave; Todo = $todo }
+            if (Complete-CarLists $h) { $n += $todo.Count }
+            else { $late = $true }
         }
         # A car the game does not know by name (an added one, e.g. a Daytona car) gets the speedo's top speed like the ten:
         # 0x599A20 compares the car's name with the ten and sets vehicle +0x1708 for each; for any other name it skipped the
@@ -1272,7 +1382,31 @@ function Set-CarLists($game) {
             [Sr3Mem]::Suspend($h); try { [Sr3Mem]::Write($h, 0x61C30B, $j, $false) } finally { [Sr3Mem]::Resume($h) }
         }
     } catch { Log "Car lists: $($_.Exception.Message)" } finally { [Sr3Mem]::Close($h) }
-    Log $(if ($n -eq $CarListSites.Count) { 'Car lists: every car in every mode (each mode''s own cars first).' } else { "Car lists: $n of $($CarListSites.Count) changed." })
+    if ($late) { Log 'Car lists: a game was started before the launcher was ready, so its car selects keep their own cars; every car in every mode from the next game on.' }
+    else { Log $(if ($n -eq $CarListSites.Count) { 'Car lists: every car in every mode (each mode''s own cars first).' } else { "Car lists: $n of $($CarListSites.Count) changed." }) }
+}
+# The jumps into the car-list routine go in only while the menus' scene does not exist ([0x9D6E3C] = number of scenes,
+# [0x9D6E50] = the scene). The scene is built when a game starts (0x64DA20 -> 0x62DD00), and its car nodes take their cards
+# from the fill routines then (0x62CE10 / 0x62CE60 / 0x62CEB0: a selector on the stack, filled, made into the node's list),
+# while the selector itself is refilled each time the car select comes up (0x662338 -> 0x606930 / 0x6069D0). With the
+# jumps put in between the two, the selector had every car but the node only the mode's own (Classic: 2), and the game's
+# move sound / scroll code (0x628DF0, 0x622270) indexes the node's list with the selector's cursor without a check: past
+# the Lancia and back, item 2 of a 2-item list is null and 0x628EA9 reads [0 + 0x80] (in game 2026-10-14). So a game
+# started before the launcher was ready keeps the game's own lists; Watch-Tracks completes this when that game's menus close.
+function Complete-CarLists($h) {
+    $p = $script:CarListPending
+    if (-not $p) { return $true }
+    $done = $false
+    [Sr3Mem]::Suspend($h)
+    try {
+        $sc = [Sr3Mem]::Read($h, 0x9D6E3C, 4); $sp = [Sr3Mem]::Read($h, 0x9D6E50, 4)
+        if ($sc -and $sp -and [BitConverter]::ToInt32($sc, 0) -eq 0 -and [BitConverter]::ToInt32($sp, 0) -eq 0) {
+            foreach ($s in $p.Todo) { $j = CallTo $s[0] ($p.Cave + $s[1]); $j[0] = 0xE9; [Sr3Mem]::Write($h, $s[0], $j, $false) }   # jmp rel32
+            $done = $true
+        }
+    } finally { [Sr3Mem]::Resume($h) }
+    if ($done) { $script:CarListPending = $null }
+    return $done
 }
 # An added car's own card video (frontend\PC\Videos\<file>, $ExtraCards). The game has 20 video objects (0x16C bytes at
 # 0xAD2F90) and fills 18: the 17 of its table that 0x621600 loads and LOADING_TEXTURE (0x621500, once). Its allocator
@@ -1356,8 +1490,13 @@ $CarDirSite = 0x6C631D; $AddedCarDirSite = 0x6C6371; $GripDirSite = 0x6C6176
 # 0x5AF760 on the car select), node + 4 = car id, node + 0x40 = name. (A first version hooked 0x5D4D10's two exits
 # 0x5D4F28 / 0x5D4F31: never reached with the pad, in game 2026-10-14; if a running game still has those jumps, their
 # RATE stays 0 and they pass the value on unchanged.)
-$SteerCode = '0000000000000000e800000000588b15ccba9d0085d2746f813ac8d06e007567398a58080000755ff30f10442404f30f1048f30f57d20f2fca7641f30f1058f70f28e0f30f59e30f2fe272130f28e0f30f59e00f28ebf30f59eb0f2fe5731d0f28e0f30f5ce3f30f5de10f57edf30f5ce9f30f5fe5f30f58dc0f28c3f30f1140f7f30f11442404b8008c4400ffe0'
-$SteerEntry = 0x8
+# The stick 1:1 (handling.json flavors.<name>.steer_linear, on for SRC; the owner, 2026-10-14: "the wheels tracking the
+# analog pad 1:1 (as much as possible) just like SRC"): LINEAR (+8) = 1/255 makes the player's value (b1 - b0) / 255 from
+# the pad's two steering bytes (driver + 0x1C84), in place of 0x5E0B20's (b1 - b0) / 300 x lock (0.8 .. 0.6) x the car's
+# speed table (1.5 at rest .. 0.5 from 110 mph): a full stick turns the wheels to full lock at any speed. SEGA's own flavor
+# keeps the game's value (LINEAR 0). Set at each race start with RATE (Set-SteerRate).
+$SteerCode = '0000000000000000000000000000803f000080bfe800000000588b15ccba9d0085d20f84a8000000813ac8d06e000f859c000000398a580800000f8590000000f30f10442404f30f1048ef0f57d20f2fca7624510fb68a851c00000fb692841c000029d1f30f2ac159f30f59c1f30f5d40f3f30f5f40f7f30f1048e70f57d20f2fca7641f30f1058eb0f28e0f30f59e30f2fe272130f28e0f30f59e00f28ebf30f59eb0f2fe5731d0f28e0f30f5ce3f30f5de10f57edf30f5ce9f30f5fe5f30f58dc0f28c3f30f1140ebf30f11442404b8008c4400ffe0'
+$SteerEntry = 0x14                                                            # RATE +0, last value +4, LINEAR +8 (1/255 = the stick 1:1; 0 = the game's value), 1.0, -1.0
 $SteerSite = 0x5CFF32; $SteerBytes = 'e8c98ce7ff'                                  # call 0x448C00
 function Read-Handling([string]$gameExe) {
     $file = Join-Path $PSScriptRoot 'handling.json'
@@ -1379,7 +1518,8 @@ function Read-Handling([string]$gameExe) {
                 else { Log "Handling: flavor $k's grip file SurfacePairEffect$d\surfacepairdata_xdata.sbf is missing; its cars keep SEGA's tyre grip." }
             }
             $steer = 0.0; if ($v.steer_return_s) { $steer = [double]$v.steer_return_s }
-            $fl[$k] = @{ Name = $k; Digit = $d; Dir = $dir; Grip = $grip; Steer = $steer }
+            $lin = $k -eq 'src'; if ($v.PSObject.Properties['steer_linear']) { $lin = [bool]$v.steer_linear }
+            $fl[$k] = @{ Name = $k; Digit = $d; Dir = $dir; Grip = $grip; Steer = $steer; Linear = $lin }
         }
     }
     $want = @{}
@@ -1408,7 +1548,7 @@ function Set-DirChar($h, [long]$va, [string]$ch, [string]$what) {
     if ($cur[0] -ne [byte][char]$ch) { [Sr3Mem]::Write($h, $va, [byte[]]@([byte][char]$ch), $true) }
 }
 function Set-Handling($game) {
-    $script:Handling = Read-Handling $script:GameExePath; $script:SteerCave = $null; $script:SteerRateWas = 0; $script:CarPathCave = $null
+    $script:Handling = Read-Handling $script:GameExePath; $script:SteerCave = $null; $script:SteerRateWas = 0; $script:CarPathCave = $null; $script:RaceFlavor = $null
     $cfg = $script:Handling
     if (-not $cfg) { $cfg = New-HandlingLive $script:GameExePath; $script:Handling = $cfg }      # nothing asked for, but a flavor is built: every car on SEGA's, ready for the keys
     if ($cfg) { $script:SteerSec = Read-SteerSeconds $cfg }
@@ -1441,7 +1581,7 @@ function Set-Handling($game) {
                     $f = $plan[$CarPathOrder[$i]]; $b = 0; if ($f -ne 'sr3') { $b = [byte][char]$fl[$f].Digit }
                     [Sr3Mem]::Write($h, $cave + 8 + 12 * $i, [byte[]]@([byte]$b), $true)
                 }
-                Log ('Handling per car: ' + (($HandlingCarNames | ForEach-Object { "$_ $($plan[$_])" }) -join ', ') + '.')
+                Log ('Handling per car: ' + (($HandlingCarNames | ForEach-Object { "$_ $($plan[$_])" }) -join ', ') + '. A race runs every car on the player''s car''s handling.')
                 $script:CarPathCave = $cave
             }
         }
@@ -1473,7 +1613,7 @@ $CarTitles = @{ C4 = 'Citroen C4 WRC'; RSFocus = 'Ford Focus RS WRC 07'; SubaruI
 function Get-CarTitle([string]$car) { if ($CarTitles.ContainsKey($car)) { return $CarTitles[$car] }; return (Get-Culture).TextInfo.ToTitleCase($car) }      # the labels' names: the menu's
 $HandlingKeyCodes = @($HandlingKeys.Keys) + @($SteerKeys.Keys) + $InfoKeys
 $FlavorTitles = [ordered]@{ sr3 = "SEGA Rally 3's own"; src = 'SEGA Rally Championship'; realism = 'Realism' }
-$DefaultFlavors = [ordered]@{ src = @{ Digit = '1'; Grip = $true; Steer = 0.25 }; realism = @{ Digit = '2'; Grip = $false; Steer = 0.0 } }
+$DefaultFlavors = [ordered]@{ src = @{ Digit = '1'; Grip = $true; Steer = 0.0; Linear = $true }; realism = @{ Digit = '2'; Grip = $false; Steer = 0.0; Linear = $false } }   # SRC: the stick 1:1, no return limit (owner, 2026-10-14)
 # no handling.json (or nothing on a flavor): the flavors that are built, every car on SEGA's handling; $null when none is built
 function New-HandlingLive([string]$gameExe) {
     if (-not $gameExe) { return $null }
@@ -1481,7 +1621,7 @@ function New-HandlingLive([string]$gameExe) {
     foreach ($k in $DefaultFlavors.Keys) {
         $v = $DefaultFlavors[$k]; $dir = Join-Path $gameDir "Main_release\car$($v.Digit)"
         if (@(Get-ChildItem -LiteralPath $dir -Filter '*_data.sbf' -ErrorAction SilentlyContinue).Count) {
-            $fl[$k] = @{ Name = $k; Digit = $v.Digit; Dir = $dir; Grip = ($v.Grip -and (Test-Path -LiteralPath (Join-Path $gameDir "SurfacePairEffect$($v.Digit)\surfacepairdata_xdata.sbf"))); Steer = $v.Steer }
+            $fl[$k] = @{ Name = $k; Digit = $v.Digit; Dir = $dir; Grip = ($v.Grip -and (Test-Path -LiteralPath (Join-Path $gameDir "SurfacePairEffect$($v.Digit)\surfacepairdata_xdata.sbf"))); Steer = $v.Steer; Linear = $v.Linear }
         }
     }
     if (-not $fl.Count) { return $null }
@@ -1507,6 +1647,7 @@ function Save-Handling {
     foreach ($k in $DefaultFlavors.Keys) {
         $v = $DefaultFlavors[$k]; $e = [ordered]@{ digit = $v.Digit; grip_file = [bool]$v.Grip }
         if ($script:SteerSec[$k] -gt 0) { $e.steer_return_s = [math]::Round($script:SteerSec[$k], 2) }
+        if ($cfg.Flavors[$k] -and [bool]$cfg.Flavors[$k].Linear -ne [bool]$v.Linear) { $e.steer_linear = [bool]$cfg.Flavors[$k].Linear }
         $flv[$k] = $e
     }
     if ($script:SteerSec.sr3 -gt 0) { $flv.sr3 = [ordered]@{ steer_return_s = [math]::Round($script:SteerSec.sr3, 2) } }
@@ -1555,8 +1696,35 @@ function Set-CarHandlingLive($h, [string]$car, [string]$f) {
     $cfg.Plan[$car] = $f
     $grip = @($cfg.Plan.Values | Where-Object { $_ -ne 'sr3' -and $fl[$_].Grip } | Sort-Object -Unique)
     $gch = 's'; if ($grip.Count) { $gch = $fl[$grip[0]].Digit }; Set-DirChar $h $GripDirSite $gch 'Handling (grip file)'
+    $script:RaceFlavor = $null                                        # Sync-RaceFlavor writes the race's flags again
     Save-Handling; Log "Handling: $car on $f (from its next race)."
     return @("Handling: $($FlavorTitles[$f])", "$(Get-CarTitle $car), from its next race")
+}
+# The race's handling is the player's car's (the owner, 2026-10-14: "only if the 'pace' applies to all cars in the race
+# (balance)"): every car of a race loads the files of the player's car's flavor, the computer's cars too. The race loader
+# makes every car's path through the per-car routine at 0x5C6144, so all ten flags, the added cars' character and the grip
+# file's character are set to that one flavor (a car with no file in it keeps SEGA's). The player's car is the library node
+# [0x9DBDA0 + 0xC], set when the car select is confirmed (0x5AF760), before the gearbox page and the race load. Watch-Tracks
+# runs this every pass; it writes only when the player's car or its flavor changed (a key, the next car select).
+function Sync-RaceFlavor($h) {
+    $cfg = $script:Handling; if (-not $cfg -or -not $script:CarPathCave) { return }
+    $node = Read-GamePtr $h (0x9DBDA0 + 0xC); if (-not $node) { return }
+    $id = Read-GameInt $h ($node + 4); $car = Get-HandlingCarName $h $id; if (-not $car) { return }
+    $f = $cfg.Plan[$car]; if (-not $f -or ($f -ne 'sr3' -and -not $cfg.Flavors.ContainsKey($f))) { $f = 'sr3' }
+    if ("$car/$f" -eq $script:RaceFlavor) { return }
+    $fl = $cfg.Flavors
+    for ($i = 0; $i -lt $CarPathOrder.Count; $i++) {
+        $b = 0; if ($f -ne 'sr3' -and (Test-Path -LiteralPath (Join-Path $fl[$f].Dir "$($CarPathOrder[$i].ToLower())bespoke_data.sbf"))) { $b = [byte][char]$fl[$f].Digit }
+        [Sr3Mem]::Write($h, $script:CarPathCave + 8 + 12 * $i, [byte[]]@([byte]$b), $true)
+    }
+    $ch = 's'
+    if ($f -ne 'sr3') {                                               # the added cars share one pattern: the flavor only if it has a file for each
+        $added = @($cfg.Plan.Keys | Where-Object { $HandlingCarNames -notcontains $_ })
+        if (@($added | Where-Object { -not (Test-Path -LiteralPath (Join-Path $fl[$f].Dir "$($_.ToLower())gravel_data.sbf")) }).Count -eq 0) { $ch = $fl[$f].Digit }
+    }
+    Set-DirChar $h $AddedCarDirSite $ch 'Handling (added cars)'
+    $gch = 's'; if ($f -ne 'sr3' -and $fl[$f].Grip) { $gch = $fl[$f].Digit }; Set-DirChar $h $GripDirSite $gch 'Handling (grip file)'
+    $script:RaceFlavor = "$car/$f"; $script:RaceFlavorName = $f
 }
 # a handling's steering return: 4 / 6 shorter / longer, 5 off / back on; at once when the player's car drives that handling
 function Set-SteerLive($h, [string]$car, [double]$step, [bool]$race) {
@@ -1598,8 +1766,10 @@ function Set-SteerRate($h, [switch]$Live) {
     if ($script:Handling) { foreach ($k in $script:Handling.Plan.Keys) { if ($k -ieq $name) { $f = $script:Handling.Plan[$k] } } }
     if ($script:SteerSec -and $script:SteerSec.ContainsKey($f)) { $sec = [double]$script:SteerSec[$f] }
     $rate = 0.0; if ($sec -gt 0) { $rate = 1.0 / ($sec * 60.0) }
+    $lin = 0.0; if ($f -ne 'sr3' -and $script:Handling -and $script:Handling.Flavors[$f] -and $script:Handling.Flavors[$f].Linear) { $lin = 1.0 / 255 }   # the stick 1:1 (SRC); SEGA's own: the game's value
     if ($Live) { [Sr3Mem]::Write($h, $script:SteerCave, ([BitConverter]::GetBytes([single]$rate)), $true) }      # a key in a race: the rate only, the car's last value stays
-    else { [Sr3Mem]::Write($h, $script:SteerCave, ([BitConverter]::GetBytes([single]$rate) + [BitConverter]::GetBytes([single]0)), $true) }
+    else { [Sr3Mem]::Write($h, $script:SteerCave, ([BitConverter]::GetBytes([single]$rate) + [BitConverter]::GetBytes([single]0) + [BitConverter]::GetBytes([single]$lin)), $true) }
+    if ($lin -gt 0 -and -not $Live) { Log "Steering: $name ($f) follows the stick 1:1 (full stick = full lock at any speed)." }
     if ($rate -gt 0) { Log ("Steering return: {0} ({1}): {2:0.00} s from full lock to centre." -f $name, $f, $sec) }
     elseif ($script:SteerRateWas -gt 0) { Log "Steering return: off for $name." }
     $script:SteerRateWas = $rate

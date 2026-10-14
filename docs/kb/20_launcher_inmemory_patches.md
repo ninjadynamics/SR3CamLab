@@ -271,6 +271,24 @@ ST205 and Delta first. The secret-car page keeps its two. Each car shows its own
 all ten). VERIFIED in game 2026-10-14: Championship's list C4 .. Enduro with their cards; the McRae Enduro raced on Tropical;
 Classic's selector held car ids [6, 7, 0, 1, 2, 3, 4, 5, 8, 9] and the C4 raced on the Classic track (Mountain).
 (Those runs had the routine put in by a test script; the launcher's own Set-CarLists is the same bytes.)
+Crash at 0x628EA9 (2026-10-14, the owner: "crashed trying to choose a car past the Lancia on classic"): START was pressed
+while the launcher still waited for TeknoParrot's checks. The menus' scene, with one node per car select, is built when a
+game starts (0x64DA20 -> 0x62DD00; [0x9D6E3C] = the number of scenes, so 1 from then on, [0x9D6E50] = the scene), and
+each car node takes its card list from the fill routines at that moment (0x62CE10 / 0x62CE60 / 0x62CEB0: a selector on
+the stack, filled, made into the node's list). The selector itself is filled again each time the car select comes up
+(event 0x17, 0x662338 -> 0x606930 / 0x6069D0). With the jumps put in between the two, Classic's node held 2 cards and its
+selector 11 cars. On a cursor move (event 0x19, 0x6623FD) the page handler gives the cursor to 0x62A930 -> 0x628DF0 (move
+sound) and 0x622270 (scroll; it sets node +0x88 = the cursor without a check); both read item [node +0x88] of the node's
+list (0x4047C0, +0x80 = its place). Right to the C4 set +0x88 = 2; the next move read item 2 of a 2-item list (the walk
+ends on the list head, whose +0xC is 0) and then [0 + 0x80]. Reproduced in game the same way (START 7 s after "Game data
+loaded", Classic, right, right, left: the same address). The camera block's CARSEL query was not involved (the hash
+0x6EACE04A on the crash stack is the page handler's own esi). Fix: the two jumps go in only while no menu scene exists
+([0x9D6E3C] and [0x9D6E50] both 0, read with the game suspended, `Complete-CarLists`); otherwise that game keeps the game's
+own lists and Watch-Tracks (or Wait-GameExit) puts the jumps in once its menus close. Log: "Car lists: a game was started
+before the launcher was ready ..." then "Car lists: every car in every mode from this game on.". VERIFIED in game
+2026-10-14: the early game's Classic car select had 2 cards and 2 cars, right/left past both, no crash; the next game's
+had 11 and 11, every car from ST205 to the Hornet and back, keypad 0 named each highlighted car (CARSEL 7, 0, 10, 7), and
+the C4 went on to the gearbox page. Pressing START after the launcher is ready was never affected (C4 raced on Classic).
 More cars (SR2 / Daytona): the library has no fixed size and the selector takes 38, so more cars are records in
 `ArcadeDatabase\arcadedatabase_xdata.sbf` (count 10 before the first record; a record holds the next-record offset, id,
 6000, 1.0f, the two flags, ten small numbers (per-mode values, not decoded), three string offsets: name, name again,
@@ -287,11 +305,12 @@ game), so a video opened after that shows only from the next game on. VERIFIED i
 plays `HORNET.wmv` (object 19) on the first visit; objects 0..17 are the game's 18 (0 loading.wmv, 14 static_loop.wmv),
 18 stays empty.
 
-## 11. START in a race: screenshot on release, long press = back to the menus (2026-10-14)
+## 11. In a race: START = screenshot on release, VIEW CHANGE held = back to the menus (2026-10-14)
 A short press of START in a race takes a screenshot when START is let go. The game has no known flag that tells a race from
 the attract loop, so the patch treats "what follows the menus" as a race and holds the picture back for 1.5 s: if the menus
 come up in that time, START was "begin a game" and the picture is dropped. The file name is shown only after the capture.
-Held for 1.2 s (`$StartHoldSeconds`) START takes no picture and leaves the race the way the game's own Quit does: the
+VIEW CHANGE held for 1.2 s (`$StartHoldSeconds`) leaves the race the way the game's own Quit does (until the evening of
+2026-10-14 that was a long START; owner: "Replace long START to exit with long VIEW CHANGE"): the
 flag [0x9DB4F4] that the race update 0x5C89D0 polls (at 0x5C90C2 it clears it and sets the next state 0x1B, Finish), plus
 the game's 0.5 s fade (28 bytes at 0x9DB490, as 0x5FBB10 starts it); in a Championship the stage number [0x9DB820] is set to
 the number of stages first, as the Quit does, and a race leader's position [0x9DD61C] is set to 2, because at 0x6358A2 a
@@ -299,9 +318,32 @@ leader is sent on to the Stadium4 bonus stage (the bonus stage itself is untouch
 there). It acts only while the main state [0x7ECE10] and the pending state [0x7ECE14] are 0x27 (racing) in mode
 [0x728598] 5, 6 or 7 (Quick Race, Championship, Classic), never during loading, so it never takes the loader's abort path
 (09_authoring_status.md, the hang). Main state machine, the game's three users of the flag and the decision logic:
-FINDINGS.md section 10, "Leaving a race"; mock test `tools\start_mocktest.ps1` (34 checks). VERIFIED in game 2026-10-14
-(owner): screenshot on release; a long press left a Classic race and a Championship race for the menus ("Race exit: done").
-Not yet seen in game: a long press while 1st in a Championship stage, and a Quick Race.
+FINDINGS.md section 10, "Leaving a race"; mock test `tools\start_mocktest.ps1` (40 checks). VERIFIED in game 2026-10-14
+(owner): screenshot on release; a long START (the old binding) left a Classic race and a Championship race for the menus.
+Buttons (TeknoParrot `UserProfiles\SR3.xml`): Start = XInput 0x10, View Change = 0x1000; the launcher reads them with its
+own XInputGetState (pad 0), so `tools\pad.py` (which feeds TeknoParrotUi only) does not reach it: a scripted test has to
+hook the launcher's powershell.exe too (why a pad.py long START "did not exit" in a test that day). START held 1.2 s or
+longer now does nothing (no picture, so an old habit takes none). The game acts on VIEW CHANGE when it is pressed, one
+step per press (held 2.5 s in game: one step, no repeat), so the hold first moves to the next camera; when the hold leaves
+the race the launcher puts the camera before it back (`Undo-ViewStep`, the game suspended: mgr + 0x190 = the list's camera,
+mgr + 0x230 = the index, the block's QUIET = 1 and LASTIDX = -1, the same writes the block uses to put a camera back), so the
+next race starts on it. VERIFIED in game 2026-10-14 (Classic, Desert '95): ten short presses stepped the list one camera
+each; held 2.5 s on index 13: index 0 at the press, the exit at 1.2 s ("Race exit: VIEW CHANGE held 1.2 s ...", "done"),
+index 13 again, the block's KEEP 14 (camera 13 for the next race). Not yet seen in game: the exit while 1st in a
+Championship stage, a Quick Race.
+
+### What a screenshot carries (PNG text chunk "SR3Lab", 2026-10-14)
+Each picture gets a tEXt chunk right after IHDR (keyword `SR3Lab`, one line of JSON, read when the picture is taken):
+`time`; `camera`: `eye`, `forward`, `up` (game coordinates, y up) from the per-frame camera-to-world matrix at 0x9EB970
+(rows right / up / forward / eye), `fov_deg` from 0x9EBDA8 (radians there), `vtable` of the camera drawn ([mgr + 0x184]),
+`list_index` and `name` as the camera block's popup names it; `car`: `pos` (car + 0xAC, its place as drawn) and `forward`
+(car + 0x135C + 0x20); `track`: `name`, `folder` (`tracks\<name>` or `track<digit>\<name>`, the one the switcher chose),
+`title`. 0x5A1A70 builds the view every frame from the camera the frame is drawn from: D3DXMatrixLookAtLH into 0x9EB930
+(per local player, stride 0x4D0, player [0x9F05F0]), its inverse at +0x40 = 0x9EB970, the camera state's field of view
+(+0x178) at +0x478. VERIFIED in game 2026-10-14: for each camera of the list (Game: Chase, Bumper, Bonnet; the four CamLab
+slots; Debug: far chase, cockpit, driver's-seat cockpit, wheel, car rotate, free, car free) the matrix's eye and forward
+equal the drawn camera's own interpolated eye and look direction (state + 0x30 / + 0x6C) to the printed digits, FOV 72 / 60
+/ 87 as set; the PNGs read back in Python with a correct CRC. Code: `Get-ShotInfo`, `Add-PngText` (patch.ps1).
 
 ## 11b. Watchdog: crashes and freezes recorded as they happen
 `watchdog.cs` (C#, loaded by patch.ps1 with Add-Type; `-NoWatchdog` leaves it out) attaches to the game as a debugger

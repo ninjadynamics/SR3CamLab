@@ -1103,7 +1103,7 @@ function Set-MusicSource([string]$tracks, [string]$source) {
 
 # ---- Handling (docs\kb\28_handling_flavors.md) ----
 # Which cars drive with which handling. handling.json next to PLAY.bat (patch.ps1, Read-Handling / Set-Handling):
-#   {"version": 1, "default": "src", "cars": {"ST205": "sr3"}, "flavors": {"src": {"digit": "1", "grip_file": true, "steer_return_s": 0.25}}}
+#   {"version": 1, "default": "src", "cars": {"ST205": "sr3"}, "flavors": {"src": {"digit": "1", "grip_file": true}}}
 # "default" is every car's flavor, "cars" the exceptions; no file = the game's own handling for every car. A flavor is a
 # folder of car files Main_release\car<digit> (and a grip file SurfacePairEffect<digit>) built on this PC from the game's
 # own files by scripts\handling\build_flavor.py (Python); the launcher points the game at it when a race loads.
@@ -1115,7 +1115,6 @@ $script:HandlingCars = [ordered]@{                                   # handling.
     'C4' = "Citro$([char]0xEB)n C4 WRC";'RSFocus' = 'Ford Focus RS WRC 07'; 'SubaruImpreza' = 'Subaru Impreza WRC2008'; 'SX4' = 'Suzuki SX4 WRC'
     'MitsubishiEvo' = 'Mitsubishi Lancer Evolution X'; '207' = 'Peugeot 207 Super 2000'; 'ST205' = 'Toyota Celica ST205'
     'Delta_HF' = 'Lancia Super Delta HF integrale'; 'Bowler' = 'Bowler Nemesis'; 'Enduro' = 'McRae Enduro' }
-$script:SteerReturnSeconds = 0.25                                    # SRC: from full lock to the centre, like the cabinet wheel's spring
 function Get-HandlingFile { return (Join-Path $PSScriptRoot 'handling.json') }
 # the cars a handling can be set for: SEGA's ten and the added ones (Main_release\cars\<name>gravel_data.sbf, e.g. the Hornet)
 function Get-HandlingCars([string]$tracks) {
@@ -1126,22 +1125,26 @@ function Get-HandlingCars([string]$tracks) {
     }
     return $cars
 }
-# @{ Default; Cars = @{ name -> flavor }; Steer = seconds of SRC's steering return (0 = off) }
+# @{ Default; Cars = @{ name -> flavor }; Steer = seconds of SRC's steering return (0 = off, the default); Linear = SRC's steering follows the stick 1:1
+#    (handling.json flavors.src.steer_linear, default on; owner 2026-10-14: "the wheels tracking the analog pad 1:1 ... just like SRC") }
 function Read-HandlingFile {
-    $h = @{ Default = 'sr3'; Cars = @{}; Steer = $script:SteerReturnSeconds }
+    $h = @{ Default = 'sr3'; Cars = @{}; Steer = 0.0; Linear = $true }
     $f = Get-HandlingFile
     if (-not (Test-Path -LiteralPath $f)) { return $h }
     try { $j = [IO.File]::ReadAllText($f) | ConvertFrom-Json } catch { return $h }
     if ($script:HandlingFlavors.Contains("$($j.default)".ToLower())) { $h.Default = "$($j.default)".ToLower() }
     if ($j.cars) { foreach ($p in $j.cars.PSObject.Properties) { if ($script:HandlingFlavors.Contains("$($p.Value)".ToLower())) { $h.Cars[$p.Name] = "$($p.Value)".ToLower() } } }
-    if ($j.flavors -and $j.flavors.src) { $h.Steer = if ($j.flavors.src.steer_return_s) { [double]$j.flavors.src.steer_return_s } else { 0.0 } }
+    if ($j.flavors -and $j.flavors.src) {
+        $h.Steer = if ($j.flavors.src.steer_return_s) { [double]$j.flavors.src.steer_return_s } else { 0.0 }
+        if ($j.flavors.src.PSObject.Properties['steer_linear']) { $h.Linear = [bool]$j.flavors.src.steer_linear }
+    }
     return $h
 }
 function Write-HandlingFile($h) {
     $flavors = [ordered]@{}
     foreach ($k in $script:HandlingFlavors.Keys) {
         $v = $script:HandlingFlavors[$k]; if (-not $v.Digit) { continue }
-        $e = [ordered]@{ digit = $v.Digit; grip_file = [bool]$v.Grip }; if ($k -eq 'src' -and $h.Steer -gt 0) { $e.steer_return_s = $h.Steer }
+        $e = [ordered]@{ digit = $v.Digit; grip_file = [bool]$v.Grip }; if ($k -eq 'src' -and $h.Steer -gt 0) { $e.steer_return_s = $h.Steer }; if ($k -eq 'src' -and -not $h.Linear) { $e.steer_linear = $false }
         $flavors[$k] = $e
     }
     $cars = [ordered]@{}; foreach ($c in $h.Cars.Keys) { if ($h.Cars[$c] -ne $h.Default) { $cars[$c] = $h.Cars[$c] } }
@@ -1213,8 +1216,8 @@ function Show-HandlingDialog($owner, [string]$tracks, [scriptblock]$OnShown) {
     $rAll.Checked = -not $odd; $rPer.Checked = [bool]$odd
     $sync = { $cAll.Enabled = $rAll.Checked; $grid.Enabled = $rPer.Checked }.GetNewClosure(); & $sync
     $rAll.Add_CheckedChanged($sync); $rPer.Add_CheckedChanged($sync)
-    $cSteer = New-Object Windows.Forms.CheckBox; $cSteer.AutoSize = $true; $cSteer.Checked = $hf.Steer -gt 0; $cSteer.Margin = New-Object Windows.Forms.Padding(0, 4, 0, 0)
-    $cSteer.Text = "SEGA Rally Championship: the wheels come back to the centre over $($script:SteerReturnSeconds) s when you let go,`nlike the arcade wheel's spring (turning in stays instant)"
+    $cSteer = New-Object Windows.Forms.CheckBox; $cSteer.AutoSize = $true; $cSteer.Checked = $hf.Linear; $cSteer.Margin = New-Object Windows.Forms.Padding(0, 4, 0, 0)
+    $cSteer.Text = "SEGA Rally Championship: the wheels follow the stick 1:1 at any speed, as in the arcade`n(off: the game's own steering, which turns the wheels less the faster you go)"
     $note = New-Object Windows.Forms.Label; $note.AutoSize = $true; $note.MaximumSize = New-Object Drawing.Size(560, 0); $note.Margin = New-Object Windows.Forms.Padding(0, 10, 0, 6)
     $note.Text = "A handling marked 'not built yet' needs its files first: 'Build the files' makes them from your own game files (Python needed) into new folders; the game's own car files are never changed. A car on a handling that isn't built drives with the game's own. The choice takes effect the next time the game is started with PLAY.bat."
     $btns = New-Object Windows.Forms.FlowLayoutPanel; $btns.AutoSize = $true; $btns.WrapContents = $false; $btns.Margin = New-Object Windows.Forms.Padding(0, 6, 0, 0)
@@ -1237,7 +1240,7 @@ function Show-HandlingDialog($owner, [string]$tracks, [scriptblock]$OnShown) {
     })
     if ($OnShown) { $d.Add_Shown($OnShown) }
     $ok = $d.ShowDialog($owner) -eq 'OK'
-    $h = @{ Default = $keys[$cAll.SelectedIndex]; Cars = @{}; Steer = $(if ($cSteer.Checked) { $script:SteerReturnSeconds } else { 0.0 }) }
+    $h = @{ Default = $keys[$cAll.SelectedIndex]; Cars = @{}; Steer = $hf.Steer; Linear = $cSteer.Checked }
     if ($rPer.Checked) {                                               # car by car: the most used handling becomes the default
         $h.Default = @($per.Values | ForEach-Object { $keys[$_.SelectedIndex] } | Group-Object | Sort-Object Count -Descending)[0].Name
         foreach ($c in $per.Keys) { $h.Cars[$c] = $keys[$per[$c].SelectedIndex] }

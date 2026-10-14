@@ -20,6 +20,13 @@ Layout of each blob: data first, then code, so no forward label arithmetic is ne
    controls + 0x18 stays the game's own raw value (mode 1's 0x5E0B20 builds its next value from it, so writing it back
    held the steering, in game 2026-10-14). ecx is untouched; eax, edx and xmm0..5 are free there.
    RATE = 1 / (return seconds x 60): full lock to centre in that time; 0 = off (SEGA's behaviour).
+   LINEAR (float at +8, 2026-10-14; the owner: "the wheels tracking the analog pad 1:1 (as much as possible) just like
+   SRC"): when above 0 the player's value is made from the stick itself, s = clamp((b1 - b0) x LINEAR, -1, 1) with the
+   pad's two steering bytes at driver + 0x1C84 / + 0x1C85 (0..255 each, left / right, linear in the stick: 0.25 -> 63,
+   0.5 -> 127, 1.0 -> 253..255, in game), instead of SEGA's 0x5E0B20 value (b1 - b0) / 300 x lock (0.8 .. 0.6 with
+   speed) x the car's speed table (1.5 at rest .. 0.5 from 110 mph), which leaves a full stick a quarter of the lock at
+   180 km/h. LINEAR = 1/255: full stick = full lock (wheel + 0x184, 0.345 rad) at every speed. 0 = SEGA's value. The
+   return limit then works on that value as before. Constants 1.0 / -1.0 at +0xC / +0x10.
     python build_flavorhooks.py      prints both blobs (hex) with their entry and data offsets"""
 import struct
 from keystone import Ks, KS_ARCH_X86, KS_MODE_32
@@ -69,7 +76,7 @@ def carpath():
     return bytes(data) + code, entry, fmt_off + fmt.index(b'car1') + 3
 
 def steer():
-    data = struct.pack('<ff', 0.0, 0.0)                                   # RATE at +0, last output at +4
+    data = struct.pack('<fffff', 0.0, 0.0, 0.0, 1.0, -1.0)                # RATE +0, last output +4, LINEAR +8, 1.0, -1.0
     entry = len(data); here = entry + 5                                   # call l2 (5 bytes)
     code = asm("""
         call l2
@@ -82,6 +89,20 @@ def steer():
         cmp dword ptr [edx + 0x858], ecx
         jne pass
         movss xmm0, dword ptr [esp + 4]
+        movss xmm1, dword ptr [eax - %d]
+        xorps xmm2, xmm2
+        comiss xmm1, xmm2
+        jbe nolin
+        push ecx
+        movzx ecx, byte ptr [edx + 0x1C85]
+        movzx edx, byte ptr [edx + 0x1C84]
+        sub ecx, edx
+        cvtsi2ss xmm0, ecx
+        pop ecx
+        mulss xmm0, xmm1
+        minss xmm0, dword ptr [eax - %d]
+        maxss xmm0, dword ptr [eax - %d]
+    nolin:
         movss xmm1, dword ptr [eax - %d]
         xorps xmm2, xmm2
         comiss xmm1, xmm2
@@ -109,7 +130,7 @@ def steer():
         movss dword ptr [esp + 4], xmm0
     pass: mov eax, 0x448C00
         jmp eax
-    """ % (here - 0, here - 4, here - 4))
+    """ % (here - 8, here - 0xC, here - 0x10, here - 0, here - 4, here - 4))
     return data + code, entry
 
 if __name__ == '__main__':
@@ -117,5 +138,5 @@ if __name__ == '__main__':
     print('CARPATH %d bytes: entry +0x%X; flag of car i at +0x%X + 12 x i = its folder digit (ASCII, 0 = SEGA files) (%s)' % (len(blob), entry, 8, ', '.join(LABELS)))
     print(blob.hex())
     s, e = steer()
-    print('STEER %d bytes: entry +0x%X (called from 0x5CFF32 instead of 0x448C00); RATE float at +0x0 (0 = off), last output at +0x4' % (len(s), e))
+    print('STEER %d bytes: entry +0x%X (called from 0x5CFF32 instead of 0x448C00); RATE float at +0x0 (0 = off), last output at +0x4, LINEAR at +0x8 (0 = the game value)' % (len(s), e))
     print(s.hex())

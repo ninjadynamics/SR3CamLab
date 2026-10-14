@@ -1,5 +1,8 @@
 """Realism flavor: real specs (realism_specs.json, with sources) -> SR3 field values per car (flavor_realism.json for build_flavor.py).
-    python realism_map.py [realism_specs.json] [flavor_realism.json]
+    python realism_map.py [realism_specs.json] [flavor_realism.json] [--pace sr3|real]
+  pace         sr3 (default; the owner, 2026-10-14: "add a multiplier that matches the accel and speed with SR3 default"): the
+               table asks build_flavor.py to scale each car's torque to SEGA's own 0-100 / 0-150 km/h for that car and to give a
+               car with a design top speed SEGA's top speed (build_flavor.py, Pace); real: the real torque (x 1.2664) and tops.
 Rules (each one keeps SR3's own model; numbers that do not fit it are listed in the output under "misfits"):
   mass         real kg (ch0 +4). In SR3 the tyre force is mu x load, so mass alone changes acceleration and braking, not g in corners.
   inertia      SR3's I/m factors (1.67, 2.5, 1.5 = pitch, yaw, roll) x the real (L2+H2, L2+W2, W2+H2) / a 4300 x 1800 x 1400 mm reference.
@@ -12,8 +15,15 @@ Rules (each one keeps SR3's own model; numbers that do not fit it are listed in 
   drivetrain   4WD active / Group A centre: SR3's LimitedSlipBiased (2, 4) with SR3's split; mechanical (S2000, raid): LimitedSlip4WD
                (2, 0) with the Revo files' 0.2 / 0.2; Hornet: LimitedSlipRearWD (1, 0)."""
 import json, sys, math, os
-src = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), 'realism_specs.json')
-dst = sys.argv[2] if len(sys.argv) > 2 else 'flavor_realism.json'
+argv = [a for a in sys.argv[1:] if not a.startswith('--pace')]
+pace = 'sr3'
+for i, a in enumerate(sys.argv):
+    if a == '--pace' and i + 1 < len(sys.argv): pace = sys.argv[i + 1]
+    elif a.startswith('--pace='): pace = a.split('=', 1)[1]
+argv = [a for a in argv if a != pace or '--pace' not in sys.argv]
+if pace not in ('sr3', 'real'): raise SystemExit('--pace is sr3 or real')
+src = argv[0] if len(argv) > 0 else os.path.join(os.path.dirname(os.path.abspath(__file__)), 'realism_specs.json')
+dst = argv[1] if len(argv) > 1 else 'flavor_realism.json'
 S = json.load(open(src, encoding='utf-8-sig'))['cars']
 FR = [0, .125, .25, .375, .5, .625, .75, .875, .91, .95, .97, .99, 1.0]
 TAIL = {0.95: 0.2 / 1.0, 0.97: 0.1, 0.99: 0.01, 1.0: 0.0}
@@ -21,9 +31,12 @@ LIMIT_EST = {'C4': 7500, 'RSFocus': 7500, 'SubaruImpreza': 7500, 'SX4': 7500, 'M
              'Bowler': 6500, 'Enduro': 4800, 'Hornet': 9000}
 PEAKS_EST = {'SX4': (5500, 3500), 'MitsubishiEvo': (5500, 3500), '207': (8000, 6500), 'Bowler': (5500, 4000), 'Enduro': (4000, 2000), 'Hornet': (8000, 6000)}
 NA = {'207', 'Bowler', 'Hornet'}
+# pace sr3: measured corrections of the launch model's torque factor (in game 2026-10-14, Classic Mountain R4, 0-100 km/h from
+# the first movement): Bowler SEGA 3.59 s, Realism x2.85 3.12 s -> x0.84; ST205 SEGA 3.19, Realism 3.31 (none needed)
+PACE_TRIM = {'Bowler': 0.84}
 REF = (4300.0, 1800.0, 1400.0)
 out = {'flavor': 'realism', 'folder_digit': '2', 'about': 'Real-car differences on SR3s model; built from the owners SR3 files by build_flavor.py.',
-       'gearbox': None, 'engine': None, 'tyre': None, 'force_model': 2, 'cars': {}, 'misfits': []}
+       'gearbox': None, 'engine': None, 'tyre': None, 'force_model': 2, 'pace': pace, 'cars': {}, 'misfits': []}
 for car, s in S.items():
     o = {}; mis = []
     o['mass'] = float(s['mass_kg'])
@@ -65,6 +78,7 @@ for car, s in S.items():
     elif car in ('207', 'Bowler', 'Enduro'): o['diff'] = {'drive': 2, 'type': 0, 'params': [0.2, 0.2, 0.0, 0.0]}
     else: o['diff'] = {'drive': 2, 'type': 4}
     if s.get('file'): o['file'] = s['file']
+    if pace == 'sr3' and car in PACE_TRIM: o['pace_trim'] = PACE_TRIM[car]
     o['src'] = s.get('src', [])
     out['cars'][car] = o
     out['misfits'] += ['%s: %s' % (car, m) for m in mis]
