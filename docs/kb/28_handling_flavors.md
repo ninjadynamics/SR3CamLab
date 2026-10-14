@@ -79,6 +79,36 @@ The mu meaning is LIKELY (ordering; in game the traction limit scales with it).
   accelerator, [3] brake), vehicle [[driver + 0x858] + 4] (CVehicle 0x678864), gears + 8 = gear index, engine + 0x18 =
   rad/s (VERIFIED in game). [0x9EB390] != 0: the game drives the car itself (0x5E9F04 -> 0x5EE350), as after a race.
 
+### The tyre force models (chunk 27 + 8), read from the code (2026-10-15)
+The names (Standard, SegaRally, PowerslideSteer, AlwaysSteer) are SR3's own class names (RTTI). What the code does with each
+(Rally.exe, static reading; VERIFIED = read in the code, LIKELY = inferred):
+- Built by 0x46D4B0 from chunk 27 (+4 the load model: 0 or 2 -> a 0x18-byte Topham object, vtable 0x679990, at tyre + 0x34;
+  + 8 the force model through the jump table 0x46D5C8 -> an object at tyre + 0x38). VERIFIED.
+  | + 8 | name | object (vtable, size, constructor) | reset (slot 2) | model number (slot 3) | per-step update (slot 4) |
+  |---|---|---|---|---|---|
+  | 0 | Standard | 0x6779EC, 0x38, 0x447800 | 0x46C6D0 | 0x430AB0 -> 0 | 0x430AF0: none (ret) |
+  | 1 | SegaRally | 0x6799A8, 0x38, 0x447800 | 0x46C5B0 | 0x471C80 -> 1 | 0x44FC30 |
+  | 2 | PowerslideSteer (every SR3 car) | 0x6799C0, 0x3C, 0x46C630 | 0x46C650 | 0x4478D0 -> 2 | 0x4500C0 |
+  | 3 | AlwaysSteer | 0x6799D8, 0x38, 0x447800 | 0x46C6D0 (Standard's) | 0x465DD0 -> 3 | 0x44FC20: none (ret) |
+  The base class's vtable is 0x6779A4 (slot 2 purecall 0x4AEFD1). Slot 0 is the destructor, slot 1 0x4308E0 is shared by all.
+- A flag at model + 0x24 switches the wheels' steering off: 0x448C00 (the vehicle takes the steering value, stored at
+  [[wrapper + 4] + 0x28] + 8) asks 0x45A9F0 for each wheel's angle and writes it to wheel + 0x190, or 0 when
+  [[wheel + 0x30] + 0x38] + 0x24 != 0 (0x448C68 - 0x448C86). VERIFIED. The flag is also read at 0x452C12, 0x45CF9D, 0x45E4B4.
+  PowerslideSteer's update tests and clears it (0x450274, 0x4502A6, 0x4503A7, 0x450436); every reset clears it; no write of
+  a non-zero value has been found yet. LIKELY: it is PowerslideSteer's "in a powerslide" state, during which the car is
+  turned by the model rather than by the wheels.
+- AlwaysSteer = Standard with another model number: the same reset (zeroes + 8 .. + 0x1C), no per-step update, never sets
+  the flag. LIKELY from the name and the flag: the wheels always follow the steering, with no powerslide state; where the
+  game branches on the model number (slot 3) has not been found (no call of slot 3 through tyre + 0x38).
+- SegaRally's update 0x44FC30 (VERIFIED as far as read): zeroes its outputs; reads the body's velocity against two of its axes
+  (+ 0x170..0x178 against + 0xF8.. / + 0x104..); returns early below a threshold (0x677F30) or when the side speed ratio is
+  small; reads the steering value [controls + 8] and the lock factor [controls + 0xC] (0x44FE38 -); sums each wheel's forces
+  (0x451B10 / 0x451A60 over [vehicle + 0x2C]); writes a vector to + 0x14 .. + 0x1C (through 0x42DD50) and a value to + 0x20.
+  LIKELY a turning torque of its own, made from the steering, in place of (or on top of) the tyres' side forces.
+- In game (owner, 2026-10-15): the SRC files with + 8 = 1 instead of 2 (built from flavor_src.json, the only change in the ten
+  files) - "steering seems to be completely disabled". Why is being confirmed live (the wheels' + 0x190, the model's
+  + 0x14 .. + 0x24 and the yaw rate in one race); see the port section of 29_src_steering_code.md when it is done.
+
 ## 2. The old games, measured
 
 ### SEGA Rally Championship (MAME 0.229 srallyc, headless, Lua; owner's laps in ElSemi's emulator)
