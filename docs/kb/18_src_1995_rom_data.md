@@ -135,7 +135,8 @@ VERIFIED by the texture under each polygon (`classic/courses/src/surface_types_c
 | 8 | tarmac under cover | 11 polygons, Mountain |
 | 9 | tunnel floor | Forest |
 - Bit 23 = side polygon (bank / wall), always type 0. Bits 20-22 are never set. VERIFIED (data).
-- UNKNOWN: the grip / drag numbers, the sounds each type triggers, and whether the TGP or the main CPU evaluates them.
+- The grip / drag numbers per type are in the main CPU's car code: 29_src_steering_code.md section 5. Still UNKNOWN: the
+  sounds each type triggers.
 - The importer maps 0, 1, 8, 9 to tarmac and 2, 3, 4, 6 to loose (course setting `surface_codes`).
 
 ## 8. Objects outside the course blocks
@@ -229,5 +230,5 @@ All measured on Mountain unless stated; VERIFIED (data) by the importer's own co
 
 ## 11. What nobody found
 The time awarded was found (section 5); still UNKNOWN: the player's grid slot, rival car lines other than the single AI
-line, physics per surface, per-polygon brightness (the importer assumes full), the kind 6 / 20 trackside records, the code
+line, per-polygon brightness (the importer assumes full), the kind 6 / 20 trackside records, the code
 that maps a trackside record's model number to an object, and the per-polygon sort priority.

@@ -86,6 +86,7 @@ The mu meaning is LIKELY (ordering; in game the traction limit scales with it).
   against the HUD), +0x38/0x3C/0x40 pitch / yaw / roll, +0x78 gear, +0x7C rpm. Input bytes 0x202050 steer, 0x202051
   accelerator, 0x202052 brake (copied from the ADC by 0x24E8 / 0x26B8; MAME 0.229 cannot set analog ports from Lua, so the
   two stores 0x2514 / 0x26DC were made no-ops in the ROM region and the script writes the bytes).
+- The steering and turning code itself (no fitting): 29_src_steering_code.md.
 - Autopilot: pure pursuit on the course's AI line (data ROM 0x8012F0 Desert, 0x8025E0 Mountain), Practice, AT.
 - The Celica and the Delta give frame-identical logs: one handling set (VERIFIED for AT).
 - AT: 0-50 0.53-0.6 s, 0-100 1.12-1.3 s, 0-150 2.05-2.17 s, 0-180 2.9-3.4 s; upshifts 81 / 150 / 181 km/h; km/h per 1000 rpm
