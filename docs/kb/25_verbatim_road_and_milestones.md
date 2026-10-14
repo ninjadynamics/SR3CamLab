@@ -125,6 +125,25 @@ mean move 0.166 -> 0.157 m. `round_pin false` + `round_fade 0.5` builds the old 
 sink up to `CAP` 2.5 m, which leaves a pit with a step where a few corners are held (spectators); lowering the cap to about 1 m
 was proposed, not done.
 
+### 5.2 Rounding outwards (2026-10-14, `round_mode: outward`, the default from then on)
+The owner's screenshots of the pinned R4 (SR3_20261014_2243xx) showed clefts between cliff blocks, notches in cliff tops and
+an inward crease between two rock masses: "no concave shapes should be formed! always convex!!", then "I want shit to get
+rounded outwards (or remain straight) unless something is clearly concave in low-poly". Measured on the pinned R4 (every edge
+two pieces share, its bend before and after; `scratchpad\convex\hollow.py`): 2 605 edges in 538 places bent inward by more than
+20 degrees and at least 15 more than the 1995 shape (587 by more than 45). Not the cause: separate blocks pulling apart - only
+one place in the whole course has corners of two different blocks within 0.3 m that moved apart. The cause is the shrinking
+itself: corners that must stay (verge, walls, open borders, spectators, pins) stand while the rim beside them sinks.
+`round1995.round_outward` (rules O1 - O4 in the file) never moves a 1995 corner: each polygon becomes a curved patch through its
+own corners (PN triangle; a four-corner polygon blended from its four edge curves), with each corner's normal the mean of the
+polygons joining it smoothly; edges bent more than `round_crease` (45 degrees), edges of anything not rounded, open borders and
+polygons wound against each other stay straight. Then no new hollow: an edge the game draws may bend inward only up to the
+largest inward bend of the 1995 edges round its polygons (a 1995 hollow is rounded over several pieces, a fillet) plus
+`round_tol` (2 degrees); beyond that the curving of its corners is halved, 16 times, then taken away. First try without the
+fillet allowance: 55 994 such edges, almost all the gentle foot of a bulge beside a 1995 hollow, cut down to a mean move of 2.5
+cm (nearly flat). With it: 5 248 to fix, 0 left; 124 000 of 228 000 corners curved, mean 5.9 cm, at most `round_cap` 1.5 m;
+by the counter above 168 edges over 20 degrees (all fillets of 1995 inside corners) against 2 605. `round_mode: shrink` builds
+the rule set before (pinned R4 with round_pin / round_fade as in 5.1).
+
 - "Full island infill is a waste of polygons": authored geometry only, and see whether that is enough.
 - The code for rounding, fill, baked light and light maps is all still in the importer, switched off by the RAW settings.
 

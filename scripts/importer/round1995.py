@@ -306,8 +306,225 @@ def round_natural(faces, level=1, origin=None, passes=2, lam=0.5, weld=0.02, log
     log('       ROUNDED natural surfaces (experiment, level %d): %s' % (level, stat))
     return out, stat
 
+# ---------------------------------------------------------------- 'outward' (course setting round_mode, the default since 2026-10-14)
+# Owner, 2026-10-14, after R4's notches, tips and clefts: "I want shit to get rounded outwards (or remain straight) unless something is clearly
+# concave in low-poly". The rule set above SHRINKS the surface (smoothing pulls every corner towards its neighbours' middle) and needs eight rules to
+# keep the shrinking from tearing it; a check of the R4 of that day found 2 605 edges in 538 places bent inward where the 1995 shape was flat or bent
+# outward (587 by more than 45 degrees). This one never moves a 1995 corner:
+#   O1. Every 1995 corner stays where it is. Each polygon becomes a curved patch through its own corners (a triangle: the cubic "PN" triangle; a
+#       four-corner polygon: the patch blended from its four edge curves) and the pieces it is cut into lie on that patch. An edge curve leaves each
+#       corner along the plane at right angles to that corner's normal, the normal being the mean of the polygons round the corner that join it
+#       smoothly: on a curved shape the patch lies OUTSIDE the facets (it bulges), on a flat stretch it is the facet, and only where the 1995 shape is
+#       hollow does it go in.
+#   O2. SHARP EDGES STAY: two polygons that meet at more than `crease` degrees, or the wrong way round to each other, or an edge that is an edge of
+#       something not rounded (a wall, the verge), or an open border: that edge stays straight and its corners take the normal of their own side
+#       only. A flat top at a cliff stays flat (rounded outwards over the rim it would rise in a lip, a hollow behind it).
+#   O3. NO NEW HOLLOW: every edge the game draws (the pieces' edges and the diagonal of each four-corner piece) is compared with the same edge
+#       uncurved; one that bends inward by more than `tol` degrees more than it did has the curving of its four corners halved, again and again
+#       (16 times), then taken away, until no such edge is left.
+#   O4. Kept from the rules above: 2. ORDER (a corner stays on its side of the road, the verge and every lying surface that is not rounded),
+#       4. FLAT STAYS COARSE, 5. THE APRON and 6. WHERE PEOPLE STAND (no curving there; O3 fades it in), 7. NOTHING TURNS OVER. Nothing ever moves
+#       inward on a flat or curved-out shape, so no gap can open where pieces meet without sharing corners: 1. REACH and 8. PINNING are not needed.
+# Each corner moves at most `cap` metres. round_mode 'shrink' builds the rule set above (the R4 of 2026-10-13 / the pinned one of 2026-10-14).
+CREASE = 45.0; TOL = 2.0; OUT_CAP = 1.5
+
+def _bends(X, TA, TB):
+    """signed bend (degrees, + = inward: a hollow seen from the side the triangles face) of every edge shared by two drawn triangles.
+    TA / TB (m, 3): the two triangles' corners as (u, v, w) with u -> v the shared edge in TA's order and w the third corner"""
+    a = X[TA[:, 0]]; b = X[TA[:, 1]]; n1 = np.cross(b - a, X[TA[:, 2]] - a); n2 = np.cross(X[TB[:, 1]] - X[TB[:, 0]], X[TB[:, 2]] - X[TB[:, 0]])
+    l1 = np.linalg.norm(n1, axis=1); l2 = np.linalg.norm(n2, axis=1); ok = (l1 > 1e-12) & (l2 > 1e-12)
+    ang = np.degrees(np.arccos(np.clip((n1 * n2).sum(1) / np.maximum(l1 * l2, 1e-30), -1.0, 1.0)))
+    return np.where(((X[TB[:, 2]] - a) * n1).sum(1) > 0, ang, -ang), ok
+
+def round_outward(faces, level=1, origin=None, weld=0.02, log=print, exclude=(), road=None, keep_at=None, crease=CREASE, tol=TOL, cap=OUT_CAP):
+    """faces2, info = round_outward(faces, level): rules O1 - O4 above. The same input, output and light-map table (PATCH) as round_natural."""
+    import retex, time
+    t0 = time.time()
+    if origin is None:
+        import overlay_bake as OB
+        origin = OB.ORIGIN
+    lab = {k: v[0] for k, v in retex.labels().items()}; tile = lambda m: origin.get(str(m).split('|')[0], str(m).split('|')[0]); exclude = tuple(exclude)
+    def natural(fc):
+        mat, sec = str(fc[0]), str(fc[1])
+        if mat.split('|')[0].endswith('_t') or sec == 'sea' or sec.startswith(('hf_terrain', 'hf_weld', 'hf_seal', 'hf_roof', 'verge', 'gantry', 'eave', 'gable')): return False
+        if exclude and (tile(mat).startswith(exclude) or mat.startswith(exclude)): return False
+        return lab.get(tile(mat)) in NATURAL and len(fc[2]) in (3, 4)
+    isnat = np.array([natural(fc) for fc in faces], bool); nat = np.nonzero(isnat)[0]; stat = dict(mode='outward', polygons=int(len(nat)))
+    if not len(nat): return list(faces), stat
+    hard = set()                                                       # (O2) the edges of everything not rounded
+    for i, fc in enumerate(faces):
+        if isnat[i] or len(fc[2]) < 2: continue
+        kk = _pack(np.asarray(fc[2], float)[:, :3], weld).tolist()
+        for a in range(len(kk)): b = kk[(a + 1) % len(kk)]; hard.add((min(kk[a], b), max(kk[a], b)))
+    S = []                                                             # (2.) the lying surfaces the rounded ground keeps its side of, as in round_natural
+    for i, fc in enumerate(faces):
+        if isnat[i] or str(fc[0]).split('|')[0].endswith('_t') or str(fc[1]) == 'sea': continue
+        P = np.asarray(fc[2], float)
+        for a in range(1, len(P) - 1): S.append((P[0], P[a], P[a + 1]))
+    S = np.array(S, float).reshape(-1, 3, 3); nS = np.cross(S[:, 1] - S[:, 0], S[:, 2] - S[:, 0]); ln = np.linalg.norm(nS, axis=1)
+    S = S[(ln > 1e-9) & (np.abs(nS[:, 1]) > 0.5 * np.maximum(ln, 1e-12))]
+    SR = np.zeros((0, 3, 3))
+    if road is not None:
+        R = np.asarray(road, float); R2 = np.roll(R, -1, axis=0); a, b, c, d = R[:, :-1], R[:, 1:], R2[:, 1:], R2[:, :-1]
+        SR = np.concatenate([np.stack([a, b, c], 2).reshape(-1, 3, 3), np.stack([a, c, d], 2).reshape(-1, 3, 3)]); S = np.concatenate([S, SR])
+    grp = {}; orig = {}; coarse = {}
+    for k in (3, 4):
+        ids = [i for i in nat if len(faces[i][2]) == k]
+        if ids: grp[k] = [np.array([faces[i][2] for i in ids], float), np.array([faces[i][3] for i in ids], float), np.array(ids, np.int64)]; orig[k] = grp[k][0].copy()
+    ks = list(grp)
+    # ---- the 1995 polygons: corners, normals, which edges are smooth (O2), the normal of every corner on each side (O1)
+    VK = {k: _pack(grp[k][0], weld) for k in ks}; uk, inv = np.unique(np.concatenate([VK[k].ravel() for k in ks]), return_inverse=True); nvc = len(uk)
+    VI = {}; off = 0
+    for k in ks: VI[k] = inv[off:off + VK[k].size].reshape(-1, k); off += VK[k].size
+    FB = {}; FN = []; base = 0
+    for k in ks:
+        P = grp[k][0]; FN.append(np.cross(P[:, 1] - P[:, 0], P[:, 2] - P[:, 0]) if k == 3 else np.cross(P[:, 2] - P[:, 0], P[:, 3] - P[:, 1])); FB[k] = base; base += len(P)
+    FN = np.concatenate(FN); nf = base; FL = np.linalg.norm(FN, axis=1); FU = FN / np.maximum(FL, 1e-12)[:, None]
+    EA, EB, EF, EC, EK = [], [], [], [], []
+    for k in ks:
+        n = len(VI[k])
+        for c in range(k): EA.append(VI[k][:, c]); EB.append(VI[k][:, (c + 1) % k]); EF.append(FB[k] + np.arange(n)); EC.append(np.full(n, c)); EK.append(np.full(n, k))
+    EA, EB, EF, EC, EK = (np.concatenate(x) for x in (EA, EB, EF, EC, EK)); ok_ = EA != EB
+    lo_, hi_ = np.minimum(EA, EB), np.maximum(EA, EB); ek = np.where(ok_, lo_ * np.int64(nvc) + hi_, -1 - np.arange(len(EA)))
+    o = np.argsort(ek, kind='stable'); eks = ek[o]; ue, st, cnt = np.unique(eks, return_index=True, return_counts=True)
+    sel = (cnt == 2) & (ue >= 0); i1 = o[st[sel]]; i2 = o[st[sel] + 1]
+    smooth_e = (EA[i1] == EB[i2]) & (FL[EF[i1]] > 1e-12) & (FL[EF[i2]] > 1e-12) & ((FU[EF[i1]] * FU[EF[i2]]).sum(1) >= np.cos(np.radians(crease)))
+    hk = [(int(uk[lo_[i]]), int(uk[hi_[i]])) in hard for i in i1.tolist()]; smooth_e &= ~np.array(hk, bool)
+    smooth = np.zeros(len(EA), bool); smooth[i1[smooth_e]] = True; smooth[i2[smooth_e]] = True
+    tot = dict(edges=int(len(ue)), smooth_edges=int(smooth_e.sum()), sharp_or_open_edges=int(len(ue) - smooth_e.sum()))
+    node = lambda f, c: f * 4 + c                                      # a corner of a polygon; joined across every smooth edge into the fan round that 1995 corner
+    s1, s2 = i1[smooth_e], i2[smooth_e]
+    pa = np.concatenate([node(EF[s1], EC[s1]), node(EF[s1], (EC[s1] + 1) % EK[s1])]); pb = np.concatenate([node(EF[s2], (EC[s2] + 1) % EK[s2]), node(EF[s2], EC[s2])])
+    lab_ = np.arange(nf * 4)
+    for _ in range(100000):
+        m_ = np.minimum(lab_[pa], lab_[pb]); new = lab_.copy(); np.minimum.at(new, pa, m_); np.minimum.at(new, pb, m_); new = new[new]; new = new[new]
+        if np.array_equal(new, lab_): break
+        lab_ = new
+    fanN = np.zeros((nf * 4, 3)); np.add.at(fanN, lab_, np.repeat(FN, 4, axis=0)); CN = fanN[lab_]; CN /= np.maximum(np.linalg.norm(CN, axis=1), 1e-12)[:, None]
+    # ---- the edge curves: the two inner control points' offsets from the straight edge (zero on a sharp or open edge)
+    D1 = np.zeros((nf, 4, 3)); D2 = np.zeros((nf, 4, 3))
+    for k in ks:
+        P = grp[k][0]; f0 = FB[k]; n = len(P)
+        for c in range(k):
+            a = P[:, c]; b = P[:, (c + 1) % k]; na = CN[node(f0 + np.arange(n), c)]; nb = CN[node(f0 + np.arange(n), (c + 1) % k)]
+            D1[f0:f0 + n, c] = -((b - a) * na).sum(1)[:, None] * na / 3.0; D2[f0:f0 + n, c] = -((a - b) * nb).sum(1)[:, None] * nb / 3.0
+    sm_fc = np.zeros((nf, 4), bool); sm_fc[EF, EC] = smooth; D1[~sm_fc] = 0.0; D2[~sm_fc] = 0.0
+    # (O3) how hollow the 1995 shape is round each polygon: the largest inward bend of a smooth edge of any polygon sharing a corner with it. Rounding
+    # spreads such an edge's bend over the pieces beside it (a fillet); only bends beyond it, or any bend where the 1995 shape is flat or curved out, are new
+    cen = np.concatenate([grp[k][0].mean(1) for k in ks]); f1, f2 = EF[s1], EF[s2]
+    cv = np.where(((cen[f2] - cen[f1]) * FU[f1]).sum(1) > 0, np.degrees(np.arccos(np.clip((FU[f1] * FU[f2]).sum(1), -1.0, 1.0))), 0.0)
+    cav = np.zeros(nf); np.maximum.at(cav, f1, cv); np.maximum.at(cav, f2, cv)
+    vmax = np.zeros(nvc)
+    for k in ks: np.maximum.at(vmax, VI[k].ravel(), np.repeat(cav[FB[k]:FB[k] + len(VI[k])], k))
+    cav2 = np.zeros(nf)
+    for k in ks: cav2[FB[k]:FB[k] + len(VI[k])] = vmax[VI[k]].max(1)
+    # ---- cut every polygon as round_natural does; each piece corner goes onto its polygon's patch
+    AB = {k: np.repeat(np.array([[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)][:k] if k == 4 else [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)]], float), len(grp[k][2]), axis=0) for k in ks}
+    PF = {k: FB[k] + np.arange(len(grp[k][2])) for k in ks}
+    for k in ks:
+        for _ in range(level): grp[k][0], grp[k][1] = _subdivide(grp[k][0], grp[k][1]); grp[k][2] = np.repeat(grp[k][2], 4); PF[k] = np.repeat(PF[k], 4); orig[k] = _subdivide(orig[k], np.zeros(orig[k].shape[:2] + (2,)))[0]; AB[k] = _subdivide(np.zeros(AB[k].shape[:2] + (3,)), AB[k])[1]
+    E_ = lambda f, c, s: 3.0 * ((1 - s) ** 2 * s)[..., None] * D1[f, c] + 3.0 * ((1 - s) * s * s)[..., None] * D2[f, c]
+    DD = {}
+    for k in ks:
+        f = PF[k][:, None] * np.ones((1, k), np.int64); A = AB[k]
+        if k == 4:
+            u, v = A[..., 0], A[..., 1]
+            DD[k] = (1 - v)[..., None] * E_(f, 0, u) + v[..., None] * E_(f, 2, 1 - u) + (1 - u)[..., None] * E_(f, 3, 1 - v) + u[..., None] * E_(f, 1, v)
+        else:
+            w, u, v = 1 - A[..., 0], A[..., 0] - A[..., 1], A[..., 1]
+            d210, d120, d021, d012, d102, d201 = D1[f, 0], D2[f, 0], D1[f, 1], D2[f, 1], D1[f, 2], D2[f, 2]; d111 = 1.5 * (d210 + d120 + d021 + d012 + d102 + d201) / 6.0
+            q = lambda s: s[..., None]
+            DD[k] = 3 * q(w * w * u) * d210 + 3 * q(w * u * u) * d120 + 3 * q(u * u * v) * d021 + 3 * q(u * v * v) * d012 + 3 * q(v * v * w) * d102 + 3 * q(v * w * w) * d201 + 6 * q(w * u * v) * d111
+    # ---- the pieces' corners welded; what may move and how far
+    allp = np.concatenate([grp[k][0].reshape(-1, 3) for k in ks]); alld = np.concatenate([DD[k].reshape(-1, 3) for k in ks]); keys, winv = np.unique(_pack(allp, weld), return_inverse=True); winv = winv.reshape(-1); nv = len(keys)
+    cntw = np.bincount(winv, minlength=nv).astype(float); start = np.stack([np.bincount(winv, weights=allp[:, c], minlength=nv) for c in range(3)], 1) / cntw[:, None]
+    D = np.stack([np.bincount(winv, weights=alld[:, c], minlength=nv) for c in range(3)], 1) / cntw[:, None]
+    off = 0
+    for k in ks: grp[k].append(winv[off:off + grp[k][0].shape[0] * k].reshape(-1, k)); off += grp[k][0].shape[0] * k
+    dl = np.linalg.norm(D, axis=1); D *= np.minimum(1.0, cap / np.maximum(dl, 1e-12))[:, None]; tot['capped'] = int((dl > cap).sum())
+    keep = _gap_over(start, SR) < APRON; tot['apron'] = int((keep & (dl > 1e-6)).sum())          # (5.)
+    if keep_at is not None and len(keep_at):                           # (6.)
+        K_ = np.asarray(keep_at, float)[:, :3]; xo_ = np.argsort(start[:, 0], kind='stable'); xs_ = start[xo_, 0]; stand_ = np.zeros(nv, bool)
+        for (kx, ky, kz), a_, b_ in zip(K_.tolist(), np.searchsorted(xs_, K_[:, 0] - STAND).tolist(), np.searchsorted(xs_, K_[:, 0] + STAND).tolist()):
+            c_ = xo_[a_:b_]; stand_[c_[((start[c_, 0] - kx) ** 2 + (start[c_, 2] - kz) ** 2 < STAND * STAND) & (np.abs(start[c_, 1] - ky) < 3.0)]] = True
+        tot['stands'] = int((stand_ & (dl > 1e-6)).sum()); keep |= stand_
+    D[keep] = 0.0
+    X = start + D; lo, hi = _order_limits(start, X, np.linalg.norm(D, axis=1) > 1e-9, S); bad = lo > hi; y = np.clip(X[:, 1], lo, np.maximum(hi, lo))
+    tot['held_by_order'] = int((np.abs(y - X[:, 1]) > 1e-6).sum() + bad.sum()); D[:, 1] = y - start[:, 1]; D[bad] = 0.0
+    # ---- (O3) no new hollow, (7.) nothing turns over: the triangles the game draws, their shared edges
+    T = []; TO = []; TP = []
+    for k in ks:
+        vi = grp[k][3]
+        for tr in (((0, 1, 2),) if k == 3 else ((0, 1, 2), (0, 2, 3))): T.append(vi[:, list(tr)]); TO.append(orig[k][:, list(tr)]); TP.append(PF[k])
+    T = np.concatenate(T); TO = np.concatenate(TO); TP = np.concatenate(TP); good = (T[:, 0] != T[:, 1]) & (T[:, 1] != T[:, 2]) & (T[:, 0] != T[:, 2]); T = T[good]; TO = TO[good]; TP = TP[good]
+    U_ = np.concatenate([T[:, 0], T[:, 1], T[:, 2]]); V_ = np.concatenate([T[:, 1], T[:, 2], T[:, 0]]); W_ = np.concatenate([T[:, 2], T[:, 0], T[:, 1]])
+    ek2 = np.minimum(U_, V_) * np.int64(nv) + np.maximum(U_, V_); o = np.argsort(ek2, kind='stable'); eks = ek2[o]; ue2, st2, cnt2 = np.unique(eks, return_index=True, return_counts=True)
+    j1 = o[st2[cnt2 == 2]]; j2 = o[st2[cnt2 == 2] + 1]; cons = U_[j1] == V_[j2]; j1, j2 = j1[cons], j2[cons]
+    TA = np.stack([U_[j1], V_[j1], W_[j1]], 1); TB = np.stack([U_[j2], V_[j2], W_[j2]], 1); TP3 = np.concatenate([TP, TP, TP])
+    b0, ok0 = _bends(start, TA, TB); b0 = np.maximum(np.maximum(b0, 0.0), np.maximum(cav2[TP3[j1]], cav2[TP3[j2]]))
+    n0 = np.cross(TO[:, 1] - TO[:, 0], TO[:, 2] - TO[:, 0]); l0 = np.linalg.norm(n0, axis=1)
+    scale = np.ones(nv); rounds = 0; cut = 0
+    if __import__('os').environ.get('ROUND_DIAG'): np.savez(__import__('os').environ['ROUND_DIAG'], start=start, D=D, keep=keep, TA=TA, TB=TB, b0=b0, ok0=ok0)
+    for rnd in range(40):
+        X = start + D * scale[:, None]
+        b1, ok1 = _bends(X, TA, TB); hol = ok0 & ok1 & (b1 > b0 + tol)
+        P1 = X[T]; n1 = np.cross(P1[:, 1] - P1[:, 0], P1[:, 2] - P1[:, 0]); l1 = np.linalg.norm(n1, axis=1); fold = (l0 > 1e-9) & ((n0 * n1).sum(1) < FOLD * l0 * l1)
+        if rnd == 0: tot['new_hollows_before_O3'] = int(hol.sum()); tot['turned_over_before_O3'] = int(fold.sum())
+        mark = np.zeros(nv, bool); mark[TA[hol].ravel()] = True; mark[TB[hol, 2]] = True; mark[T[fold].ravel()] = True; mark &= scale > 0
+        if not mark.any(): break
+        rounds += 1; cut += int(mark.sum()); scale[mark] = scale[mark] * 0.5 if rnd < 16 else 0.0
+    X = start + D * scale[:, None]; b1, ok1 = _bends(X, TA, TB)
+    tot.update(O3_rounds=rounds, O3_corners_cut=cut, new_hollows_left=int((ok0 & ok1 & (b1 > b0 + tol)).sum()), corners_curved=int((np.linalg.norm(X - start, axis=1) > 0.005).sum()), corners=int(nv))
+    nrm_ = lambda O: np.cross(O[:, 1] - O[:, 0], O[:, 2] - O[:, 0])
+    dv = X - start; tot['largest_move_m'] = round(float(np.linalg.norm(dv, axis=1).max()), 2); tot['mean_move_m'] = round(float(np.linalg.norm(dv, axis=1)[np.linalg.norm(dv, axis=1) > 0.005].mean()) if (np.linalg.norm(dv, axis=1) > 0.005).any() else 0.0, 3)
+    # ---- (4.) flat stays coarse: a polygon whose pieces all stay within FLAT of where they were is written whole, its outline corners exactly back
+    nper = 4 ** level; back = np.zeros(nv, bool); flat = {}
+    for rnd in range(4):
+        Xn = np.where(back[:, None], start, X)
+        for k in ks:
+            vi = grp[k][3]; O = orig[k]; nn_ = nrm_(O); nn_ /= np.maximum(np.linalg.norm(nn_, axis=1), 1e-12)[:, None]
+            flat[k] = np.abs(((Xn[vi] - O) * nn_[:, None, :]).sum(2)).max(1).reshape(-1, nper).max(1) < FLAT
+        nb_ = np.zeros(nv, bool)
+        for k in ks: nb_[grp[k][3][np.repeat(flat[k], nper)]] = True
+        if np.array_equal(nb_, back): break
+        back = nb_
+    X = np.where(back[:, None], start, X); coarse = flat; tot['flat'] = int(sum(int(f.sum()) for f in flat.values()))
+    for k in ks: vi = grp[k].pop(); grp[k][0] = X[vi]
+    if __import__('os').environ.get('ROUND_DBG'):                     # the pieces before and after, in the form rdbg's hollow.py / ana.py read
+        __import__('pickle').dump(dict(level=level, groups={k: dict(orig=orig[k], final=grp[k][0], flat=np.repeat(flat[k], nper), ids=grp[k][2]) for k in ks}), open(__import__('os').environ['ROUND_DBG'], 'wb'))
+    stat.update(tot); stat['seconds'] = round(time.time() - t0, 1)
+    return _emit(faces, isnat, grp, orig, AB, coarse, level, stat, log, 'ROUNDED OUTWARDS (rules O1-O4, level %d)' % level)
+
+def _emit(faces, isnat, grp, orig, AB, coarse, level, stat, log, what):
+    """the pieces as polygons, the light-map table PATCH and the stretch figures (as at the end of round_natural)"""
+    sr_ = []
+    for k in grp:
+        O = orig[k]; Pk = grp[k][0]
+        for a in range(k):
+            l0 = np.linalg.norm(O[:, (a + 1) % k] - O[:, a], axis=1); l1 = np.linalg.norm(Pk[:, (a + 1) % k] - Pk[:, a], axis=1); ok_ = l0 > 1e-6; sr_.append(np.where(ok_, l1 / np.maximum(l0, 1e-9), 1.0)[ok_])
+    if sr_:
+        sr_ = np.concatenate(sr_); pct = lambda m_: round(100.0 * float(m_.mean()), 1)
+        stat['texture_stretch'] = dict(edges=int(len(sr_)), percent_within_10=pct(np.abs(sr_ - 1) <= 0.10), percent_longer_by_25=pct(sr_ > 1.25), largest=round(float(sr_.max()), 2), smallest=round(float(sr_.min()), 2))
+    out_nat = []; pk_ = []; pa_ = []; pi_ = []
+    for k in grp:
+        P, U, ids = grp[k][:3]; A = AB[k]
+        if k in coarse and coarse[k].any():
+            m = np.repeat(coarse[k], 4 ** level); out_nat += [faces[i] for i in ids[m][::4 ** level].tolist()]; P, U, ids = P[~m], U[~m], ids[~m]; A = A[~m]
+        r = np.round(P, 3); distinct = np.ones(len(P), np.int64)
+        for a in range(1, k): distinct += ~np.any([(r[:, a] == r[:, b]).all(1) for b in range(a)], axis=0)
+        good = distinct >= 3; Pl = P[good].tolist(); Ul = U[good].tolist(); il = ids[good].tolist(); Pg = P[good]; Ag = A[good]
+        if k == 3: Pg = np.concatenate([Pg, Pg[:, 2:3]], 1); Ag = np.concatenate([Ag, Ag[:, 2:3]], 1)
+        pk_.append(corner_keys(Pg)); pa_.append(Ag); pi_.append(ids[good])
+        out_nat += [(faces[i][0], faces[i][1], [tuple(q) for q in p], [tuple(q) for q in u]) for i, p, u in zip(il, Pl, Ul)]
+    PATCH.clear()
+    if pk_:
+        hk = np.concatenate(pk_); PATCH['ab'] = np.concatenate(pa_); PATCH['id'] = np.concatenate(pi_).astype(np.int64); PATCH['corner'] = hk; PATCH['row'] = {b_.tobytes(): r_ for r_, b_ in enumerate(np.sort(hk, axis=1))}
+    out = [fc for i, fc in enumerate(faces) if not isnat[i]] + out_nat; stat['polygons_after'] = len(out_nat)
+    log('       %s: %s' % (what, stat))
+    return out, stat
+
 # ---------------------------------------------------------------- the pieces of a rounded polygon share its light-map rectangle
-PATCH = {}                                                             # filled by round_natural: 'row' piece (its corners, sorted) -> row ; 'corner' (n, 4) the corners' numbers in the order they were written ; 'ab' (n, 4, 2) where they lie in the square of the polygon the piece was cut from ; 'id' (n) that polygon
+PATCH = {}                                                           # filled by round_natural: 'row' piece (its corners, sorted) -> row ; 'corner' (n, 4) the corners' numbers in the order they were written ; 'ab' (n, 4, 2) where they lie in the square of the polygon the piece was cut from ; 'id' (n) that polygon
 def corner_keys(P4):
     """(n, 4, 3) corners -> (n, 4) one number per corner: its place to the millimetre, taken from the float32 the mesh writer stores"""
     q = np.round(np.asarray(P4, np.float32).astype(np.float64) * 1000.0).astype(np.int64) + (1 << 20); return (q[..., 0] << 42) | (q[..., 1] << 21) | q[..., 2]

@@ -430,7 +430,13 @@ def stage_build(cfg, variant, name):
             if cfg['game'] == 'src' and cfg.get('crowd', True):
                 import crowd as _cw
                 if str(cfg['course']) in _cw.SRC_TABLES: keep_ = [s_[:3] for s_ in _cw.classic_spots(str(cfg['course']), np.asarray(rd['V'][:, rd['hw']], float), rd['ox'], rd['oz'], zs=BC.ZS)]
-            all_, ri_ = round1995.round_natural(faces + sky + extra, level=lv_, passes=int(cfg.get('round_passes', 2 * 8 ** (lv_ - 1))), log=log, exclude=cfg.get('round_exclude', ()), road=np.asarray(rd['V'], float), slide=bool(cfg.get('round_slide', True)), keep_at=keep_,
+            if __import__('os').environ.get('ROUND_IN'):                # (debug) what the rounding is given, to try it on its own; ROUND_IN_STOP=1 ends the import there
+                __import__('pickle').dump(dict(faces=faces + sky + extra, road=np.asarray(rd['V'], float), keep=keep_), open(__import__('os').environ['ROUND_IN'], 'wb'))
+                if __import__('os').environ.get('ROUND_IN_STOP'): raise SystemExit(0)
+            if cfg.get('round_mode', 'outward') == 'outward':          # (owner, 2026-10-14: "rounded outwards (or remain straight) unless something is clearly concave in low-poly"; round_mode 'shrink' = the rule set before)
+                all_, ri_ = round1995.round_outward(faces + sky + extra, level=lv_, log=log, exclude=cfg.get('round_exclude', ()), road=np.asarray(rd['V'], float), keep_at=keep_,
+                                                    crease=float(cfg.get('round_crease', round1995.CREASE)), tol=float(cfg.get('round_tol', round1995.TOL)), cap=float(cfg.get('round_cap', round1995.OUT_CAP)))
+            else: all_, ri_ = round1995.round_natural(faces + sky + extra, level=lv_, passes=int(cfg.get('round_passes', 2 * 8 ** (lv_ - 1))), log=log, exclude=cfg.get('round_exclude', ()), road=np.asarray(rd['V'], float), slide=bool(cfg.get('round_slide', True)), keep_at=keep_,
                                                     pin=bool(cfg.get('round_pin', True)), fade=float(cfg.get('round_fade', 0.25 if cfg.get('round_pin', True) else round1995.FADE)))      # (the limits that keep a strong rounding whole: round1995.py; round_pin false + round_fade 0.5 = the R4 of 2026-10-13)
             faces, sky, extra = all_, [], []
             if cfg.get('seal_after_round', False) and cfg.get('fill', True) and cfg.get('seal', True):       # (OFF by default: it took 3 minutes of a 10 minute build and closed 3 places; what holds the road's edge is round1995's apron) ... and sealed again: rounded ground shrinks away from the road and sinks (looking straight down beside the road, the ground had dropped more than 0.3 m
@@ -445,7 +451,7 @@ def stage_build(cfg, variant, name):
         if cfg.get('bake_refine'):                                    # baked light is per vertex: big polygons near the road are cut so that a shadow has corners to land on (bake1995.py)
             import bake1995; n0_ = len(faces); faces = bake1995.refine(faces + sky + extra, float(cfg['bake_refine']), np.asarray(rd['V'][:, rd['hw']], float)[:, [0, 2]], log=log); sky, extra = [], []
         if cfg.get('seen_sides', False):                              # baked light: a polygon shows the light of the side the ROAD sees (seenside.py); nothing is moved, a polygon seen from both sides is written once per side
-            import seenside; faces, sky, extra = seenside.orient((faces, sky, extra), rd, also=BC.LM_CUTOUTS, single=BC.SINGLE, log=log, keep=(cfg.get('seen_sides_file') if cfg.get('lm_collect') else None), read=(cfg.get('seen_sides_file') if cfg.get('lm_table') else None))
+            import seenside; faces, sky, extra = seenside.orient((faces, sky, extra), rd, also=BC.LM_CUTOUTS, single=BC.SINGLE, log=log, keep=(cfg.get('seen_sides_file') if cfg.get('lm_collect') else None), read=(cfg.get('seen_sides_file') if cfg.get('lm_table') else None), open_=bool(cfg.get('seen_open', True)))
             if cfg.get('lm_collect'): import json as _jc; _jc.dump(sorted(BC.LM_CUTOUTS), open(cfg['lm_collect'] + '.cutouts.json', 'w'))      # (the bake closes these buildings for the rays)      # (BC.PAIRS is not handed over as a skip list: it holds id() numbers of polygons long replaced, and by chance a few live polygons matched them - a different handful in every run)
         if cfg.get('bake_collect'):
             import bake1995, atexit; BC.BAKE_COLLECT = []; sd_ = cfg.get('light_dir'); bake1995.save_scene(cfg['bake_collect'], faces + sky + extra, rd, BC.tile_pixels, [-float(q) for q in sd_] if sd_ else [0.0, 0.94, -0.34], log)

@@ -20,6 +20,27 @@ import time, os, hashlib
 import numpy as np
 
 STEP = 3; SIDE = (-3.5, 0.0, 3.5); HEIGHT = (1.1, 3.2); REACH = 220.0; MIN_HITS = 2; RATIO = 8.0
+# OPEN SIDES (course setting seen_open, default on since 2026-10-14; owner: "fix the faces"): the road is not the only place a side is looked at from - a
+# free camera sees the backs of cliff cards and the far sides of rock walls, and a polygon never seen from the road showed the brighter of its two faces'
+# light (the sunlit far side, with the shadows of the fence posts on it, in a shaded wall). A side is OPEN when at least OPEN_MIN of the rays it sends
+# over its half space (24 directions from each of the six points the road test uses) reach the sky; a side buried in rock or turned to the ground under
+# a terrain sheet is not. Then: both sides open -> written once per side ('|3'); only the side the road does not see open -> wound round when the road
+# sees neither ... i.e. every side that can be seen from anywhere open carries its own light.
+OPEN_MIN = 0.06
+_HEMI = np.array([(np.sqrt((i + 0.5) / 24) * np.cos(i * 2.399963), np.sqrt((i + 0.5) / 24) * np.sin(i * 2.399963), np.sqrt(max(0.0, 1 - (i + 0.5) / 24))) for i in range(24)])
+
+def _open_sides(sc, pts, nrm, lift=0.05):
+    """share of each polygon's rays that reach the sky, for its winding side and for its other side (pts: points on the polygons, nrm: unit normals)"""
+    ax = np.where((np.abs(nrm[:, 1]) < 0.9)[:, None], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]); t = np.cross(nrm, ax); t /= np.maximum(np.linalg.norm(t, axis=1), 1e-12)[:, None]; b = np.cross(nrm, t)
+    res = []
+    for sgn in (1.0, -1.0):
+        n_ = nrm * sgn; esc = np.zeros(len(nrm)); m = 0
+        for P in pts:
+            o = np.ascontiguousarray(P + n_ * lift)
+            for h in _HEMI:
+                d = h[0] * t + h[1] * b + h[2] * n_; hit, _, _ = sc.cast(o, np.ascontiguousarray(d), 4000.0, how=3); esc += (hit < 0) & (d[:, 1] > 0.02); m += 1
+        res.append(esc / m)
+    return res[0], res[1]
 
 def rewind(P, UV):
     """the other winding of the SAME surface: corners 0 and 2 (the diagonal the game cuts along) stay, 1 and 3 change places"""
@@ -27,7 +48,7 @@ def rewind(P, UV):
     if len(P) >= 4 and tuple(P[2]) != tuple(P[3]): return [P[0], P[3], P[2], P[1]], [UV[0], UV[3], UV[2], UV[1]]
     return [P[0], P[2], P[1]], [UV[0], UV[2], UV[1]]
 
-def orient(lists, rd, skip=(), also=(), single='~s', log=print, keep=None, read=None):
+def orient(lists, rd, skip=(), also=(), single='~s', log=print, keep=None, read=None, open_=False):
     # keep = a file to write what was found to (the collecting build) ; read = that file, to take over instead of casting the rays again (the final
     # build: the two must agree polygon by polygon, and at R4 the rays are 28 s). Taken over only when the judged polygons are the very same.
     """also = cut-out tiles that take baked light (course setting lm_cutouts: a building drawn with cut-out pictures). They are not judged: each
@@ -64,6 +85,19 @@ def orient(lists, rd, skip=(), also=(), single='~s', log=print, keep=None, read=
             f_, b_, r_ = fastlm.roadsight(sc, cen, np.ascontiguousarray(S1), np.ascontiguousarray(S2), nrm, C, E, per, REACH); front += f_; back += b_; nrays += r_
         if keep: np.savez(keep, fp=fp, front=front, back=back, nrays=nrays)
     F = front >= MIN_HITS; B = back >= MIN_HITS; onlyf = F & (~B | (front >= RATIO * back)); onlyb = B & (~F | (back >= RATIO * front)); both = F & B & ~onlyf & ~onlyb; none = ~F & ~B
+    if open_:                                                          # (open sides, owner 2026-10-14) a side the road does not see but that faces open air gets its own light too
+        fo_, bo_ = None, None
+        if read and os.path.exists(read):
+            Z = np.load(read)
+            if 'fopen' in Z.files and str(Z['fp']) == fp and len(Z['fopen']) == len(idx): fo_, bo_ = Z['fopen'], Z['bopen']
+        if fo_ is None:
+            fo_, bo_ = _open_sides(fastlm.Scene(T) if took else sc, [p for pr in pairs for p in pr], nrm)
+            if keep: Z = dict(np.load(keep)); Z.update(fopen=fo_, bopen=bo_); np.savez(keep, **Z)
+        fo = fo_ >= OPEN_MIN; bo = bo_ >= OPEN_MIN; rest = ~onlyf & ~onlyb & ~both
+        both2 = both | (onlyf & bo) | (onlyb & fo) | (rest & fo & bo); onlyf2 = (onlyf & ~bo) | (rest & fo & ~bo); onlyb2 = (onlyb & ~fo) | (rest & bo & ~fo)
+        log('       open sides (seenside.py, %d rays a side, open = at least %.0f%% of them reach the sky): front open %d, back open %d ; written once per side %d -> %d ; lit on their winding side %d -> %d ; wound round %d -> %d ; neither side open %d'
+            % (len(pairs) * 2 * len(_HEMI), 100 * OPEN_MIN, int(fo.sum()), int(bo.sum()), int(both.sum()), int(both2.sum()), int(onlyf.sum()), int(onlyf2.sum()), int(onlyb.sum()), int(onlyb2.sum()), int((rest & ~fo & ~bo).sum())))
+        both, onlyf, onlyb = both2, onlyf2, onlyb2
     out = list(allf); area = 0.5 * (np.linalg.norm(np.cross(Pj[:, 1] - Pj[:, 0], Pj[:, 2] - Pj[:, 0]), axis=1) + np.linalg.norm(np.cross(Pj[:, 2] - Pj[:, 0], Pj[:, 3] - Pj[:, 0]), axis=1))
     for k, i in enumerate(idx.tolist()):
         mat, sec, P, UV = allf[i][:4]
