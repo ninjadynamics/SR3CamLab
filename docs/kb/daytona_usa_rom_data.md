@@ -184,7 +184,7 @@ All 22 chips used have the CRC32 of MAME's `ROM_START( daytona )`. VERIFIED (unz
 
 - The sky and the far scenery: no polygon object for them was found; the background code draws the mini-map and car
   markers only. LIKELY a 2D scroll layer (tile graphics), not extracted.
-- People, digits, reels, animals (section 6); cars; the id-3 grid.
+- People, digits, reels, animals (section 6); the id-3 grid. (Cars: section 11.)
 - Polygon light per face (flat bake, section 5); the 64-phase luma animations are frozen at the phase in the header.
 
 ## 10. Scripts (`scripts/rom_tools/`, run from that folder)
@@ -203,3 +203,29 @@ All 22 chips used have the CRC32 of MAME's `ROM_START( daytona )`. VERIFIED (unz
 | `daytona_contact.py <course>` | contact sheet of the tiles |
 | `daytona_render.py`, `daytona_preview.sh <course>` | Blender stills through the CPU guard |
 | `daytona_i960.py dis <addr> [n]` / `xref <lo> <hi>` | disassembly and literal search in the program |
+| `daytona_cars.py` | every car (section 11) as OBJ + MTL + tiles into `<COURSES>/cars/`, with `cars.json` |
+
+## 11. Cars (2026-10-14)
+
+All cars are objects of the table of section 2; geometry in car space, metres, y 0 = ground, game +z = front.
+Export: `daytona_cars.py` -> `SR3 track format\classic\courses\daytona\cars\` (63 folders, `cars.json`,
+`hornet_0_preview.png`, `all_cars_sheet.png`).
+
+| What | Rows | Polygons | How known |
+|---|---|---|---|
+| Player Hornet #41, red / blue | 1460 | 359 (325 drawn) | VERIFIED: player struct main data 0x0281E390 = body[3] {1460, 1461, 1835}, 0x0281E39C window frames / nets {1462, 1463, 1793}, 0x0281E3A8 bonnet {1236, 1237, 1802}, 0x0281E3B4 numbers 1..8 {1794..1801}; code 0xD12C and 0xEC8C load them by [RAM 0x501488] |
+| Player Hornet #41, yellow / red | 1461 (1459 = identical copy, unreferenced) | 359 | index 1; index 0 / 1 = [0x501464] in single play, LIKELY the transmission choice (not checked) |
+| Linked-play Hornet, red without number | 1835 + number 1794..1801 | 345 | index 2, set when [0x5FE588] != 0 (code 0xEBF0) |
+| Bonnet (in-car view) models | 1236 / 1237 / 1802 | 170 | the same struct |
+| 45 opponent liveries | 0..179, 4 LODs each (144 / 103 / 91 / 16) | | VERIFIED: one geometry, own texture headers (per-polygon palette colour = livery); 43 entries of 48 bytes at 0x0281E404 {7 LOD pointers, shadow 770, int, int, float, int} (the player's entry, LODs {1460, 1461, 1460 ...}, is the one before, at 0x0281E3D4); rows 64 and 172 are in no entry |
+| 8 linked-play cars (Hornets #1..#8, eight colours) | 1803..1834, 4 LODs (164 / 119 / 103 / 16) | | VERIFIED: 8 entries at 0x0281EC14, shadows 2121..2135 |
+| Opponent wheels: a 4-wheel set in car space, 8 rotation frames | 180..187 (47), low 188..195 (43) | | VERIFIED: code 0x8800..0x8828 draws [car+0x14] then 0x93EC[(angle >> 11) & 7]; LIKELY also the player's in-race wheels |
+| Single wheels left / right (tyre + 8-spoke rim) | 805 / 806 (255), low 793 / 794 (38) | | VERIFIED: table 0x238ED4 {805, 806, 805, 806} of the transmission-select screen (code 0x268B4 draws two cars) |
+| Others | 796 (326-polygon untextured red / blue body), 795 (427-polygon wheel, SEGA ENTERPRISES tyre), 1836..1839 (#99 livery, 4 LODs), 1840 | | use UNKNOWN |
+
+- Wheel centres (from the wheel sets): x +-0.675 (tyre x +-0.475 .. +-0.875), y 0.36 (= radius), z +1.412 front and
+  -1.395 rear: wheelbase 2.81 m. VERIFIED (geometry; the Hornet's arches fit them in the render).
+- Textures: all cars use sheet 1 (the common set, main data 0x500000) at x < 1024, outside the mip area, so they do not
+  depend on the course. Colour per polygon = palette entry x texel luminance, as the courses (section 5).
+- Coplanar decals (numbers, logos) need the `_lifted.obj` as on the courses. Polygon-RAM rows 2139..2141, drawn after
+  the body at 0x8808 / 0x8C00, are filled at run time (not in the ROM; content UNKNOWN).

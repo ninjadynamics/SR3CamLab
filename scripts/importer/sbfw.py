@@ -101,7 +101,9 @@ def write_raw(chunks, first=None, tail=2048, hdr=(4, 0, 0, 0, 0), layout='auto',
         body += struct.pack('<I', len(c.ref)) + struct.pack('<%dI' % len(c.ref), *c.ref) + c.data
     head = struct.pack('<6I', *(tuple(hdr) + (n,))) + b''.join(struct.pack('<II', *t) for t in table)
     if len(head) > start: raise ValueError('chunk table overruns first chunk')
-    return head + b'\0' * (start - len(head)) + bytes(body) + b'\0' * tail
+    # tail: a byte count (zeros), or the bytes themselves (the uncompressed bonnet files end in a small trailer
+    # {0, 2, 0x20, 0, 0x33, 4, "<car>.data.Version", "<car>.data.smf"} before the zeros: pass f.raw[-f.tail:] to keep it)
+    return head + b'\0' * (start - len(head)) + bytes(body) + (bytes(tail) if isinstance(tail, (bytes, bytearray)) else b'\0' * tail)
 
 def write_sbf(f, compress=None, layout='auto', level=9, tex4k=True):
     if isinstance(f, SbfFile):

@@ -30,6 +30,7 @@ public static class Sr3Watchdog {
     [DllImport("kernel32.dll", SetLastError = true)] static extern IntPtr OpenThread(int access, bool inherit, int tid);
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool CloseHandle(IntPtr h);
     [DllImport("kernel32.dll", SetLastError = true)] static extern uint WaitForSingleObject(IntPtr h, uint ms);
+    [DllImport("kernel32.dll", SetLastError = true)] static extern bool GetExitCodeProcess(IntPtr h, out uint code);
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool ReadProcessMemory(IntPtr h, IntPtr a, byte[] b, IntPtr n, out IntPtr r);
     [DllImport("kernel32.dll", SetLastError = true)] static extern IntPtr VirtualQueryEx(IntPtr h, IntPtr a, out MBI m, IntPtr n);
     [DllImport("kernel32.dll", SetLastError = true)] static extern int SuspendThread(IntPtr t);
@@ -71,6 +72,7 @@ public static class Sr3Watchdog {
     // ---- the session ----
     static int pid, freezeSeconds, lines, firstChance, outputLines; static long windowPtr;
     static IntPtr hProc = IntPtr.Zero; static string folder, logPath, logName;
+    static string imagePath = "?"; static ulong imageBase;            // the game's file and where it is loaded (from the attach)
     static volatile bool stop, finished, attached, busy, target32, sawCrash;   // sawCrash: after it Windows' error reporting holds the dying game, which is not a freeze
     static Thread debugThread, freezeThread;
     static StreamWriter log; static readonly object logLock = new object(), dumpLock = new object();
@@ -104,6 +106,7 @@ public static class Sr3Watchdog {
             News("could not watch the game (it could not be opened): crashes and freezes are not recorded this time.");
             finished = true; Close(); return true;
         }
+        imagePath = ImagePath(); imageBase = 0;
         bool w; target32 = P == 4 || (IsWow64Process(hProc, out w) && w);
         Line("SR3CamLab watchdog, " + DateTime.Now.ToString("yyyy-MM-dd") + ": process " + pid + " " + ImagePath() + (target32 ? " (32-bit)" : " (64-bit: registers are not read)") +
              ", a freeze is " + freezeSeconds + " s without an answer from its window");
@@ -132,6 +135,75 @@ public static class Sr3Watchdog {
     }
     static string Rel(string file) { return Path.GetFileName(folder.TrimEnd('\\', '/')) + "\\" + file; }
 
+    // ---- crashes of a thread hidden from debuggers ----
+    // The game's main thread (the window's) is hidden from debuggers (ThreadHideFromDebugger; found 2026-10-14, 1 of 231
+    // threads): its exceptions never reach this debugger and go straight to Windows' error reporting, which writes
+    // %LOCALAPPDATA%\CrashDumps\Rally.exe.<pid>.dmp when LocalDumps is on (HKLM\SOFTWARE\Microsoft\Windows\Windows Error
+    // Reporting\LocalDumps). So when the game ends with an error code and no exception was seen, the record is taken from
+    // that dump: the exception, the registers of the thread and the game-code values on its stack.
+    [DllImport("ntdll.dll")] static extern int NtQueryInformationThread(IntPtr h, int cls, out byte info, int len, out int ret);
+    static void HiddenThreads() {
+        var hidden = new List<int>();
+        foreach (int t in Threads()) {
+            IntPtr ht = OpenThread(0x0040, false, t); if (ht == IntPtr.Zero) continue;
+            byte b; int r; if (NtQueryInformationThread(ht, 0x11, out b, 1, out r) == 0 && b != 0) hidden.Add(t);
+            CloseHandle(ht);
+        }
+        if (hidden.Count > 0)
+            Line("hidden from debuggers: thread" + (hidden.Count > 1 ? "s " : " ") + string.Join(", ", hidden.ConvertAll(x => x.ToString()).ToArray()) +
+                 " (a crash there is not seen here; it is read from Windows' crash dump when the game ends)");
+    }
+    static string FromWindowsDump(uint exitCode) {
+        string dir = Path.Combine(Environment.GetEnvironmentVariable("LOCALAPPDATA") ?? "", "CrashDumps");
+        string want = Path.GetFileName(imagePath) + "." + pid + ".dmp", path = Path.Combine(dir, want);
+        for (int i = 0; i < 50 && !File.Exists(path); i++) Thread.Sleep(100);
+        if (!File.Exists(path)) {
+            Line("no Windows crash dump " + path + " (Windows' LocalDumps may be off on this PC)"); return null;
+        }
+        byte[] d = null;
+        for (int i = 0; i < 30 && d == null; i++) { try { d = File.ReadAllBytes(path); } catch (IOException) { Thread.Sleep(200); } }   // Windows may still be writing it
+        if (d == null || d.Length < 32 || BitConverter.ToUInt32(d, 0) != 0x504D444D) { Line("Windows crash dump " + path + " could not be read"); return null; }
+        try {
+            int ns = BitConverter.ToInt32(d, 8), dirRva = BitConverter.ToInt32(d, 12); int exRva = -1;
+            var mem = new List<long[]>();                                    // {start, rva, size}
+            ulong modBase = 0, modSize = 0;
+            for (int i = 0; i < ns; i++) {
+                int t = BitConverter.ToInt32(d, dirRva + 12 * i), rva = BitConverter.ToInt32(d, dirRva + 12 * i + 8);
+                if (t == 6) exRva = rva;
+                else if (t == 4 && BitConverter.ToInt32(d, rva) > 0) { modBase = BitConverter.ToUInt64(d, rva + 4); modSize = BitConverter.ToUInt32(d, rva + 4 + 8); }   // the first module: the exe
+                else if (t == 5) { int n = BitConverter.ToInt32(d, rva); for (int k = 0; k < n; k++) mem.Add(new long[] { (long)BitConverter.ToUInt64(d, rva + 4 + 16 * k), BitConverter.ToUInt32(d, rva + 4 + 16 * k + 12), BitConverter.ToUInt32(d, rva + 4 + 16 * k + 8) }); }
+                else if (t == 9) { long n = (long)BitConverter.ToUInt64(d, rva), off = (long)BitConverter.ToUInt64(d, rva + 8); for (int k = 0; k < n; k++) { long s = (long)BitConverter.ToUInt64(d, rva + 16 + 16 * k), sz = (long)BitConverter.ToUInt64(d, rva + 24 + 16 * k); mem.Add(new long[] { s, off, sz }); off += sz; } }
+            }
+            if (exRva < 0) { Line("Windows crash dump " + want + " holds no exception"); return want; }
+            int tid = BitConverter.ToInt32(d, exRva); uint ec = BitConverter.ToUInt32(d, exRva + 8); ulong addr = BitConverter.ToUInt64(d, exRva + 8 + 16);
+            int np = BitConverter.ToInt32(d, exRva + 8 + 24); var info = new ulong[Math.Min(Math.Max(np, 0), 4)];
+            for (int i = 0; i < info.Length; i++) info[i] = BitConverter.ToUInt64(d, exRva + 8 + 32 + 8 * i);
+            int csize = BitConverter.ToInt32(d, exRva + 8 + 152), crva = BitConverter.ToInt32(d, exRva + 8 + 156);
+            string what = string.Format("{0} 0x{1:X8} at {2}{3}", ExceptionName(ec), ec, GameName(addr), AvText(ec, info));
+            Line("==== CRASH (from Windows' crash dump " + want + "): " + what + ", thread " + tid);
+            if (csize >= 0xCC) {
+                string[] rn = { "edi", "esi", "ebx", "edx", "ecx", "eax", "ebp", "eip" }; var sb = new StringBuilder("  ");
+                for (int i = 0; i < 8; i++) sb.AppendFormat("{0} {1:X8}  ", rn[i], BitConverter.ToUInt32(d, crva + 0x9C + 4 * i));
+                uint esp = BitConverter.ToUInt32(d, crva + 0xC4); sb.AppendFormat("esp {0:X8}", esp); Line(sb.ToString());
+                foreach (long[] m in mem) {
+                    if (esp < m[0] || esp >= m[0] + m[2]) continue;
+                    int at = (int)(m[1] + (esp - m[0])), n = (int)Math.Min(0x800, m[0] + m[2] - esp) / 4; var st = new StringBuilder(); var calls = new StringBuilder();
+                    ulong b0 = modBase != 0 ? modBase : imageBase != 0 ? imageBase : 0x400000, b1 = b0 + (modSize != 0 ? modSize : 0x1000000);
+                    for (int k = 0; k < n; k++) { uint w = BitConverter.ToUInt32(d, at + 4 * k); if (k < 32) st.AppendFormat("{0:X8} ", w); if (w > b0 && w < b1) calls.AppendFormat("{0:X8} ", w); }
+                    Line("  stack: " + st.ToString().Trim()); Line("  values on the stack inside the exe (its return addresses among them): " + calls.ToString().Trim());
+                    break;
+                }
+            }
+            Line("  the whole dump: " + path); Line("==== end of the crash record");
+            News("the game crashed: " + what + " (seen in Windows' crash dump; details: " + Rel(logName) + ").");
+            return want;
+        } catch (Exception x) { Line("Windows crash dump " + want + ": " + x.Message); return want; }
+    }
+    static string GameName(ulong a) {                                   // the process has ended: only its own exe can still be named (from the attach)
+        ulong b = imageBase != 0 ? imageBase : 0x400000;
+        return a >= b && a < b + 0x1000000 ? string.Format("{0:X8} ({1}+0x{2:X})", a, Path.GetFileName(imagePath), a - b) : a.ToString("X8");
+    }
+
     // ---- the debugger ----
     static void DebugLoop() {
         IntPtr ev = Marshal.AllocHGlobal(256);
@@ -158,6 +230,7 @@ public static class Sr3Watchdog {
             }
             attached = true;
             Line("attached");
+            try { HiddenThreads(); } catch (Exception x) { Line("hidden threads: " + x.Message); }
             News("watching the game for crashes and freezes (" + Rel(logName) + ").");
             // a 64-bit debugger attaching to a 32-bit process gets two break-ins of its own making: the native one
             // (0x80000003, in the thread Windows starts for it) and the 32-bit one (0x4000001F, WOW64's, on a thread of the
@@ -166,6 +239,16 @@ public static class Sr3Watchdog {
             while (true) {
                 if (!WaitForDebugEvent(ev, 200)) {
                     if (stop) { DebugActiveProcessStop(pid); attached = false; Line("detached (the game runs on)"); Summary(); return; }
+                    // The end of the process is not always reported to the debugger: when a thread hidden from debuggers
+                    // crashes and Windows' error reporting handles it, no EXIT_PROCESS event came here (stand-in test,
+                    // 2026-10-14), so the process handle is asked too.
+                    if (WaitForSingleObject(hProc, 0) == 0) {
+                        uint xc; if (!GetExitCodeProcess(hProc, out xc)) xc = 0;
+                        Line(string.Format("the process ended, exit code 0x{0:X8} (no end event from Windows: seen on the process handle)", xc));
+                        if (!sawCrash && xc >= 0xC0000000 && FromWindowsDump(xc) == null) News(string.Format("the game ended with error code 0x{0:X8} ({1}).", xc, Rel(logName)));
+                        Summary(); attached = false; DebugActiveProcessStop(pid);
+                        return;
+                    }
                     continue;
                 }
                 int code = Marshal.ReadInt32(ev, 0), epid = Marshal.ReadInt32(ev, 4), tid = Marshal.ReadInt32(ev, 8);
@@ -186,6 +269,7 @@ public static class Sr3Watchdog {
                             if (first) FirstChance(ec, addr, info, tid); else Crash(ec, addr, info, tid);
                         }
                     } else if (code == 3 || code == 6) {                    // process / DLL load: close the file handle we are given
+                        if (code == 3) imageBase = (ulong)Marshal.ReadIntPtr(ev, off + 3 * P).ToInt64();   // CREATE_PROCESS_DEBUG_INFO.lpBaseOfImage
                         IntPtr hf = Marshal.ReadIntPtr(ev, off);
                         if (hf != IntPtr.Zero) CloseHandle(hf);
                     } else if (code == 8) {                                 // OutputDebugString
@@ -193,7 +277,7 @@ public static class Sr3Watchdog {
                     } else if (code == 5) {                                 // the game has ended
                         uint xc = (uint)Marshal.ReadInt32(ev, off);
                         Line(string.Format("the process ended, exit code 0x{0:X8}", xc));
-                        if (!sawCrash && xc >= 0xC0000000) News(string.Format("the game ended with error code 0x{0:X8} ({1}).", xc, Rel(logName)));
+                        if (!sawCrash && xc >= 0xC0000000 && FromWindowsDump(xc) == null) News(string.Format("the game ended with error code 0x{0:X8} ({1}).", xc, Rel(logName)));
                         Summary();
                         attached = false;
                         ContinueDebugEvent(epid, tid, DBG_CONTINUE);
@@ -370,6 +454,10 @@ public static class Sr3Watchdog {
             if (p2 != pid) return true;
             var cls = new StringBuilder(64); GetClassName(h, cls, 64); string c = cls.ToString();
             if (c == "IME" || c == "MSCTFIME UI" || c == "ConsoleWindowClass") return true;   // the console's window answers for conhost, not for the game
+            // Direct3D's proxy window and DirectShow's video windows have threads of their own: they keep answering while the
+            // game's main loop hangs (in game 2026-10-14 the fallback took "D3DProxyWindow", listed before the game's window)
+            if (c == "D3DProxyWindow" || c == "FilterGraphWindow") return true;
+            if (c == "RacingClass" && IsWindowVisible(h)) { area = long.MaxValue; best = h; return true; }      // SEGA Rally 3's own window
             bool vis = IsWindowVisible(h);
             if (c == "#32770") { if (vis && dlg == IntPtr.Zero) dlg = h; return true; }
             if (!vis) { if (hidden == IntPtr.Zero) hidden = h; return true; }

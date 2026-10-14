@@ -111,7 +111,8 @@ loop); `tools\switch_mocktest.ps1` runs that loop against a scripted fake game.
 
 - [0xA65794] = 1: PVS off (scene manager marks every node visible). CONFIRMED.
 - 0x9B8E1C: pointer to the path of the last sound played.
-- [0x7ED10C] IDirect3DDevice9*, [0xA339A4] game window.
+- [0x7ED10C] IDirect3DDevice9*, [0x728CF4] game window (class RacingClass; set at 0x558D4B). CONFIRMED 2026-10-14
+  (an older note had [0xA339A4], which holds 1 in game).
 - Debug commands "ProcUpdate"/"ProcWrite" (0x597060) could regenerate the grass cache
   (not tried).
 

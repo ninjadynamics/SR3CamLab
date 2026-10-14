@@ -300,7 +300,7 @@ steerable. *(verified)*
 | `[0x7EDB74]` / `[0x7EDB78]` | back buffer width / height (present parameters) |
 | `0x591C4D` | `mov eax, [0x7ED10C]` right before EndScene/Present: a clean per-frame hook site (5 bytes) |
 | `0x591B01` | `call 0x591220`: frees D3D resources before a device Reset. Hook it to release your own fonts/textures |
-| `[0xA339A4]` | the game window (TeknoParrot's window may differ; compare process ids instead) |
+| `[0x728CF4]` | the game window, class `RacingClass` (written at `0x558D4B` after CreateWindowExA; copy at `[0x9F1288]`). *(verified live 2026-10-14; `[0xA339A4]`, listed here before, holds 1)* |
 | IAT | `GetModuleHandleA [0x6741F4]`, `GetProcAddress [0x674204]` |
 | D3DX | `d3dx9_41.dll` is loaded; `D3DXCreateFontA` works for text on top of the frame |
 

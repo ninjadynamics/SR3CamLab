@@ -143,8 +143,11 @@ popup line), HILITE 0x226C (highlighted stage card id, -1 = no selector), REOPEN
 (announcer names), 0x2700 / 0x2740 / 0x2780 (ambience, music, events names). A running block whose code differs is never
 rewritten in place: a new block is allocated and the hooks are redirected.
 
-Rendering addresses: `[0x7ED10C]` IDirect3DDevice9*; `[0x7EDB74]` / `[0x7EDB78]` back buffer width / height; `[0xA339A4]`
-the game window; IAT `GetModuleHandleA [0x6741F4]`, `GetProcAddress [0x674204]`. VERIFIED (live).
+Rendering addresses: `[0x7ED10C]` IDirect3DDevice9*; `[0x7EDB74]` / `[0x7EDB78]` back buffer width / height; IAT
+`GetModuleHandleA [0x6741F4]`, `GetProcAddress [0x674204]`. VERIFIED (live). The game window ("RacingClass", title
+"Racing", on the main thread) is `[0x728CF4]` (and a copy at `[0x9F1288]`), written at 0x558D4B right after
+CreateWindowExA. VERIFIED (live, 2026-10-14: same handle as the process's main window). `[0xA339A4]` was listed here as the
+window before; in game it held 1 (DISPROVED as the window; read by the device set-up code 0x590E11 .. 0x59186E).
 
 ## 6. Checkpoint times per track (`Set-ArcadeTimes`)
 The seconds every checkpoint marker grants live in the loaded ArcadeDatabase, one block of 0xC60 bytes per track at
@@ -281,8 +284,24 @@ detach (DebugSetProcessKillOnExit FALSE). A second-chance exception, a window th
 (`$FreezeSeconds`) or a message box gets a record in `crash\watchdog_<time>.log` (registers, stacks, the game's last debug
 output, the state values above) and a minidump, with a line in play.log. While it is attached no other debugger (dbg.py)
 can attach. Test `tools\watchdog_test.ps1` (27 checks, stand-in programs). In game 2026-10-14: attached for a whole session,
-0 exceptions, a clean exit; but its freeze watch never logged "watching window" (it did not find the game's window), so that
-session was not watched for freezes. Being fixed.
+0 exceptions, a clean exit; but its freeze watch never logged "watching window": it read the window handle from
+[0xA339A4], which is not the window (it holds 1), and its fallback then took Direct3D's "D3DProxyWindow" (own thread,
+answers while the game hangs). Fixed the same day: the handle is read from [0x728CF4] and the fallback skips
+D3DProxyWindow / FilterGraphWindow and prefers class RacingClass. VERIFIED in game: "watching window ... "Racing" (class
+RacingClass)"; the whole game suspended for 14 s gave a FREEZE record (three samples of every thread, the window thread
+first), a 27 MB minidump, "stopped responding" and "responding again (about 14 s)" in play.log.
+The game's main thread (the window's, the one that runs the game) is HIDDEN FROM DEBUGGERS (ThreadHideFromDebugger: 1
+of 231 threads, NtQueryInformationThread class 0x11; VERIFIED live 2026-10-14). Its exceptions never reach a debugger:
+they go straight to Windows' error reporting, which writes `%LOCALAPPDATA%\CrashDumps\Rally.exe.<pid>.dmp` (LocalDumps
+is on on the owner's PC: HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps). This is also why data
+breakpoints made the game exit (a hit on the main thread is never delivered) and why the 10:03 crash of 2026-10-14 left
+only "exit code 0xC0000005". The watchdog names hidden threads when it attaches, and when the game ends with an error
+code and no exception reached it, it writes the crash record from Windows' dump (exception, registers, stack, values on
+the stack inside the exe). Windows does not always tell the debugger that the process ended in that case (stand-in test:
+no EXIT_PROCESS event), so the process handle is watched too. VERIFIED: watchdog_test.ps1 case 1b (a stand-in that hides
+its main thread and crashes; 31 checks pass) and in game (the device pointer [0x7ED10C] zeroed on purpose: "CRASH (from
+Windows' crash dump Rally.exe.12224.dmp): access violation at 00591567 (Rally.exe+0x191567) (reading 0x00000000)").
+Other threads (loaders, sound, video) are not hidden: their crashes are caught directly with the full record.
 
 ## 12. Things tried and removed
 | Attempt | Result |

@@ -900,7 +900,7 @@ function Step-RaceExit($h, [datetime]$now) {
 # (WaitForSingleObject, no message loop), so the window stops answering; the samples show every loader thread by its
 # start address. No data breakpoints: debug registers on the game's threads made it quit by itself (2026-10-14).
 # Each record also gives the main state, the one pending, the mode and the menus flag (see Request-RaceExit).
-$FreezeSeconds = 10; $GameWindowVA = 0xA339A4                         # where the game keeps its window handle
+$FreezeSeconds = 10; $GameWindowVA = 0x728CF4                         # where the game keeps its window handle (written at 0x558D4B, right after CreateWindowExA "RacingClass")
 $WatchdogValues = 'state=0x7ECE10, next=0x7ECE14, mode=0x728598, menus=0x9D6E3C:1'
 $script:WatchdogOn = $false
 function Start-Watchdog($game) {
@@ -939,13 +939,15 @@ public static class Sr3Pad {
     [Sr3Pad]::SetProcessDPIAware() | Out-Null
     $start = New-StartState; $script:RaceExit = $null; $shotUntil = [datetime]::MinValue; $shotName = ''; $shotHeld = $null
     $slots = Read-TrackSwitch $gameExe
-    if (-not $slots) { Wait-GameExit $game; return }
+    if (-not $slots) { $slots = @{} }                                # no alternative tracks: the loop still runs for START (screenshot, race exit)
     $h = [Sr3Mem]::Open($game.Id)
     try {
         $base = Find-Cycle $h
-        if (-not $base) { Log 'Alternative tracks need the camera patch; it is not in the game, so the cards keep their own tracks.'; Wait-GameExit $game; return }
-        Log ('Alternative tracks: ' + ((@($slots.Keys | Sort-Object) | ForEach-Object { "$_ +$($slots[$_].Count - 1)" }) -join ', ') + '. On the stage-select screen, View Change steps through them.')
-        Initialize-TrackVideos $h $base $slots
+        if (-not $base) { Log 'Alternative tracks and the START button need the camera patch; it is not in the game.'; Wait-GameExit $game; return }
+        if ($slots.Count) {
+            Log ('Alternative tracks: ' + ((@($slots.Keys | Sort-Object) | ForEach-Object { "$_ +$($slots[$_].Count - 1)" }) -join ', ') + '. On the stage-select screen, View Change steps through them.')
+            Initialize-TrackVideos $h $base $slots
+        }
         $text = $base + $SwitchTextOff
         [Sr3Mem]::Write($h, $text + 0x40, (Str 'Press VIEW CHANGE to select alternative tracks' 64), $true)
         $choice = @{}; foreach ($s in $slots.Keys) { $choice[$s] = 0 }

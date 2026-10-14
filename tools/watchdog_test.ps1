@@ -33,7 +33,16 @@ __declspec(noinline) int handled(void) { __try { *(volatile int *)0x10 = 1; } __
 __declspec(noinline) void crash_here(volatile int *p) { p[2] = 0x1234; }
 int main(int argc, char **argv) {                                  /* crash after argv[1] seconds */
     DWORD ms = (argc > 1 ? atoi(argv[1]) : 4) * 1000, t0 = GetTickCount(); int n = 0, done = 0; char s[80];
-    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);  /* no error-reporting window for this crash, ever */
+    int hidden = argc > 2 && !strcmp(argv[2], "hidden");
+    if (!hidden) SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);  /* no error-reporting window for this crash, ever */
+    else {   /* hidden: Windows' error reporting must run (it writes the dump the watchdog reads), but without its window */
+        typedef HRESULT (WINAPI *WerFlags)(DWORD); WerFlags w = (WerFlags)GetProcAddress(GetModuleHandleA("kernel32.dll"), "WerSetFlags");
+        SetErrorMode(SEM_FAILCRITICALERRORS); if (w) w(0x20);      /* WER_FAULT_REPORTING_NO_UI */
+    }
+    if (hidden) {                                                  /* like the game's main thread: hidden from debuggers (ThreadHideFromDebugger) */
+        typedef LONG (WINAPI *SetInfo)(HANDLE, ULONG, PVOID, ULONG);
+        SetInfo f = (SetInfo)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtSetInformationThread"); if (f) f(GetCurrentThread(), 0x11, 0, 0);
+    }
     window();
     for (;;) {
         DWORD t = GetTickCount() - t0; pump();
@@ -138,6 +147,19 @@ Check 'a minidump' ($null -ne $dump -and $dump.Length -gt 10000) $(if ($dump) { 
 Check 'the program ended with its own exception (0xC0000005), seen by the watchdog' ($p.ExitCode -eq -1073741819 -and $log -match 'the process ended, exit code 0xC0000005') ('exit code 0x{0:X8}' -f $p.ExitCode)
 Check 'news for the launcher: the crash, with the log and the minidump' (@($news | Where-Object { $_ -match '^the game crashed: access violation .* Details: crash_case\\watchdog_.*\.log, minidump crash_case\\crash_.*\.dmp\.$' }).Count -eq 1) ($news -join ' | ')
 Check 'after the crash, the dying program is not taken for a freeze' ($log -notmatch '==== FREEZE' -and @($news | Where-Object { $_ -match 'stopped responding' }).Count -eq 0)
+
+"1b. crash on a thread hidden from debuggers (as the game's main thread is): the record comes from Windows' crash dump"
+# Needs Windows' LocalDumps (HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps); without it this case reports so.
+$dir = Join-Path $Work 'hidden_case'; Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+$p = Run $crashExe '5 hidden'; Start-Sleep -Milliseconds 800          # (the stand-in hides its thread first thing)
+[void][Sr3Watchdog]::Start($p.Id, $dir, 3, 0)
+[void]$p.WaitForExit(30000); [void][Sr3Watchdog]::WaitFinished(20000)
+$log = Get-Content -Raw ([Sr3Watchdog]::LogPath); $news = News
+Check 'the hidden thread is named when the watchdog attaches' ($log -match 'hidden from debuggers: thread \d+') (([regex]::Match($log, 'hidden from debuggers[^\r\n]*')).Value)
+$cl = ($log -split "`n" | Where-Object { $_ -match '==== CRASH' }) -join ''
+Check 'no exception reached the debugger, and the crash record was read from the dump: writing address 8, in the stand-in' ($log -notmatch 'second chance' -and $cl -match "CRASH \(from Windows' crash dump sr3wd_crash\.exe\.\d+\.dmp\): access violation 0xC0000005 at [0-9A-F]{8} \(sr3wd_crash\.exe\+0x[0-9A-F]+\) \(writing 0x00000008\)") $cl.Trim()
+Check 'its registers and stack' ($log -match '  edi [0-9A-F]{8} .* eip [0-9A-F]{8}  esp [0-9A-F]{8}' -and $log -match '  stack: [0-9A-F]{8}')
+Check 'news for the launcher: the crash, from the dump' (@($news | Where-Object { $_ -match "^the game crashed: access violation .*seen in Windows' crash dump" }).Count -eq 1) ($news -join ' | ')
 
 "2. freeze: the message loop stuck for 8 s"
 $dir = Join-Path $Work 'freeze_case'; Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
