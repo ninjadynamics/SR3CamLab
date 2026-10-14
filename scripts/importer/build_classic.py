@@ -52,6 +52,7 @@ SURF_TILES = {}                                                       # course s
 Y_VISIBLE = None                                                      # course setting road_height_visible (m): the road heights from the drawn scenery within this of the collision (road_on_scenery)
 RESOLVE_ROUNDS = 10                                                   # course setting resolve_rounds: passes of the overlap resolver (overlay_bake.resolve) before it stops
 MAX_SIDE = [None, None]                                               # course settings max_left / max_right (metres): the variable road's left / right edge at most this far out
+ATLAS = False                                                          # course setting atlas: shared texture pages (atlas1995.py)
 CHECKER_ALPHA = 128                                                    # flat-colour materials ending in _ck (Model 2 checker = every other pixel drawn): alpha-blended at this opacity
 def visual_ground():
     """lying opaque faces of the course model (HI) as an AttrField whose attribute is the index into the returned tile names,
@@ -1020,6 +1021,9 @@ def add_scenery(f, sta_gfx, faces, mode, lv, trees=False, rd=None):
         mat_id = 0xc1a60000; new += [tex, meshgen.clone_material(tpl_mat, mat_id, tex.id)]
     if mode == 'sr3':
         mat_id = pick_sr3_material(f)
+    atlas_ = {}
+    if mode == 'classic' and ATLAS:                                   # course setting atlas: pictures that never repeat across a polygon go onto shared texture pages (atlas1995.py: the game holds 1024 textures in all)
+        import atlas1995; atlas_, at_new_ = atlas1995.build(sorted(groups.items()), sys.modules[__name__], tpl_tex, tpl_tex5, tpl_mat, log); new += at_new_
     for gi, (key, fl) in enumerate(sorted(groups.items())):
         uvmode = 'tile' if mode in ('classic', 'retex') else 'box'
         if mode == 'retex' and lab.get(key, ('', '', None))[2] is not None and not (trees and lab[key][0] == 'tree_wall'):
@@ -1044,7 +1048,7 @@ def add_scenery(f, sta_gfx, faces, mode, lv, trees=False, rd=None):
             fl = rest
             if not fl: continue
         if mode == 'retex' and lab.get(key, ('', '', None))[2] is not None and not (trees and lab[key][0] == 'tree_wall'): pass
-        elif mode in ('classic', 'retex'):
+        elif mode in ('classic', 'retex') and key not in atlas_:
             hole = None; both = str(key).endswith(('|2', '|4')); one_ = str(key).endswith('|1'); three_ = str(key).endswith('|3'); key = str(key).split('|')[0]; dbl_ = False
             if key in BAKED: grey, hole = BAKED[key]
             elif hd_tile(key) is not None: grey, hole = hd_tile(key)      # a re-authored tile (textures_hd): it was only read for the gates and the composed tiles, the course's own tiles came straight from the ROM here (user, 2026-10-08: "HD texture pick up not working")
@@ -1096,6 +1100,7 @@ def add_scenery(f, sta_gfx, faces, mode, lv, trees=False, rd=None):
             if un_:
                 k_ = max(q_ for q_, c_ in enumerate(new) if c_.kind == 2 and c_.id == mat_id); m_ = UNLIT_TPL.copy(); m_.id = mat_id; m_.gap = None; d_ = bytearray(m_.data); struct.pack_into('<I', d_, 0x1bc, 0xc1a50000 + gi); m_.data = bytes(d_); new[k_] = m_
         _NO_GAIN[0] = False
+        if key in atlas_: mat_id, fl = atlas_[key]; uvmode = 'given'          # (on a texture page: the faces come cut and with page uv)
         if uvmode == 'tile' and mode == 'classic': fl, ns = uv_split(fl); nsplit[0] += ns
         if mode == 'classic' and LIGHT_K > 0 and locals().get('dbl_'): import seenside; fl = fl + [(m_, s_) + tuple(seenside.rewind(P_, U_)) for m_, s_, P_, U_ in fl]; ndbl[0] += len(fl) // 2      # (the other winding of the SAME two triangles: a reversed corner list is cut along the other diagonal)
         for part in range(0, len(fl), 10000):

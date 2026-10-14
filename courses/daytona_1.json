@@ -14,6 +14,8 @@
  "ai_lines": ["daytona_beginner_line0.csv", "daytona_beginner_line1.csv", "daytona_beginner_line2.csv", "daytona_beginner_line3.csv", "daytona_beginner_line4.csv", "daytona_beginner_line5.csv", "daytona_beginner_line6.csv", "daytona_beginner_line7.csv"],
  "ai_lines_note": "the eight driving lines of the course directory (daytona_usa_rom_data.md section 7) as the eight lanes of the AI map",
  "max_half_width": 70,
+ "max_left": 25,
+ "max_left_note": "the inner edge held at 25 m: at most 38 quads across, as SEGA's widest. Rally.exe takes at most A + 1 + B = 132 vertex records per road slice (0x4ECE60, build_testtrack.road_width_check: about 64 quads across); the full width (83) wrote past that buffer and crashed while loading. This narrow form loads and races (in game, 2026-10-14)",
  "road_height_slope": 2.0,
  "edge_visual": 0.3,
  "road_height_visible": 0.35,
@@ -63,6 +65,8 @@
  "coplanar_note": "the 425 tyre-mark polygons (tex_s1_x0768_y0256_128x32_c23D_p0_t) lie 4.4 .. 5.0 cm over the asphalt (Model 2 draws them by priority); a long one on the curved banking up to some 30 cm off the planes of the road faces under it: resolved in the road's plane (composed into its tiles) instead of being lifted further off it",
  "stitch": false,
  "stitch_note": "seal1995.py (the hairline / T-joint seal of Mountain's RT builds) does not settle on this course: 17 000, then 18 000, then 134 000 corners on edges in its three passes, 750 000 triangles added (long road strips cut by uv_split and the resolver into thin pieces, whose fans make new joints). Left off, as in Mountain's RAW: some 17 000 corners lie on a neighbour's edge (Mountain RAW: 8 000); the cracks of a few cm that were seen came from twisted faces cut in their best plane and are cured by resolve_on_surface",
+ "atlas": true,
+ "atlas_note": "the game holds 1024 distinct textures in all (track, cars, HUD, sky: 0x585D10, int3 at 0x585D5C when full); the first build had 797 for the track alone and stopped while loading. Pictures that never repeat across a polygon (the resolver's composed region pictures, cut-outs within one repeat, one-colour pictures) go onto shared 1024 x 1024 pages, texel for texel, with a 16-texel border (atlas1995.py)",
  "checker_alpha": 128,
  "checker_note": "the 277 polygons of colour col_c26E_p3_ck are drawn by the Model 2 every other pixel (the wire fences on the outer walls): alpha-blended at 50 %"
 }

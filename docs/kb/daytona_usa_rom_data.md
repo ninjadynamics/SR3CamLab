@@ -12,6 +12,7 @@ project's `scripts/importer/i960.py`.
 
 Scripts: `scripts/rom_tools/daytona_*.py` (section 10). Extracted data: `SR3 track format\classic\courses\daytona\<course>\`.
 Nothing extracted is committed (SEGA data rule).
+The Beginner course's import into SEGA Rally 3 (Classic slot, in game 2026-10-14): 14_importer.md, last section.
 
 ## 1. ROM set and regions
 

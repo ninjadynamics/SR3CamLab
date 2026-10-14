@@ -247,8 +247,21 @@ def two_pages(model, limit=110.0, margin=5.0, least=60.0):
     return True
 
 TWO_PAGES = True                                                       # build_road_ladder.py switches it off for the control step
+ROAD_ROW_RECORDS = 132                                                 # Rally.exe 0x4ECE60 (road vertex rows, at load): ONE stack buffer of 0xA50 bytes = 132 records of 20 bytes per slice
+def road_width_check(model):
+    """THE ROAD'S HARD WIDTH LIMIT. At load, 0x4ECE60 turns each road slice into 20-byte vertices (4 x s16 position, colour, 8 packed
+    bytes) in a buffer on its stack ([esp + 0x90] of a 0xAD4-byte frame: 132 records) and copies them out: B records for the slice
+    (vertex block +0x11 = slice +0x75) and, on every 4th slice and the last, A + 1 more (+0 = slice +0x6C). Past 132 it writes over
+    its own return address: eip 0 about 30 s into loading (Daytona at 83 quads across, 2026-10-14). So every slice must keep
+    A + 1 + B <= 132, about 64 quads across; SEGA's tracks reach 38. -> stops the build with the slices that break it."""
+    bad = [(k, s['A'], s['B']) for k, s in enumerate(model['slices'][1:], 1) if s['A'] + 1 + s['B'] > ROAD_ROW_RECORDS]
+    if bad:
+        w = max(bad, key=lambda t: t[1] + t[2])
+        raise SystemExit('BUILD STOPPED: road too wide for Rally.exe: %d slices need more than %d vertex records (A + 1 + B), the widest slice %d has A %d, B %d. '
+                         'Keep the road within about 64 quads across (course settings max_half_width / max_left / max_right).' % (len(bad), ROAD_ROW_RECORDS, w[0], w[1], w[2]))
 def set_td(f, model, tex_edit=None):
     """rebuild the TrackDeform chunk + its height blob from a model"""
+    road_width_check(model)
     if TWO_PAGES: two_pages(model)
     r = gfx_root(f); by = f.byid(); td = by[r.u32(0xc)]; blob = by[td.u32(0x18)]
     raw = b'\xbf' * TDm.blob_size(model); z = zlib.compress(raw, 9)

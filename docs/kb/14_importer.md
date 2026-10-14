@@ -192,3 +192,73 @@ preview (`preview_obj.py`) reads uv as signed and matches road cells by column n
 Desert, Lake Side and Forest were rebuilt on 2026-10-07 (steps 25 / 28 / 31, 8 files, empty object list) but are not
 installed and not tested; Desert's scenery reaches outside the +-750 m square. Their crowd tables are located but only
 Mountain's is verified (15_spectators.md).
+
+---
+# Daytona USA: Three Seven Speedway in the Classic slot (2026-10-14)
+The Beginner course of Daytona USA (1994, Model 2; export and ROM facts: daytona_usa_rom_data.md) imported "as is": the
+original 5,208 polygons and their tiles, nothing added or rounded. Installed as Classic entry 5 (`Main_release\track5\Desert4`,
+title "Daytona: Three Seven Speedway"); VERIFIED in game the same day: Hornet against a Celica, counter-clockwise, lap counted
+at the line, the half-lap checkpoint adds time, banking holds, the grass slows and dirties the car, replays draw.
+
+## Command and files
+`python import_classic.py daytona 1 classic --norender --name step99_daytona_threeseven_desert4` (course settings
+`courses\daytona_1.json`, every key with a note). `course.use_export` gives a game other than `src` its own folders
+(`classic_tex\daytona_course1`, `retex\daytona_1`, `tmp\classic_xform_daytona_1.json`) and no ROM tiles (`ROM_TILES`);
+`export_adapter.py` turns the export into the importer's input there: the OBJ with texture coordinates on every face (the
+flat-colour `col_` faces have none in the export), one 8 x 8 picture per flat colour, the centre line in the OBJ's axes (the
+export writes game axes: `centreline_axes: "game"`). Mountain's output is byte-identical with and without all of this.
+
+## Road, start, AI, checkpoints
+- Drivable road = Daytona's collision quads (coprocessor ROM) where the visible ground lies on them and nothing stands across
+  them (`edge_visual` 0.3 m, `build_classic.Uprights`): the collision runs on under the outer walls and under the 1 m kerb of
+  the inner grass. The banking (up to 30 degrees, 0.6 m a metre) needs `road_height_slope` 2.0. The heights are then those of
+  the DRAWN scenery within 35 cm of the collision (`road_height_visible`, `build_classic.road_on_scenery`, after the meshes are
+  written): 99 % of the road within -2.7 .. +1.5 cm of what is seen.
+- Surface: the collision has no surface field; road columns whose visible ground is the infield grass tile take Lakeside4's
+  grass pair (`surface_tiles`, code 200 = the second layer pair); the rest Alpine4's tarmac.
+- Width: see "The road's width limit" below. The installed form holds the inner edge at 25 m (`max_left`), at most 38 quads.
+- Start slice = the slice nearest the yellow line under the gantry (`start.at`, game x / z); SR3's 2 x 4 grid (Daytona's own
+  grid is not in the ROM). AI map = Daytona's eight driving lines as the eight lanes (`ai_lines`, `import_classic.line_ai_cells`).
+  Checkpoints: two markers a lap at 2.5 % and 50 % (`splits`); no pace notes (`pace_notes: false`). `arcade_times.bin` (from
+  `arcade_times`, `arcade_times.track_bin`) is a guess: lap 1 30 + 20 s, later laps 20 + 20 (easy), 2 s less a marker per grade;
+  a wall-scraping lap in game would miss the line by about 1 s on lap 1. `road.txt` = `hide all`.
+- Objects: the slot's object list emptied, its object model file left out (as the `minimal` form, which loads), the pobj files,
+  grass cache and cameras kept (`props: noobjects`; until this build that option also dropped the pobj files: fixed). Sky: the
+  slot's dome (Daytona's sky is a 2D layer, not extracted).
+
+## Scenery
+- Overlaps: the tyre marks lie 4.4 .. 5 cm over the asphalt (Model 2 draws by priority); `coplanar` 0.4 resolves them in the
+  road's plane (composed tiles) instead of lifting them 5 .. 20 cm. `resolve_on_surface`: the resolver's pieces of a twisted
+  quad (the banking) stay on its drawn surface (`overlay_bake._on_surface`): in its best plane they left cracks of a few cm the
+  sky showed through. Z-fight gate 0 + 0.
+- The 277 checker polygons (`col_c26E_p3_ck`: Model 2 draws every other pixel - the wire fences) are alpha-blended at 128.
+- `stitch` (seal1995.py) is off: on this course its passes do not settle (17 000, 18 000, 134 000 joints, 750 000 triangles).
+
+## The texture table (1024 textures for the whole game)
+Rally.exe holds every texture in ONE table of 1024 slots: the kind-4 chunk loader 0x586310 hashes the DDS data (MD5,
+0x5861B0) and reuses a slot with the same hash (use counts 0x874EA8, hashes 0x875EA8 + 16 x slot), else 0x585D10 takes a free
+one (0x2C-byte chunk headers at 0x87AEA8); full = int3 at 0x585D5C. Read from the crash dump: slots 0..118 before the track,
+119..892 the track's 774 master_gfx textures in file order, 893..917 its 25 pobj textures, 918..1023 loaded after it. So the
+rest of a race takes at least 225 slots; tracks that load have 403 (stock Desert4) .. 550 (Canyon4) distinct textures, so at
+most 474. Daytona's first build had 797 (587 composed tiles among them) and stopped.
+`atlas: true` (`atlas1995.py`): every picture but the special materials goes onto shared 1024 x 1024 pages (one set per kind:
+opaque one- / two-sided, cut-out one- / two-sided), copied texel for texel at a place on a 16-texel grid (its compression
+blocks and first five mip levels are its own) with a 16-texel border that continues it as the sampler did (wrapped, or the
+edge on an axis a cut-out never repeats on). Polygons are cut along whole-repeat uv lines so each piece lies within one repeat.
+Checked: 669 pictures (11.5 million texels) decoded from the pages are identical to the same pictures written alone. Daytona:
+706 pictures on 24 pages, 117 distinct textures for the track (92 + 25), 74 000 scenery vertices. Beyond mip level 4 the
+border no longer covers the filter (a neighbour can tint a picture's last texel at great distance).
+
+## The road's width limit (all courses)
+At load, 0x4ECE60 turns each road slice into 20-byte vertices (4 x s16 position, colour word, 8 packed bytes) in ONE buffer on
+its stack ([esp + 0x90] of a 0xAD4-byte frame = 0xA50 bytes = 132 records) and then copies them out: B records for the slice
+(vertex block +0x11 = slice +0x75), and on every 4th slice and on the last A + 1 more (block +0 = slice +0x6C). A slice that
+needs more than 132 writes over the routine's own return address: Daytona at 83 quads across crashed about 30 s into loading
+with eip 0 and those records on the stack. So A + 1 + B <= 132 on every slice, about 64 quads across (SEGA's tracks reach 38).
+`build_testtrack.road_width_check` (called by `set_td`, so for every builder) stops a build that breaks it, naming the slice.
+
+## Install / uninstall
+Copy `work\out\step99_daytona_threeseven_desert4\Desert4\` (10 files) to `Main_release\track<k>\Desert4\`, add
+`{"dir": "<k>", "title": "Daytona: Three Seven Speedway"}` to `tracks\_SR3Extras\classic.json` and write `switch.json`
+again (extras.ps1 `Write-SwitchFile`); in game: first menu, Classic highlighted, View Change until the title shows. Uninstall:
+delete the folder, remove the entry, write `switch.json` again. The course plays the slot's music.
