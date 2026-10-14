@@ -209,6 +209,15 @@ With light maps nothing of the scenery depends on the live sun; `light_dir` plus
   (computed from their master_gfx, 2026-10-14): Tropical4 38 / 37 % (sun 73 degrees up), Canyon4 37 / 29 % (59), Alpine4
   40 / 39 % (53), Lakeside4 36 / 48 % (27), Desert4 35 / 35 % (47), Stadium4 28 / 30 % (88). Mountain with Tropical's sets
   and its 70 degree sun: 37 % ("Classic 1"); the variants Classic 2 / 3 / 4 keep 27 / 21 / 16 %.
+- Changing the light live (for a shadow-darkness switch in game, owner 2026-10-14): NOT found yet. Established: the
+  shaders get ambient and sun through 0x402060 (via 0x402750, called from 0x402B40 when the material changes), which
+  keeps a shadow copy of the constant registers at 0x80F690 + 16 x register and uploads only what differs; 0x402750 reads
+  the light state at 0x9F0FB8 (ambient) / 0x9F0FC8 (sun), which is slot 2 of a render-state stack (0x9F0600 + 0x4D0 x
+  depth; 16 templates at 0x9EB8F0, pushed by 0x416140). In a race none of these changed the picture: the slot, the slot
+  with the constant copy filled with no-numbers (every value should then be sent again), and 156 other copies of the
+  ambient + sun floats in the heap, one at a time (none of them feeds the slot). Writing ALL 517 copies of the sun colour
+  at once crashed the graphics driver (some are in buffers the driver uses). So the values reach the GPU at track load by
+  a path not found yet. Until then the four RT builds (View Change on the mode menu) are the comparison.
 
 ### 6.2 Things tried in the lighting of the import and dropped
 | Tried | Result |

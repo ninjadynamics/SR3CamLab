@@ -277,6 +277,15 @@ More cars (SR2 / Daytona): the library has no fixed size and the selector takes 
 folder "C4"; then "ID_CAR_C4"), plus the car's files. Name-based switches with ten names exist at 0x599A20 (a per-car
 value at vehicle +0x1708), 0x5C6000 (which cars have bespoke data) and 0x610F30 (speech per car); a new car falls through
 them to a default (to be checked when one is added).
+An added car's card (2026-10-14): the card is the video named CARSLIDE_<FOLDER>_GRAVEL_1 in the menu video table, looked up
+by 0x61C2C0; its not-found exit 0x61C30B jumps to `tools\build_cardhook.py`'s routine, a list of {name[32], pointer to a
+handle cell} (`$ExtraCards`). Until the car has a video the cell is the game's own TV-static loop (0x72870C, object 14).
+With `frontend\PC\Videos\<file>` present, `Open-CarCards` opens it in one of the two video objects the game never fills
+(19, then 18) through the camera block's REOPEN, and the car's entry then points at a cell holding that object. It runs
+before the first menus come up: the car select looks its cards up when its pages are built (the first menus, then each new
+game), so a video opened after that shows only from the next game on. VERIFIED in game 2026-10-14: the Hornet's card
+plays `HORNET.wmv` (object 19) on the first visit; objects 0..17 are the game's 18 (0 loading.wmv, 14 static_loop.wmv),
+18 stays empty.
 
 ## 11. START in a race: screenshot on release, long press = back to the menus (2026-10-14)
 A short press of START in a race takes a screenshot when START is let go. The game has no known flag that tells a race from

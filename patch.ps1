@@ -996,6 +996,7 @@ public static class Sr3Pad {
             $tdCave = Install-TrackDir $h
             if ($tdCave) { Log 'Track folders: chosen in the game''s own path code (each load reads one folder).' }
         }
+        $cardsOpen = (Open-CarCards $h $base) -ne $false                 # before the first menus: the car select looks its cards up when they are built
         $text = $base + $SwitchTextOff
         [Sr3Mem]::Write($h, $text + 0x40, (Str 'Press VIEW CHANGE to select alternative tracks' 64), $true)
         $choice = @{}; foreach ($s in $slots.Keys) { $choice[$s] = 0 }
@@ -1009,6 +1010,7 @@ public static class Sr3Pad {
             if ($null -eq $g) { break }
             $menu = $g[0] -eq 1
             if ($menu -and -not $wasMenu) {                           # a new game: every card back to its own track
+                if (-not $cardsOpen) { $cardsOpen = (Open-CarCards $h $base) -ne $false }
                 $deep = $false
                 foreach ($s in @($choice.Keys)) {
                     if ($choice[$s] -ne 0) { Set-CardTrack $h $base $s $slots[$s][0] $true }
@@ -1204,7 +1206,8 @@ $CarListCode = 'ba00000000eb0eba01000000eb07ba02000000eb0085ff746256535589d38b07
 $CarListSites = @(@(0x600790, 0, '85ff74518b'), @(0x6006F0, 7, '85ff74408b'))      # site, entry in our routine, the game's bytes there
 $CardHookCode = '85ed7433e8000000005e83c63d803e00742589e989f28a013a027516414284c075f48b4e208b098b4424145f5e5d89085bc383c624ebd68b4424145f5e5dc700ffffffff5bc3'
 $CardHookExit = '8b4424145f5e5dc700ffffffff5bc3'
-$ExtraCards = @(,@('CARSLIDE_HORNET_GRAVEL_1', 0x72870C))  # card name, the game's video handle cell it borrows (0x72870C: the TV-static loop); (the comma keeps a one-entry list a list of lists)
+$ExtraCards = @(,@('CARSLIDE_HORNET_GRAVEL_1', 0x72870C, 'HORNET.wmv'))  # card name, the game's video handle cell it borrows until its own video is open (0x72870C: the TV-static loop), its own video in frontend\PC\Videos (Open-CarCards); (the comma keeps a one-entry list a list of lists)
+$CardCells = 0x800                                         # in the card routine's cave: the handle cells of the cars' own videos
 function Set-CarLists($game) {
     $h = [Sr3Mem]::Open($game.Id); $n = 0
     try {
@@ -1241,6 +1244,51 @@ function Set-CarLists($game) {
         }
     } catch { Log "Car lists: $($_.Exception.Message)" } finally { [Sr3Mem]::Close($h) }
     Log $(if ($n -eq $CarListSites.Count) { 'Car lists: every car in every mode (each mode''s own cars first).' } else { "Car lists: $n of $($CarListSites.Count) changed." })
+}
+# An added car's own card video (frontend\PC\Videos\<file>, $ExtraCards). The game has 20 video objects (0x16C bytes at
+# 0xAD2F90) and fills 18: the 17 of its table that 0x621600 loads and LOADING_TEXTURE (0x621500, once). Its allocator
+# 0x4DE430 takes the first object whose +4 is 0 and never frees one, so objects 19 and 18 stay empty. Each car with a file
+# gets one of them, opened by the camera block's REOPEN on the game's own thread (as a stage card's other track is), and its
+# entry in the card routine's list then names a cell holding that object. Without the file, or if the open fails, the card
+# keeps its stand-in. Run before the first menus: the car select looks its cards up when its pages are built (at the first
+# menus, then at each new game). The stand-in's video gives the folder the game reads its videos from.
+function Open-CarCards($h, [long]$base) {
+    $j = [Sr3Mem]::Read($h, 0x61C30B, 5)
+    if (-not $j -or $j[0] -ne 0xE9) { return }
+    $cc = 0x61C30B + 5 + [BitConverter]::ToInt32($j, 1)                # the card routine (Set-CarLists)
+    $list = $cc + $CardHookCode.Length / 2
+    $obj = 19
+    for ($i = 0; $i -lt $ExtraCards.Count; $i++) {
+        $c = $ExtraCards[$i]
+        if ($c.Count -lt 3 -or -not $c[2]) { continue }
+        $entry = $list + 36 * $i
+        if ((Read-GameString $h $entry 32) -ne $c[0]) { Log "Car cards: the card list in the game isn't this launcher's; $($c[0]) keeps its stand-in."; return }
+        $stand = Read-GameInt $h $c[1]
+        if ($stand -eq -1) {                                           # the game hasn't loaded its videos yet: have it do so now
+            [Sr3Mem]::Write($h, $base + 0x2264, ([BitConverter]::GetBytes([int]1)), $true)
+            for ($t = 0; $t -lt 400 -and (Read-GameInt $h $c[1]) -eq -1; $t++) { Start-Sleep -Milliseconds 25 }
+            $stand = Read-GameInt $h $c[1]
+        }
+        if ($stand -lt 0 -or $stand -ge 20) { return $false }         # still not loaded: tried again when the menus come up
+        $path = (Read-GameString $h (0xAD2F90 + 0x16C * $stand + 0xC) 255) -replace '[^\\]+\.wmv$', $c[2]
+        $onDisk = if ([IO.Path]::IsPathRooted($path)) { $path } else { Join-Path (Split-Path -Parent $script:GameExePath) $path }
+        if ($path -notmatch '\\[A-Za-z0-9_]+\.wmv$' -or -not (Test-Path -LiteralPath $onDisk)) { continue }
+        $have = -1                                                     # already open (PLAY.bat run again on a running game)
+        for ($k = 18; $k -lt 20; $k++) { if ((Read-GameInt $h (0xAD2F90 + 0x16C * $k + 4)) -and (Read-GameString $h (0xAD2F90 + 0x16C * $k + 0xC) 255) -eq $path) { $have = $k } }
+        if ($have -lt 0) {
+            while ($obj -ge 18 -and (Read-GameInt $h (0xAD2F90 + 0x16C * $obj + 4))) { $obj-- }
+            if ($obj -lt 18) { Log "Car cards: no spare video object for $($c[2]); the card keeps its stand-in."; return }
+            [Sr3Mem]::Write($h, $base + 0x2500, (Str $path 256), $true)
+            [Sr3Mem]::Write($h, $base + 0x2274, ([BitConverter]::GetBytes([int]($base + 0x2500))), $true)
+            [Sr3Mem]::Write($h, $base + 0x2270, ([BitConverter]::GetBytes([int]($obj + 1))), $true)
+            for ($t = 0; $t -lt 300 -and (Read-GameInt $h ($base + 0x2270)) -ne 0; $t++) { Start-Sleep -Milliseconds 10 }
+            if (-not (Read-GameInt $h (0xAD2F90 + 0x16C * $obj + 4))) { Log "Car cards: the game didn't open $path; the card keeps its stand-in."; continue }
+            $have = $obj; $obj--
+        }
+        Write-GameInt $h ($cc + $CardCells + 4 * $i) $have
+        Write-GameInt $h ($entry + 32) ($cc + $CardCells + 4 * $i)
+        Log "Car cards: $($c[0]) plays $path."
+    }
 }
 
 function Release-StuckKeys($game) {

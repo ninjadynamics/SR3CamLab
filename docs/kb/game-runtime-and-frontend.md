@@ -63,7 +63,11 @@ not yet exercised; OFFLINE = only run against the emulator / fake-game tests.
   return &object+0x140. The game NEVER frees a video.
 - The game uses 18 of the 20 objects. Loading extra videos fails after two, and if they are
   loaded before the game's own, the game's last cards come up blank. CONFIRMED (that was the
-  "missing Canyon and Alpine cards" bug).
+  "missing Canyon and Alpine cards" bug). 0x4DE430 takes the FIRST object whose +4 is 0, so
+  objects 18 and 19 can be used directly (REOPEN on an empty object only opens it) without
+  touching the game's own: the launcher gives an added car's card object 19 (kb 20, 10b).
+  The car select looks its cards up when its pages are built (first menus, then each new
+  game), not when a card is shown. CONFIRMED 2026-10-14.
 - Working way to change a card live: on the game's own thread, IMediaControl::Stop, Release
   +0x12C..+0x11C and the texture, zero +0, +4, +8, +0x130, call 0x4DDC80 with the new path
   on the SAME object, then Run and 0x4DE370(handle, 0, 1) as the loader does. Widgets hold
