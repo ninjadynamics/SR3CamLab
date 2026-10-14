@@ -1101,6 +1101,152 @@ function Set-MusicSource([string]$tracks, [string]$source) {
     return ,$notes
 }
 
+# ---- Handling (docs\kb\28_handling_flavors.md) ----
+# Which cars drive with which handling. handling.json next to PLAY.bat (patch.ps1, Read-Handling / Set-Handling):
+#   {"version": 1, "default": "src", "cars": {"ST205": "sr3"}, "flavors": {"src": {"digit": "1", "grip_file": true, "steer_return_s": 0.25}}}
+# "default" is every car's flavor, "cars" the exceptions; no file = the game's own handling for every car. A flavor is a
+# folder of car files Main_release\car<digit> (and a grip file SurfacePairEffect<digit>) built on this PC from the game's
+# own files by scripts\handling\build_flavor.py (Python); the launcher points the game at it when a race loads.
+$script:HandlingFlavors = [ordered]@{
+    'sr3'     = @{ Title = "SEGA Rally 3 (the game's own)" }
+    'src'     = @{ Title = 'SEGA Rally Championship (1995)'; Digit = '1'; Grip = $true; Table = 'flavor_src.json' }
+    'realism' = @{ Title = "Realism (the real cars' specs)"; Digit = '2'; Grip = $false; Table = 'flavor_realism.json'; Specs = 'realism_specs.json' } }
+$script:HandlingCars = [ordered]@{                                   # handling.json's names (the cars' data file names), the menu's
+    'C4' = "Citro$([char]0xEB)n C4 WRC";'RSFocus' = 'Ford Focus RS WRC 07'; 'SubaruImpreza' = 'Subaru Impreza WRC2008'; 'SX4' = 'Suzuki SX4 WRC'
+    'MitsubishiEvo' = 'Mitsubishi Lancer Evolution X'; '207' = 'Peugeot 207 Super 2000'; 'ST205' = 'Toyota Celica ST205'
+    'Delta_HF' = 'Lancia Super Delta HF integrale'; 'Bowler' = 'Bowler Nemesis'; 'Enduro' = 'McRae Enduro' }
+$script:SteerReturnSeconds = 0.25                                    # SRC: from full lock to the centre, like the cabinet wheel's spring
+function Get-HandlingFile { return (Join-Path $PSScriptRoot 'handling.json') }
+# the cars a handling can be set for: SEGA's ten and the added ones (Main_release\cars\<name>gravel_data.sbf, e.g. the Hornet)
+function Get-HandlingCars([string]$tracks) {
+    $cars = [ordered]@{}; foreach ($k in $script:HandlingCars.Keys) { $cars[$k] = $script:HandlingCars[$k] }
+    foreach ($f in @(Get-ChildItem -LiteralPath (Join-Path (Get-GameDir $tracks) 'Main_release\cars') -Filter '*gravel_data.sbf' -ErrorAction SilentlyContinue)) {
+        $n = $f.Name -replace '(?i)gravel_data\.sbf$', ''
+        if (-not @($cars.Keys | Where-Object { $_ -eq $n }).Count) { $cars[$n] = (Get-Culture).TextInfo.ToTitleCase($n) }
+    }
+    return $cars
+}
+# @{ Default; Cars = @{ name -> flavor }; Steer = seconds of SRC's steering return (0 = off) }
+function Read-HandlingFile {
+    $h = @{ Default = 'sr3'; Cars = @{}; Steer = $script:SteerReturnSeconds }
+    $f = Get-HandlingFile
+    if (-not (Test-Path -LiteralPath $f)) { return $h }
+    try { $j = [IO.File]::ReadAllText($f) | ConvertFrom-Json } catch { return $h }
+    if ($script:HandlingFlavors.Contains("$($j.default)".ToLower())) { $h.Default = "$($j.default)".ToLower() }
+    if ($j.cars) { foreach ($p in $j.cars.PSObject.Properties) { if ($script:HandlingFlavors.Contains("$($p.Value)".ToLower())) { $h.Cars[$p.Name] = "$($p.Value)".ToLower() } } }
+    if ($j.flavors -and $j.flavors.src) { $h.Steer = if ($j.flavors.src.steer_return_s) { [double]$j.flavors.src.steer_return_s } else { 0.0 } }
+    return $h
+}
+function Write-HandlingFile($h) {
+    $flavors = [ordered]@{}
+    foreach ($k in $script:HandlingFlavors.Keys) {
+        $v = $script:HandlingFlavors[$k]; if (-not $v.Digit) { continue }
+        $e = [ordered]@{ digit = $v.Digit; grip_file = [bool]$v.Grip }; if ($k -eq 'src' -and $h.Steer -gt 0) { $e.steer_return_s = $h.Steer }
+        $flavors[$k] = $e
+    }
+    $cars = [ordered]@{}; foreach ($c in $h.Cars.Keys) { if ($h.Cars[$c] -ne $h.Default) { $cars[$c] = $h.Cars[$c] } }
+    if ($h.Default -eq 'sr3' -and -not $cars.Count) { $f = Get-HandlingFile; if (Test-Path -LiteralPath $f) { [IO.File]::Delete($f) }; return }
+    [IO.File]::WriteAllText((Get-HandlingFile), ([ordered]@{ version = 1; default = $h.Default; cars = $cars; flavors = $flavors } | ConvertTo-Json -Depth 4))
+}
+# a flavor's files are in the game: its car folder holds the cars' files
+function Test-HandlingBuilt([string]$tracks, [string]$key) {
+    $v = $script:HandlingFlavors[$key]; if (-not $v.Digit) { return $true }
+    return [bool]@(Get-ChildItem -LiteralPath (Join-Path (Get-GameDir $tracks) "Main_release\car$($v.Digit)") -Filter '*_data.sbf' -ErrorAction SilentlyContinue).Count
+}
+function Find-Python {
+    foreach ($n in 'python', 'py') { $c = Get-Command $n -ErrorAction SilentlyContinue; if ($c) { return $c.Source } }
+    return $null
+}
+# Builds a flavor's files from the game's own (scripts\handling\build_flavor.py into a folder of its own in TEMP) and puts
+# them into the game: Main_release\car<digit>, SurfacePairEffect<digit>. Only these new folders are written; SEGA's files
+# are only read. Returns notes for the user.
+function Build-HandlingFlavor([string]$tracks, [string]$key) {
+    $v = $script:HandlingFlavors[$key]; if (-not $v.Digit) { return ,@() }
+    Assert-GameClosed
+    $py = Find-Python; if (-not $py) { throw "Building $($v.Title) needs Python (python.org); nothing was changed." }
+    $dir = Join-Path $PSScriptRoot 'scripts\handling'; $game = Get-GameDir $tracks
+    $stage = Join-Path ([IO.Path]::GetTempPath()) "SR3Lab_handling_$key"
+    if (Test-Path -LiteralPath $stage) { [IO.Directory]::Delete($stage, $true) }
+    $table = Join-Path $dir $v.Table
+    if ($v.Specs) {                                                    # Realism: the real specs become SR3's numbers first
+        $table = Join-Path $stage $v.Table; [void][IO.Directory]::CreateDirectory($stage)
+        $o = & $py (Join-Path $dir 'realism_map.py') (Join-Path $dir $v.Specs) $table 2>&1
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $table)) { throw "$($v.Title): realism_map.py failed: $(($o | Select-Object -Last 3) -join ' ')" }
+    }
+    $o = & $py (Join-Path $dir 'build_flavor.py') $table --game $game --out (Join-Path $stage 'Rally') 2>&1
+    $cars = Join-Path $stage "Rally\Main_release\car$($v.Digit)"
+    if ($LASTEXITCODE -ne 0 -or -not @(Get-ChildItem -LiteralPath $cars -Filter '*_data.sbf' -ErrorAction SilentlyContinue).Count) { throw "$($v.Title): build_flavor.py failed: $(($o | Select-Object -Last 3) -join ' ')" }
+    $notes = @()
+    foreach ($d in @("Main_release\car$($v.Digit)", "SurfacePairEffect$($v.Digit)")) {
+        $from = Join-Path $stage "Rally\$d"; $to = Join-Path $game $d
+        if (-not (Test-Path -LiteralPath $from)) { continue }
+        [void][IO.Directory]::CreateDirectory($to)
+        foreach ($f in Get-ChildItem -LiteralPath $from -File) { [IO.File]::Copy($f.FullName, (Join-Path $to $f.Name), $true) }
+        $notes += "$d ($(@(Get-ChildItem -LiteralPath $from -File).Count) files)"
+    }
+    [IO.Directory]::Delete($stage, $true)
+    return ,@("$($v.Title): built from your game's files into $($notes -join ' and ').")
+}
+# The handling pop-up (Options tab): one handling for every car (the default), or car by car; SRC's steering return;
+# building a handling's files. Returns what to write into handling.json (Write-HandlingFile), or $null for Cancel.
+# $OnShown runs when the pop-up is on screen (pictures, tests).
+function Show-HandlingDialog($owner, [string]$tracks, [scriptblock]$OnShown) {
+    $hf = Read-HandlingFile; $cars = Get-HandlingCars $tracks; $keys = @($script:HandlingFlavors.Keys)
+    $d = New-Object Windows.Forms.Form; $d.Text = 'Handling'; $d.FormBorderStyle = 'FixedDialog'; $d.MaximizeBox = $false; $d.MinimizeBox = $false
+    $d.Font = if ($owner) { $owner.Font } else { New-Object Drawing.Font('Segoe UI', 9) }
+    $d.StartPosition = 'CenterParent'; $d.AutoSize = $true; $d.AutoSizeMode = 'GrowAndShrink'; $d.Padding = New-Object Windows.Forms.Padding(12)
+    $flow = New-Object Windows.Forms.FlowLayoutPanel; $flow.FlowDirection = 'TopDown'; $flow.WrapContents = $false; $flow.AutoSize = $true; $flow.Dock = 'Fill'
+    $d.Controls.Add($flow)
+    $titles = { param($k) $script:HandlingFlavors[$k].Title + $(if (-not (Test-HandlingBuilt $tracks $k)) { '   (not built yet)' } else { '' }) }
+    $mkBox = { $c = New-Object Windows.Forms.ComboBox; $c.DropDownStyle = 'DropDownList'; $c.Width = 300; foreach ($k in $keys) { [void]$c.Items.Add((& $titles $k)) }; $c }
+    $rAll = New-Object Windows.Forms.RadioButton; $rAll.Text = 'The same handling for every car'; $rAll.AutoSize = $true
+    $cAll = & $mkBox; $cAll.Margin = New-Object Windows.Forms.Padding(20, 0, 0, 10); $cAll.SelectedIndex = [Math]::Max(0, [Array]::IndexOf($keys, $hf.Default))
+    $rPer = New-Object Windows.Forms.RadioButton; $rPer.Text = 'Car by car'; $rPer.AutoSize = $true
+    $grid = New-Object Windows.Forms.TableLayoutPanel; $grid.ColumnCount = 2; $grid.AutoSize = $true; $grid.Margin = New-Object Windows.Forms.Padding(20, 0, 0, 10)
+    $per = [ordered]@{}; $row = 0
+    foreach ($c in $cars.Keys) {
+        $l = New-Object Windows.Forms.Label; $l.Text = $cars[$c]; $l.AutoSize = $true; $l.Margin = New-Object Windows.Forms.Padding(0, 6, 12, 0)
+        $b = & $mkBox; $f = if ($hf.Cars.ContainsKey($c)) { $hf.Cars[$c] } else { $hf.Default }; $b.SelectedIndex = [Math]::Max(0, [Array]::IndexOf($keys, $f))
+        $grid.Controls.Add($l, 0, $row); $grid.Controls.Add($b, 1, $row); $per[$c] = $b; $row++
+    }
+    $odd = @($cars.Keys | Where-Object { $hf.Cars.ContainsKey($_) -and $hf.Cars[$_] -ne $hf.Default }).Count
+    $rAll.Checked = -not $odd; $rPer.Checked = [bool]$odd
+    $sync = { $cAll.Enabled = $rAll.Checked; $grid.Enabled = $rPer.Checked }.GetNewClosure(); & $sync
+    $rAll.Add_CheckedChanged($sync); $rPer.Add_CheckedChanged($sync)
+    $cSteer = New-Object Windows.Forms.CheckBox; $cSteer.AutoSize = $true; $cSteer.Checked = $hf.Steer -gt 0; $cSteer.Margin = New-Object Windows.Forms.Padding(0, 4, 0, 0)
+    $cSteer.Text = "SEGA Rally Championship: the wheels come back to the centre over $($script:SteerReturnSeconds) s when you let go,`nlike the arcade wheel's spring (turning in stays instant)"
+    $note = New-Object Windows.Forms.Label; $note.AutoSize = $true; $note.MaximumSize = New-Object Drawing.Size(560, 0); $note.Margin = New-Object Windows.Forms.Padding(0, 10, 0, 6)
+    $note.Text = "A handling marked 'not built yet' needs its files first: 'Build the files' makes them from your own game files (Python needed) into new folders; the game's own car files are never changed. A car on a handling that isn't built drives with the game's own. The choice takes effect the next time the game is started with PLAY.bat."
+    $btns = New-Object Windows.Forms.FlowLayoutPanel; $btns.AutoSize = $true; $btns.WrapContents = $false; $btns.Margin = New-Object Windows.Forms.Padding(0, 6, 0, 0)
+    $bBuild = New-Object Windows.Forms.Button; $bBuild.Text = 'Build the files'; $bBuild.AutoSize = $true
+    $bOk = New-Object Windows.Forms.Button; $bOk.Text = 'OK'; $bOk.AutoSize = $true; $bOk.DialogResult = 'OK'
+    $bCancel = New-Object Windows.Forms.Button; $bCancel.Text = 'Cancel'; $bCancel.AutoSize = $true; $bCancel.DialogResult = 'Cancel'
+    $btns.Controls.AddRange(@($bBuild, $bOk, $bCancel)); $d.AcceptButton = $bOk; $d.CancelButton = $bCancel
+    $flow.Controls.AddRange(@($rAll, $cAll, $rPer, $grid, $cSteer, $note, $btns))
+    $chosen = { if ($rAll.Checked) { @($keys[$cAll.SelectedIndex]) } else { @($per.Values | ForEach-Object { $keys[$_.SelectedIndex] }) | Sort-Object -Unique } }.GetNewClosure()
+    $bBuild.Add_Click({                                                # runs inside ShowDialog below, so it sees this function's variables
+        $todo = @(& $chosen | Where-Object { $script:HandlingFlavors[$_].Digit })
+        if (-not $todo.Count) { [void][Windows.Forms.MessageBox]::Show($d, "The game's own handling needs no files.", 'Handling'); return }
+        $d.Cursor = [Windows.Forms.Cursors]::WaitCursor
+        try {
+            $notes = @(); foreach ($k in $todo) { $notes += @(Build-HandlingFlavor $tracks $k) }
+            foreach ($b in @($cAll) + @($per.Values)) { $i = $b.SelectedIndex; $b.BeginUpdate(); for ($n = 0; $n -lt $keys.Count; $n++) { $b.Items[$n] = (& $titles $keys[$n]) }; $b.SelectedIndex = $i; $b.EndUpdate() }
+            [void][Windows.Forms.MessageBox]::Show($d, ($notes -join "`n"), 'Handling', 'OK', 'Information')
+        } catch { [void][Windows.Forms.MessageBox]::Show($d, $_.Exception.Message, 'Handling', 'OK', 'Warning') }
+        finally { $d.Cursor = [Windows.Forms.Cursors]::Default }
+    })
+    if ($OnShown) { $d.Add_Shown($OnShown) }
+    $ok = $d.ShowDialog($owner) -eq 'OK'
+    $h = @{ Default = $keys[$cAll.SelectedIndex]; Cars = @{}; Steer = $(if ($cSteer.Checked) { $script:SteerReturnSeconds } else { 0.0 }) }
+    if ($rPer.Checked) {                                               # car by car: the most used handling becomes the default
+        $h.Default = @($per.Values | ForEach-Object { $keys[$_.SelectedIndex] } | Group-Object | Sort-Object Count -Descending)[0].Name
+        foreach ($c in $per.Keys) { $h.Cars[$c] = $keys[$per[$c].SelectedIndex] }
+    }
+    $d.Dispose()
+    if ($ok) { return $h }
+    return $null
+}
+
 # ---- the window ----
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 try { Add-Type -Namespace SR3CamLab -Name Dpi -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDPIAware();' -ErrorAction Stop } catch { }
@@ -1311,6 +1457,10 @@ function Show-ExtrasWindow([string]$tracks, [switch]$Render, [string]$Png, [int]
     $lArt = & $mk ''; $lArt.MaximumSize = New-Object Drawing.Size($rest, 0)
     $olist.Controls.Add($pVoice.Panel, 0, 0); $olist.Controls.Add($lVoice, 1, 0); $olist.Controls.Add($pMusic.Panel, 0, 1); $olist.Controls.Add($lMusic, 1, 1)
     $olist.Controls.Add($bArt, 0, 2); $olist.Controls.Add($lArt, 1, 2)
+    $bHand = New-Object Windows.Forms.Button; $bHand.Text = 'Handling...'; $bHand.Width = $wide; $bHand.Height = 30; $bHand.Margin = New-Object Windows.Forms.Padding(0, 6, 0, 14)
+    $lHand = & $mk ''; $lHand.MaximumSize = New-Object Drawing.Size($rest, 0)
+    $olist.Controls.Add($bHand, 0, 3); $olist.Controls.Add($lHand, 1, 3)
+    $x.HandText = $lHand
     $oStatus = & $mk ''; $oStatus.MaximumSize = New-Object Drawing.Size(890, 0); $oStatus.Dock = 'Bottom'
     $opt.Controls.Add($oStatus)
     $x.Voice = $pVoice.Box; $x.VoiceText = $lVoice; $x.Music = $pMusic.Box; $x.MusicText = $lMusic; $x.Art = $bArt; $x.ArtText = $lArt; $x.ArtTexts = $artTexts; $x.OptStatus = $oStatus
@@ -1348,6 +1498,10 @@ function Show-ExtrasWindow([string]$tracks, [switch]$Render, [string]$Png, [int]
             $was = @($m.tunes | ForEach-Object { "$($_.file)|$($_.fileBytes)|$($_.fileTime)" } | Sort-Object)
             if (($now -join ';') -ne ($was -join ';')) { $u.MusicText.Text += "`nThe tune files in the music folder are not the ones in the game any more: pick the game's own and then the 1995 game again to renew them." }
         }
+        $hf = Read-HandlingFile; $cars = Get-HandlingCars $u.Tracks
+        $odd = @($cars.Keys | Where-Object { $hf.Cars.ContainsKey($_) -and $hf.Cars[$_] -ne $hf.Default })
+        $u.HandText.Text = "Handling: $($script:HandlingFlavors[$hf.Default].Title) for " + $(if ($odd.Count) { "every car but $(($odd | ForEach-Object { "$($cars[$_]) ($($script:HandlingFlavors[$hf.Cars[$_]].Title))" }) -join ', ')." } else { 'every car.' }) +
+                           " It takes effect when the game is started with PLAY.bat; the game's own car files are never changed."
         $u.Art.Text = $u.ArtTexts[$(if ($u.St.art) { 0 } else { 1 })]
         $u.ArtText.Text = if ($u.St.art) { 'The tracks you added to a stage card have their own background and banner. This rewrites the game''s menu pictures file (the original is kept). If the game stops starting, switch this off.' }
                           else { "The tracks you added to a stage card show the card's own background and banner. Switching this on rewrites the game's menu pictures file (the original is kept)." }
@@ -1380,6 +1534,11 @@ function Show-ExtrasWindow([string]$tracks, [switch]$Render, [string]$Png, [int]
     $bArt.Add_Click({
         $u = $script:Extras; $on = [bool]$u.St.art
         & $u.Option { Set-AltArt $script:Extras.Tracks (-not $on) }.GetNewClosure() $(if ($on) { "The game's own menu pictures are back." } else { 'The added tracks have their own pictures now.' })
+    })
+    # the handling pop-up (Show-HandlingDialog): OK writes handling.json (nothing else), Cancel changes nothing
+    $bHand.Add_Click({
+        $u = $script:Extras; $h = Show-HandlingDialog $u.Form $u.Tracks
+        if ($h) { & $u.Option { Write-HandlingFile $h; @() }.GetNewClosure() 'Handling saved; it takes effect the next time the game is started with PLAY.bat.' }
     })
     & $x.Options
 
