@@ -525,14 +525,16 @@ function Write-SwitchFile([string]$tracks, $st) {
                                @{ title = $_.title; dir = $_.dir; video = $_.video; speech = (Get-TrackSpeech $_.track $st); ambience = $snd.ambience; music = $snd.music; events = $snd.events } }) }
     }
     # the Classic mode's track (Desert4) has no stage card: its alternatives are listed in classic.json
-    # ([{ title, dir }], files in Main_release	rack<dir>\Desert4) and stepped through on the game's first menu
+    # ([{ title, dir, video }], files in Main_release\track<dir>\Desert4) and stepped through on the game's first menu;
+    # video = the mode menu's Classic card for that track, frontend\PC\Videos\classic_<video>.wmv (the launcher's Classic card)
     $cf = Join-Path (Get-StoreDir $tracks) 'classic.json'
     if (Test-Path -LiteralPath $cf) {
         try {
             $c = @([IO.File]::ReadAllText($cf) | ConvertFrom-Json | ForEach-Object { $_ } | Where-Object { "$($_.dir)" -match '^[1-9]$' -and (Test-Path -LiteralPath (Get-AltDir $tracks "$($_.dir)" 'Desert4')) })
             $m = Get-MusicInstall (Get-GameDir $tracks)
             if ($c.Count) { $slots['Desert4'] = @{ title = "Desert '95"; speech = ''; tracks = @($c | ForEach-Object {
-                $e = @{ title = "$($_.title)"; dir = "$($_.dir)"; video = ''; speech = ''; ambience = ''; music = ''; events = '' }
+                $v = if ("$($_.video)" -match '^[A-Za-z0-9]{1,8}$') { "$($_.video)" } else { '' }
+                $e = @{ title = "$($_.title)"; dir = "$($_.dir)"; video = $v; speech = ''; ambience = ''; music = ''; events = '' }
                 $t = Get-ClassicTune $tracks $m "$($_.dir)" "$($_.title)"; if ($t) { $e.tune = $t }
                 $e }) } }
         } catch { }

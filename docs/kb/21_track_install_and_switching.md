@@ -41,8 +41,13 @@ alternatives must stay below 10").
   title, the folder digit, the card video, the announcer clip name and the sound ids (ambience, music, events file);
   a 1995 course whose tune was added to the stream file also has "tune" {stream, offset, bytes, loopstart}.
   Written by `extras.ps1` (`Write-SwitchFile`).
-- `tracks\_SR3Extras\classic.json` (`[{ title, dir }]`) lists the Classic alternatives, whose files sit in
-  `Main_release\track<dir>\Desert4`; `Write-SwitchFile` adds them to `switch.json` as slot Desert4.
+- `tracks\_SR3Extras\classic.json` (`[{ title, dir, video }]`) lists the Classic alternatives, whose files sit in
+  `Main_release\track<dir>\Desert4`; `Write-SwitchFile` adds them to `switch.json` as slot Desert4. `video` (optional,
+  up to 8 letters/digits) names the mode menu's Classic card for that track, `frontend\PC\Videos\classic_<video>.wmv`
+  (Mountain MTN, Daytona DAY); without the file the card stays SEGA's. Until 2026-10-14 `Write-SwitchFile` dropped it.
+  `scripts\importer\rtbake\install_set.ps1 'step folder|Title|VIDEO' ...` writes the whole list (it loads
+  `extras.ps1 -NoWindow` for the functions). Installed 2026-10-14: track1..4 Mountain RT (four shadow levels), track5
+  Daytona: Three Seven Speedway.
 - `tracks\_SR3Extras\classic_mode.txt` remembers which value of the first menu's selector is "Classic". It is learnt the
   first time Classic is picked (the current track becomes Desert4 right after); until then the hint text shows on all
   three entries of that menu. The owner's notes record Classic = entry 2.

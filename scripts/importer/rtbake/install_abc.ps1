@@ -1,5 +1,5 @@
-﻿# Puts built classic courses into the game as alternatives of the Classic mode's track (Desert4).
-. 'F:\Jogos\SEGA Rally 3\SR3CamLab\_extras_head_install.ps1' -NoWindow
+# Puts built classic courses into the game as alternatives of the Classic mode's track (Desert4).
+. (Join-Path $PSScriptRoot '..\..\..\extras.ps1') -NoWindow        # SR3 Extras' functions, no window
 $tracks = 'F:\Jogos\SEGA Rally 3\GAME\Sega Rally 3\Rally\Main_release\tracks'
 $out = 'F:\Jogos\SEGA Rally 3\SR3 track format\work\out'
 $set = @(@('step99_mountain_rt_a_desert4', 'Mountain RT'), @('step99_mountain_rt_b_desert4', 'Mountain RT soft'), @('step99_mountain_rt_c_desert4', 'Mountain RT (cars unshaded)'))
