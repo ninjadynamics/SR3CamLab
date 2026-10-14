@@ -66,8 +66,9 @@ class StreamBank:
                                      ch=w[0], rate=w[1], nbytes=w[2], loop_start=w[3], loop=w[4], w5=w[5], fmt=w[6],
                                      tail=self.h[info + 220:info + 224], off=off, new=None, block=None))
         self.info0 = min(struct.unpack_from("<I", self.h, self.ta + 200 * i + 196)[0] for i in range(self.na))
-        self.byname = {}
-        for s in self.streams: self.byname.setdefault(cs(s["path"]).split("\\")[-1].lower(), s)
+        self.byname = {}; self.allbyname = {}                       # "gameoveryeah" is used twice: a speech clip and a tune
+        for s in self.streams:
+            k = cs(s["path"]).split("\\")[-1].lower(); self.byname.setdefault(k, s); self.allbyname.setdefault(k, []).append(s)
         with open(data_path, "rb") as f: self.data_head = f.read(0x100)
     def find(self, key):
         key = key.strip()
@@ -229,9 +230,9 @@ def main():
             key = fn[:-4]
             for cand in (key, key[len("announcer_"):] if key.lower().startswith("announcer_") else None):
                 if cand and cand.lower() in sb.byname:
-                    s = sb.byname[cand.lower()]; p = os.path.join(d, fn)
-                    if os.path.getsize(p) == s["nbytes"]:
-                        s["new"] = open(p, "rb").read(); restored[s["index"]] = s["new"]
+                    p = os.path.join(d, fn); same = [x for x in sb.allbyname[cand.lower()] if os.path.getsize(p) == x["nbytes"]]
+                    if same:
+                        s = same[0]; s["new"] = open(p, "rb").read(); restored[s["index"]] = s["new"]
                     else: print("WARNING: backup %s has the wrong size for stream %s - ignored" % (fn, cand))
                     break
     print("originals restored from backups: %d streams" % len(restored))

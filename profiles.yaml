@@ -9,11 +9,15 @@
 # "overlay" is the size of the camera name shown on a change (px at 1080p, 0 = off);
 # "hiddenCameras" adds the cameras the game hides to View Change;
 # "speedUnits" is CamLab's speedometer: km/h or mph.
+# "mouseSmoothing" is how softly the cameras you steer follow the mouse and keys (seconds, 0 = raw);
+# "cameraBlend" is the time the view takes to travel to the next camera on View Change (seconds, 0 = cut).
 
 default: Daytona
 overlay: 48
 hiddenCameras: true
 speedUnits: km/h
+mouseSmoothing: 0.08
+cameraBlend: 0.5
 
 profiles:
   Daytona:

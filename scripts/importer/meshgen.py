@@ -45,6 +45,7 @@ def clone_mesh(tpl, new_id, verts, strip, material_id, name=None):
     m = parse_mesh(tpl); d = tpl.data
     assert m['ng'] == 1 and m['stride'] == 48 and m['pg'] == 0x48 and m['pv'] == 0x5c and m['hdr'][11] % 0x48 == 0
     nv = len(verts); ni = len(strip); assert nv < 65536 and ni < 65536, 'u16 limits: %d verts %d indices' % (nv, ni)
+    assert nv > 0 and ni > 0, 'a mesh with no vertices or no indices kills the game when the track loads (0x584130): %d verts %d indices' % (nv, ni)
     g = list(m['groups'][0]); g[1] = nv; g[2] = 0; g[3] = (g[3] & 0xffff0000) | ni; g[4] = material_id
     vb = verts.tobytes(); ib = np.array(strip, '<u2').tobytes(); ib += b'\0' * (-len(ib) % 4)
     pv = 0x5c; pi = pv + len(vb); rest_new = pi + len(ib); rest_old = m['rest']; delta = rest_new - rest_old

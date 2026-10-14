@@ -222,6 +222,8 @@ Not tested after the page fix (owner's notes): the rebuilt `step5_authored_road_
 finer road steps 5a-5f. The earlier percentage estimates in this file are therefore superseded, not scored.
 
 ## Crashes met and their causes
+Since October 2026 Windows writes no Application Error event and no dump for Rally.exe under TeknoParrot: in `play.log` the game simply "closed" a few seconds after the stage was picked, and the exit code is 0xC0000005 all the same. The fault is caught with the crash logger (scratch `dbg.py 36`: it waits for Rally.exe, attaches 36 s after it appears and writes every exception with registers, stack and the exit code).
+
 | Fault address | Build | Cause | Fix | File |
 |---|---|---|---|---|
 | 0x5D2D3F (function 0x5D27B0) | authored road with ONE overlay page | page count becomes 0 | write the page twice | 04 |
@@ -229,8 +231,10 @@ finer road steps 5a-5f. The earlier percentage estimates in this file are theref
 | 0x5C1ED6 (in 0x5C1EB0) | old step34 | forward references: the scenery tree chunk stood before its meshes | chunk order | 01 |
 | 0x5DE16C (function 0x5DE0C0) | Mountain with 3 files, about 2 s into the race | pobj files and grass cache missing: grass arrays never allocated | keep all seven files | 02, 21 |
 | 0x447A20 | old flat loop | not established; not seen again since the page fix | - | - |
+| 0x580B24 (called from 0x584130), read of address 8, as soon as the stage is confirmed and before the loading screen | Mountain RT of 2026-10-13, every build made with `stitch` | a mesh with vertices and NO indices: 0x584130 makes the vertex buffer, makes no index buffer when the count is 0, and locks it all the same (eax 0). `seal1995.py` had left one mesh of slivers (16 vertices) with no triangle | such a mesh keeps its own indices; `meshgen.clone_mesh` refuses a mesh with no vertices or no indices | 16 |
 | game stays in the loading loop for more than two minutes | Mountain rounded R16 (5.18 million vertices) | too much geometry (LIKELY) | stay at or below 1.82 million | 17 |
 | crash at boot | menu pictures file with 12 added full-size pictures | LIKELY file size (fixed pool); not proven | - | game-runtime-and-frontend.md |
+| hang: a faded SR3 logo frame for good, START does nothing (2026-10-14, once) | START pressed (by a script) while the attract demo race was loading, after a Classic race | the game's "Loading Abort requested. Thread will block." (0x5C6D60): the main thread waits in 0x5877E0 for the loader thread groups ([0x9C495C], [0x9C4964]), which never finish; why the load never ends UNKNOWN | press START only once the attract race is on screen; close the game | 20 |
 
 ## Defects seen in game on imported Mountain and what answered each
 | Seen | Cause | Answer | File |

@@ -33,9 +33,9 @@ not yet exercised; OFFLINE = only run against the emulator / fake-game tests.
 ## Menus
 
 - [0x9D6E3C] == 1 while the menus are up. CONFIRMED.
-- [0x9C442C] = number of entries of the menu on screen: mode 3, cars 6, transmission 2,
+- [0x9C442C] = number of entries of the menu on screen: mode 3, cars 6 (10 with every car listed), transmission 2,
   stages 3. Order in the game: mode -> car -> AT/MT -> stage -> race. Each screen has a
-  ~15 s timer. Stage select = "3 entries, after having seen 6 or 2". CONFIRMED.
+  ~15 s timer (turned off by the launcher since 2026-10-14). Stage select = "3 entries, after having seen 6 or 2". CONFIRMED.
 - [0x9DBB0C] byte != 0 while View Change is held. CONFIRMED.
 - Highlighted stage card: the game itself asks the selector widget only when a stage is
   confirmed (0x6669C0): `hash = 0x5470D0(ecx = "ID_SELECTOR_TRACKSELECT" @0x6E53FC, push 23)`
@@ -123,8 +123,9 @@ loop); `tools\switch_mocktest.ps1` runs that loop against a scripted fake game.
 - The Classic mode (Desert4) has no stage select; its alternative tracks are chosen with View Change on the FIRST menu
   (Championship / Quick Race / Classic). The patch block field MODESEL (0x2278) holds that menu's selector value; which
   value is Classic is learnt once and kept in `tracks\_SR3Extras\classic_mode.txt`. CONFIRMED ("label only on Classic").
-- Menu timers: the "~15 s timer" of each screen is a 15000 ms constant in each menu's code, at 18 sites; the launcher
-  sets them all (120 s). Sites: 20_launcher_inmemory_patches.md, section 10. CONFIRMED.
+- Menu timers: the "~15 s timer" of each screen is a constant in each menu's code (15 s, gearbox 10 s, name entry 30 s);
+  since 2026-10-14 the launcher turns them all off and hides the countdown. Sites: 20_launcher_inmemory_patches.md,
+  section 10. CONFIRMED. With every car listed (section 10b) the car select has 10 entries, not 6.
 - Menu order: this file says "mode -> car -> AT/MT -> stage -> race". For Classic there is no stage screen (mode, car,
   transmission, then the race loads; `tools\autorun.py`).
 - Per-track overrides written by the switcher besides the folder digit: checkpoint seconds (`arcade_times.bin`), shadow

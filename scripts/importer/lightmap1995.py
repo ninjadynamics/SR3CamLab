@@ -24,8 +24,11 @@ def key(P4):
 def save_collect(path, chunks, log=print):
     if not chunks: return
     P = np.concatenate([c[0] for c in chunks]); N = np.concatenate([c[1] for c in chunks]); I = np.concatenate([c[2] for c in chunks]); F = np.concatenate([c[3] for c in chunks]); U = np.concatenate([c[4] for c in chunks])
+    unit_ = np.array([(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]); R = np.concatenate([np.asarray(c[5], np.int64) if len(c) > 5 else np.full(len(c[0]), -1, np.int64) for c in chunks]); AB = np.concatenate([np.asarray(c[6], np.float64) if len(c) > 6 else np.tile(unit_, (len(c[0]), 1, 1)) for c in chunks])
+    lone_ = R < 0; R = np.where(lone_, (int(R.max()) + 1 if len(R) else 0) + np.cumsum(lone_), R)        # R: the rectangle a polygon lies in - a rounded polygon's pieces share one (round1995.PATCH), every other polygon has its own ; AB: where its corners are in that rectangle
+    G = np.concatenate([np.full(len(c[0]), k, np.int32) for k, c in enumerate(chunks)])        # which mesh-writer call a polygon came from = its material: a packer that keeps a material's polygons together needs one material copy per page it reaches, not one per page
     keep = ~F; K = key(P[keep]); _, first = np.unique(K, return_index=True); first.sort()
-    np.savez(path + '.lm.npz', P=P[keep][first], N=N[keep][first], I=I[keep][first], U=U[keep][first]); log('       light maps: %d polygons to light (%d written by the meshes, %d of them flat-lit) -> %s.lm.npz' % (len(first), len(P), int(F.sum()), path))
+    np.savez(path + '.lm.npz', P=P[keep][first], N=N[keep][first], I=I[keep][first], U=U[keep][first], G=G[keep][first], R=R[keep][first], AB=AB[keep][first]); log('       light maps: %d polygons to light (%d written by the meshes, %d of them flat-lit) -> %s.lm.npz' % (len(first), len(P), int(F.sum()), path))
 
 def pack(P, centre, near=3.0, far=0.75, reach=60.0):
     """-> page, x0, y0, nu, nv per polygon (texel grid nu x nv; the rectangle it takes is rounded up to whole 4 x 4 compression blocks)"""
@@ -112,13 +115,15 @@ def _old_bake(path, mode='rt', strength=1.0, shade=0.33, log=print):   # (the nu
 
 def load_table(path):
     T = np.load(path + '.lm.table.npz'); d = {k.tobytes(): i for i, k in enumerate(T['K'])}
-    return dict(idx=d, page=T['page'], x0=T['x0'], y0=T['y0'], nu=T['nu'], nv=T['nv'], pages=np.load(path + '.lm.pages.npy', mmap_mode='r'), miss=[0], hit=[0])
+    return dict(idx=d, page=T['page'], x0=T['x0'], y0=T['y0'], nu=T['nu'], nv=T['nv'], ab=T['ab'] if 'ab' in T.files else None, pages=np.load(path + '.lm.pages.npy', mmap_mode='r'), miss=[0], hit=[0])
 
 def lookup(tab, P4):
     """-> page per polygon (0 = not on any page: the white picture), uv1 (4 per polygon, u16)"""
     K = key(P4); n = len(K); idx = np.array([tab['idx'].get(k.tobytes(), -1) for k in K], np.int64); ok = idx >= 0; j = np.maximum(idx, 0); tab['miss'][0] += int((~ok).sum()); tab['hit'][0] += int(ok.sum())
     x0 = tab['x0'][j].astype(float); y0 = tab['y0'][j].astype(float); nu = tab['nu'][j].astype(float); nv = tab['nv'][j].astype(float)
     cu = np.stack([x0 + 0.5, x0 + nu - 0.5, x0 + nu - 0.5, x0 + 0.5], 1) / PAGE; cv = np.stack([y0 + 0.5, y0 + 0.5, y0 + nv - 0.5, y0 + nv - 0.5], 1) / PAGE
+    if tab.get('ab') is not None:                                   # the corners' own places in the rectangle (a piece of a rounded polygon lies in a part of its polygon's rectangle)
+        ab = np.asarray(tab['ab'], np.float64)[j]; cu = (x0[:, None] + 0.5 + ab[:, :, 0] * (nu[:, None] - 1.0)) / PAGE; cv = (y0[:, None] + 0.5 + ab[:, :, 1] * (nv[:, None] - 1.0)) / PAGE
     uv = np.stack([cu, cv], 2); uv = np.where(ok[:, None, None], uv, 0.5); page = np.where(ok, tab['page'][j], 0)
     return page.astype(np.int32), np.clip(np.round(uv.reshape(-1, 2) * 32768), 0, 32767).astype(np.uint16)
 

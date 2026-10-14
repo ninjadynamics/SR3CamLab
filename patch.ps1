@@ -21,8 +21,14 @@
                                       "SR3 Chase Far" = its far chase camera)
     -Overlay <px>                  -> size of the camera name popup (0 = off; default: the
                                       file's "overlay:", else 48; pixels at 1080p)
+    -MouseSmoothing <seconds>      -> how softly the cameras you steer follow the mouse and keys
+                                      (0 = raw; default: the file's "mouseSmoothing:", else 0.08)
+    -CameraBlend <seconds>         -> time the view takes to travel to the next camera on View Change
+                                      (0 = cut; default: the file's "cameraBlend:", else 0.5)
     -Cores <n>                     -> CPU threads the game may use (default 4; 0 = all). Keeps the
                                       memory its cached videos take low enough to avoid crashes.
+    -NoWatchdog                    -> don't watch the game for crashes and freezes (normally each one
+                                      is written to the crash folder as it happens: Start-Watchdog)
     -Setup                         -> open the setup window (where TeknoParrot and the game are;
                                       kept in setup.yaml, found automatically the first time)
   In a race, the game's View Change button cycles through every camera: the game's own
@@ -30,9 +36,12 @@
   cameras the game hides ("Debug:", orange: far chase, cockpit, the cockpit from the driver's
   seat, wheel, car rotate, free cams).
   The name shows for 2 seconds, 14% of the way down the screen (with a mouse/WASD hint on
-  the cameras you can steer).
+  the cameras you can steer). The view travels from the old camera to the new one (cameraBlend).
   Car rotate cam: mouse left/right orbits, forward/back tilts, W/S zoom in and out.
   The key below Esc (~) resets the car rotate and free cams. Free cams: mouse looks, WASD moves, Space/Ctrl up/down.
+  START in a race: a short press saves a screenshot (..\Screenshots) when you let go; held for
+  1.2 seconds it leaves the race for the game's main menu instead (Step-Start; it runs in the
+  alternative tracks' loop, so with SR3 Extras tracks installed).
     -List                          -> show all profiles
     -ProfilesFile <path>           -> read the profiles from another file (CamLab's Launch
                                       uses this to run unsaved slider values)
@@ -55,7 +64,8 @@
     Fov             deg    optional framing: lens width. Leave all three out to keep
                            SR3's own framing (the far chase view scales distance/height)
 #>
-param([string]$CameraProfile = '', [switch]$List, [switch]$NoLaunch, [switch]$Canary, [switch]$Off, [int]$DelaySeconds = 20, [string]$ProfilesFile = '', [int]$Overlay = -1, [int]$Cores = 4, [switch]$Setup)
+param([string]$CameraProfile = '', [switch]$List, [switch]$NoLaunch, [switch]$Canary, [switch]$Off, [int]$DelaySeconds = 20, [string]$ProfilesFile = '', [int]$Overlay = -1, [int]$Cores = 4, [switch]$Setup,
+      [double]$MouseSmoothing = -1, [double]$CameraBlend = -1, [switch]$NoWatchdog)
 
 # Files from a downloaded zip carry Windows' "from the internet" mark, which makes Windows ask
 # before running PLAY.bat or camlab.exe. Clear it from SR3CamLab's own files (a no-op after the first run).
@@ -266,11 +276,20 @@ foreach ($p in $Patches) {
 # A block of code and data allocated in the game (see build_cycle.py): every frame it keeps the
 # race camera list extended with our chase slots, loads the selected slot's settings into the
 # cave and draws the camera name with a D3DX font for 2 seconds after a change.
-$CycleCode = '9c60e8000000005d81ed0710000083bd64220000007411c7856422000000000000b800166200ffd083c8ff833d480f9c0000741a6a17b9fc536e00b8d0705400ffd083c40489c7b890646000ffd089856c22000083c8ff833d480f9c0000741a6a16b9145e6e00b8d0705400ffd083c40489c7b890646000ffd08985782200008b857022000085c00f84d10000004883f8140f83bd0000005069f86c01000081c7902fad00837f0400746c8b872001000085c074068b0850ff5124bb2c0100008b041f85c0740dc7041f000000008b0850ff510883eb0481fb1c01000073e18b874401000085c07410c78744010000000000008b0850ff5108c7873001000000000000c70700000000c7470400000000c74708000000008b8d7422000055b880dc4d00ffd05d85c074288b87200100008b0850ff511c85c07c06c707000000008b04246a016a0050b870e34d00ffd083c40c83c404c78570220000000000008b35ecb49e0085f60f843b03000083c61881be1005000008b86e000f85280300008dbe1005000039be340200000f85160300008b862c0200003b452875093975580f849e01000083f8010f82f9020000c7855c2200000000000083f8150f87e602000031c931d239c173288b9c8e3402000039fb741a83fa0c731539755875083b95bc0000007308899c95802100004241ebd439755874098995bc00000089455c89956022000031c983f90c735d8b9c8de021000083fbff745185db782b01f3833b0074215131c939d1730c399c8d80210000741041ebf083fa0c7308899c9580210000425941ebc081e3ffffff7f01f3833b0074f083fa0c73eb899c95802100004289955c220000ebdb8b4d208d1c1183fb150f872f02000083bd5c22000000740749018d5c22000089552c89755889be34020000bb0100000031c93b8d6022000073128b848d8021000089849e340200004341ebe6b9010000003b4d20730b89bc9e340200004341ebf08b8d6022000039d173128b848d8021000089849e340200004341ebea899e2c020000895d288b85a80f000085c074054839d8722e8b452483f8fe751c8d8ec408000031c039d8730c398c8634020000741140ebf031c0eb0a85c07406038560220000898630020000c7451cffffffffc785b0000000010000008b86300200003b451c0f84550100008b4d1c83f9ff74358d51013b5528720231d239d074278b948634020000399690010000750d8b948e34020000899690010000898e30020000e9180100003b862c0200000f830c01000089451c8d4801898da80f00008b8c863402000029f131d281f9ec0e0000741081f9780c0000740881f9681d00007501428995a00f0000e8ba01000031c985c074093b8560220000760141890d9457a60085c074173b8560220000762d89c12b8d602200003b4d20732089c8e8060200008b8c85000e0000898d600e0000c1e0058d840500010000eb668b9c8634020000813bb8b86e0075095031c0e8d60100005829f33b855c220000750681cb000000808d85e0000000c785600e0000ffffffff31c983f90c7327399c8db0210000751b8b848d102200008985600e000089c8c1e0058d840500200000eb0341ebd48945508b8db0000000c785b00000000000000085c975068b4514894510e816030000837d10000f8ed2000000ff4d108b451885c00f8ec4000000f72578db7e00b938040000f7f183f8087d05b808000000508d5d08e8720100005985c00f849400000089c351a178db7e00b90e000000f7e1b964000000f7f18985b40000008b45508985a40f00008b04248b8d600e0000e8bb0100005883bda00f000000745e506bc00b31d2b90a000000f7f10185b400000058d1e883f8087d05b808000000508d9d980f0000e8000100005985c0742d89c38b956822000085d275068d95b00f00008995a40f000089c8b9e0e0e0ffe85c010000eb07c7451000000000619da10cd17e00c3608dbe381a0000813ff0bd6e0075708d95402200008b9d5c22000085db744c39d875488b8f9401000039d1745285c9744e898d582200008b01350000008089028b41048942048b41088942088b410c350000008089420c8b41108942108b4114894214899794010000eb14399794010000750c8b8d58220000898f9401000061c3565751526bd05c8db41500050000bf883c6700b90b000000f3a5bfd03c6700b90c000000f3a5833de83c67000075118b555885d2740ac782c0080000000070425a595f5ec33b430475038b03c3508b0b85c9740c518b11ff5208c70300000000588943048b555485d275228d4d6051ff15f441670085c074418d4d705150ff150442670085c0743289455489c2538d8d80000000516a006a046a006a016a006a0168bc0200006a00ff7304ff350cd17e00ffd285c07c038b03c3c70300000000c743040000000031c0c35131d2b916000000f7f185c075014089c76bc00731d2b90a000000f7f185c07501408985b800000089f9f7d931d2e86200000089f931d2e85900000031c989faf7dae84e00000031c989fae8450000008b8db800000089cae8380000008b8db800000089caf7dae8290000008b8db800000089caf7d9e81a0000008b8db8000000f7d989cae80b00000031c931d258e806000000c3b8000000d056898da00000008bb5b400000001d689b5a40000008b3574db7e0001ce89b5a80000008b3578db7e0001d689b5ac000000506a218db5a0000000566affffb5a40f00006a00538b33ff56385ec38b35ecb49e0085f6742a83c6188bbe900100008d86ec0e000039c774168d86780c000039c7740c8d86681d000039c77402eb01c38b35ecb49e0085f60f843904000083c61881be1005000008b86e000f85260400008bbe900100008d86ec0e0000bb0100000039c774288d86780c0000bb0200000039c774198d86681d000039c7740fc785300f000001000000e9e903000083bd8c0e0000000f85f60000008d8da00e000051ff15f441670085c00f84c703000089c2528d8db00e00005152ff15044267005a8985800e0000528d8dc00e00005152ff15044267005a8985840e0000528d8dd00e00005152ff15044267005a8985880e0000528d8d400f00005152ff15044267005a8985900e00008d8d600f00005251ff15f44167005a85c0745b8d8d700f0000525150ff15044267005a8985940e00008d8df00e00005152ff150442670089858c0e000083bd800e000000742883bd840e000000741f83bd880e000000741683bd900e000000740d83bd940e000000740485c07519c7858c0e000000000000c785300f000002000000e9e6020000ff958c0e00008d8d380f0000c701000000005150ff95900e0000ff95940e00003b85380f0000740fc785300f000003000000e9af020000c785300f000004000000c785340f000000000000a174db7e00d1e88985280f0000a178db7e00d1e889852c0f00008d8d700e000051ff95800e000031c08985200f00008985240f000083bd680e00000075248b85700e00002b85280f00008985200f00008b85740e00002b852c0f00008985240f0000c785680e000000000000ffb52c0f0000ffb5280f0000ff95840e0000c785640e00000100000068c0000000ff95880e00005068dc000000ff95880e00005909c825008000008b8dd80f00008985d80f000085c0740b85c9750789f98b07ff5004f30f2a85200f0000f30f2a8d240f0000f30f5985100f0000f30f598d100f000083fb010f8505010000f30f2a8d240f0000f30f598dd00f0000f30f10160f57db0f2fd3761ef30f10daf30f599d140f0000f30f5ec3f30f5995180f0000f30f5ecaeb060f57c00f57c9f30f1186a8010000f30f118eb80100006a536a57e8ae010000f30f1186ac0100000f57c0f30f1186bc010000f30f10160f57db0f2fd30f8688000000f30f5995180f00008b860c05000085c07476f30f1086ac010000f30f59c2f30f584720f30f5800f30f5f85e00f0000f30f5d85e40f0000f30f5c00f30f5c4720f30f5ec2f30f1186ac010000f30f1086b8010000f30f59c2f30f584748f30f584004f30f5f85e80f0000f30f5d85ec0f0000f30f5c4004f30f5c4748f30f5ec2f30f1186b8010000c3f30f1097300200000f57db0f2fd3760af30f5ec2f30f5ecaeb12f30f59851c0f0000f30f598d1c0f0000eb30f30f10d9f30f59daf30f589f68020000f30f5d9d900f0000f30f5f9d940f0000f30f5c9f68020000f30f5edaf30f10cbf30f1186a8010000f30f118eac0100000f57c0f30f1186c40100006a576a53e882000000f30f1186b00100006a446a41e871000000f30f1186b40100006a206a11e860000000f30f1186b8010000c3c785680e00000100000083bd640e0000007443c785640e0000000000008b755885f6743231c08986a80100008986ac0100008986b00100008986b40100008986b80100008986bc0100008986c00100008986c4010000c35331dbff74240cff95880e0000660985340f000066a90080740143ff742408ff95880e000066a9008074014bf30f2ac35bc208009c60e8000000005d81edd01c0000e81bfbffff619d68001e5f00c39c60e8000000005d81edeb1c0000e800fbffff619d68e03f5f00c39c60e8000000005d81ed061d00008b4d0885c97414518b11ff5208c7450800000000c7450c000000008b8d980f000085c9741a518b11ff5208c785980f000000000000c7859c0f000000000000619d6820125900c3'
-$CycleSize = 0x3000; $CycleDraw = 0x1000; $CycleLost = 0x1cff; $CycleRot = 0x1cc9; $CycleFree = 0x1ce4
+$CycleCode = '9c60e8000000005d81ed0710000083bd64220000007411c7856422000000000000b800166200ffd083c8ff833d480f9c0000741a6a17b9fc536e00b8d0705400ffd083c40489c7b890646000ffd089856c22000083c8ff833d480f9c0000741a6a16b9145e6e00b8d0705400ffd083c40489c7b890646000ffd08985782200008b857022000085c00f84d10000004883f8140f83bd0000005069f86c01000081c7902fad00837f0400746c8b872001000085c074068b0850ff5124bb2c0100008b041f85c0740dc7041f000000008b0850ff510883eb0481fb1c01000073e18b874401000085c07410c78744010000000000008b0850ff5108c7873001000000000000c70700000000c7470400000000c74708000000008b8d7422000055b880dc4d00ffd05d85c074288b87200100008b0850ff511c85c07c06c707000000008b04246a016a0050b870e34d00ffd083c40c83c404c78570220000000000008b35ecb49e0085f60f844003000083c61881be1005000008b86e000f852d0300008dbe1005000039be340200000f851b0300008b862c0200003b452875093975580f849e01000083f8010f82fe020000c7855c2200000000000083f8150f87eb02000031c931d239c173288b9c8e3402000039fb741a83fa0c731539755875083b95bc0000007308899c95802100004241ebd439755874098995bc00000089455c89956022000031c983f90c735d8b9c8de021000083fbff745185db782b01f3833b0074215131c939d1730c399c8d80210000741041ebf083fa0c7308899c9580210000425941ebc081e3ffffff7f01f3833b0074f083fa0c73eb899c95802100004289955c220000ebdb8b4d208d1c1183fb150f873402000083bd5c22000000740749018d5c22000089552c89755889be34020000bb0100000031c93b8d6022000073128b848d8021000089849e340200004341ebe6b9010000003b4d20730b89bc9e340200004341ebf08b8d6022000039d173128b848d8021000089849e340200004341ebea899e2c020000895d288b85a80f000085c074054839d8722e8b452483f8fe751c8d8ec408000031c039d8730c398c8634020000741140ebf031c0eb0a85c07406038560220000898630020000c7451cffffffffc785b0000000010000008b86300200003b451c0f845a0100008b4d1c83f9ff74358d51013b5528720231d239d074278b948634020000399690010000750d8b948e34020000899690010000898e30020000e91d0100003b862c0200000f831101000089451c8d4801898da80f00008b8c863402000029f131d281f9ec0e0000741081f9780c0000740881f9681d00007501428995a00f0000e8bf01000031c985c074093b8560220000760141890d9457a60085c074173b8560220000762d89c12b8d602200003b4d20732089c8e80b0200008b8c85000e0000898d600e0000c1e0058d840500010000eb668b9c8634020000813bb8b86e0075095031c0e8db0100005829f33b855c220000750681cb000000808d85e0000000c785600e0000ffffffff31c983f90c7327399c8db0210000751b8b848d102200008985600e000089c8c1e0058d840500200000eb0341ebd48945508b8db0000000c785b00000000000000085c9750b8b4514894510e8f0140000e816030000837d10000f8ed2000000ff4d108b451885c00f8ec4000000f72578db7e00b938040000f7f183f8087d05b808000000508d5d08e8720100005985c00f849400000089c351a178db7e00b90e000000f7e1b964000000f7f18985b40000008b45508985a40f00008b04248b8d600e0000e8bb0100005883bda00f000000745e506bc00b31d2b90a000000f7f10185b400000058d1e883f8087d05b808000000508d9d980f0000e8000100005985c0742d89c38b956822000085d275068d95b00f00008995a40f000089c8b9e0e0e0ffe85c010000eb07c7451000000000619da10cd17e00c3608dbe381a0000813ff0bd6e0075708d95402200008b9d5c22000085db744c39d875488b8f9401000039d1745285c9744e898d582200008b01350000008089028b41048942048b41088942088b410c350000008089420c8b41108942108b4114894214899794010000eb14399794010000750c8b8d58220000898f9401000061c3565751526bd05c8db41500050000bf883c6700b90b000000f3a5bfd03c6700b90c000000f3a5833de83c67000075118b555885d2740ac782c0080000000070425a595f5ec33b430475038b03c3508b0b85c9740c518b11ff5208c70300000000588943048b555485d275228d4d6051ff15f441670085c074418d4d705150ff150442670085c0743289455489c2538d8d80000000516a006a046a006a016a006a0168bc0200006a00ff7304ff350cd17e00ffd285c07c038b03c3c70300000000c743040000000031c0c35131d2b916000000f7f185c075014089c76bc00731d2b90a000000f7f185c07501408985b800000089f9f7d931d2e86200000089f931d2e85900000031c989faf7dae84e00000031c989fae8450000008b8db800000089cae8380000008b8db800000089caf7dae8290000008b8db800000089caf7d9e81a0000008b8db8000000f7d989cae80b00000031c931d258e806000000c3b8000000d056898da00000008bb5b400000001d689b5a40000008b3574db7e0001ce89b5a80000008b3578db7e0001d689b5ac000000506a218db5a0000000566affffb5a40f00006a00538b33ff56385ec38b35ecb49e0085f6742a83c6188bbe900100008d86ec0e000039c774168d86780c000039c7740c8d86681d000039c77402eb01c38b35ecb49e0085f60f846f04000083c61881be1005000008b86e000f855c0400008bbe900100008d86ec0e0000bb0100000039c774288d86780c0000bb0200000039c774198d86681d000039c7740fc785300f000001000000e91f04000083bd8c0e0000000f85f60000008d8da00e000051ff15f441670085c00f84fd03000089c2528d8db00e00005152ff15044267005a8985800e0000528d8dc00e00005152ff15044267005a8985840e0000528d8dd00e00005152ff15044267005a8985880e0000528d8d400f00005152ff15044267005a8985900e00008d8d600f00005251ff15f44167005a85c0745b8d8d700f0000525150ff15044267005a8985940e00008d8df00e00005152ff150442670089858c0e000083bd800e000000742883bd840e000000741f83bd880e000000741683bd900e000000740d83bd940e000000740485c07519c7858c0e000000000000c785300f000002000000e91c030000ff958c0e00008d8d380f0000c701000000005150ff95900e0000ff95940e00003b85380f0000740fc785300f000003000000e9e5020000c785300f000004000000c785340f000000000000a174db7e00d1e88985280f0000a178db7e00d1e889852c0f00008d8d700e000051ff95800e000031c08985200f00008985240f000083bd680e00000075248b85700e00002b85280f00008985200f00008b85740e00002b852c0f00008985240f0000c785680e000000000000ffb52c0f0000ffb5280f0000ff95840e0000c785640e00000100000068c0000000ff95880e00005068dc000000ff95880e00005909c825008000008b8dd80f00008985d80f000085c0741085c9750c89f98b07ff5004e8050f0000f30f2a85200f0000f30f2a8d240f0000e86a0e0000f30f5985100f0000f30f598d100f000083fb010f8510010000f30f108dac220000f30f598dd00f0000f30f10160f57db0f2fd3761ef30f10daf30f599d140f0000f30f5ec3f30f5995180f0000f30f5ecaeb060f57c00f57c9f30f1186a8010000f30f118eb80100006a536a57e8df0100008d85a4220000e8400e0000f30f1186ac0100000f57c0f30f1186bc010000f30f10160f57db0f2fd30f8688000000f30f5995180f00008b860c05000085c07476f30f1086ac010000f30f59c2f30f584720f30f5800f30f5f85e00f0000f30f5d85e40f0000f30f5c00f30f5c4720f30f5ec2f30f1186ac010000f30f1086b8010000f30f59c2f30f584748f30f584004f30f5f85e80f0000f30f5d85ec0f0000f30f5c4004f30f5c4748f30f5ec2f30f1186b8010000c3f30f1097300200000f57db0f2fd3760af30f5ec2f30f5ecaeb12f30f59851c0f0000f30f598d1c0f0000eb30f30f10d9f30f59daf30f589f68020000f30f5d9d900f0000f30f5f9d940f0000f30f5c9f68020000f30f5edaf30f10cbf30f1186a8010000f30f118eac0100000f57c0f30f1186c40100006a576a53e8a80000008d8598220000e8090d0000f30f1186b00100006a446a41e88c0000008d859c220000e8ed0c0000f30f1186b40100006a206a11e8700000008d85a0220000e8d10c0000f30f1186b8010000c3c785680e00000100000083bd640e0000007448c785640e000000000000e8d90c00008b755885f6743231c08986a80100008986ac0100008986b00100008986b40100008986b80100008986bc0100008986c00100008986c4010000c35331dbff74240cff95880e0000660985340f000066a90080740143ff742408ff95880e000066a9008074014bf30f2ac35bc208009c60e8000000005d81ed101d0000e8e0faffff619d68001e5f00c39c60e8000000005d81ed2b1d0000e8c5faffff619d68e03f5f00c39c60e8000000005d81ed461d00008b4d0885c97414518b11ff5208c7450800000000c7450c000000008b8d980f000085c9741a518b11ff5208c785980f000000000000c7859c0f000000000000619d6820125900c3'
+$CycleSize = 0x3000; $CycleDraw = 0x1000; $CycleLost = 0x1d3f; $CycleRot = 0x1d09; $CycleFree = 0x1d24
+# the block's second code area (constants, then code): the smoothing of the steerable cameras and the blend between cameras
+$CycleCode2 = '0000803f000040400000803ecdcccc3dbd3786350000803d0000000000000000ffffffffffffffffffffffff000000005175657279506572666f726d616e6365436f756e746572005175657279506572666f726d616e63654672657175656e6379000000000000000000000000000000f30f1095002800000f57db0f2f1873427a40f30f10260f2fe376370f2fa508280000772ed906d830d9e0d9eadec9d9c0d9fcdce9d9c9d9f0d9e8dec1d9fdddd9d9e8dee1d99db4220000f30f1095b4220000c3f30f58000f28d8f30f59c2f30f5cd80f28e3f30f59e40f2fa5102800007307f30f58c30f57dbf30f1118c38d8584220000e877fffffff30f1195b02200008d8580220000e864ffffff8d8590220000e8acfffffff30f1185a82200000f28c18d8594220000e896fffffff30f1185ac2200000f28c8f30f1085a8220000c3f30f1095b02200000f28e8f30f5c00f30f59c2f30f58000f28ddf30f5cd8f30f59db0f2f9d1028000073030f28c5f30f1100c35031c089859022000089859422000089859822000089859c2200008985a02200008985a422000058c3508b86300200008b8486340200003b85f022000074128985e8220000c785ec2200007800000058c3c785e422000001000000c785e82200000000000058c30f28da0fc6db55f30f58da0f12d2f30f58d3c30f5cc80f59ce0f58c1c35331dbf30f1000f30f59049af30f104804f30f594c9a04f30f58c1f30f104808f30f594c9a08f30f58c1f30f11041983c30483fb0c72cc5bc35331dbf30f1000f30f59041af30f104804f30f594c1a10f30f58c1f30f104808f30f594c1a20f30f58c1f30f11041983c30483fb0c72cc5bc3c785d82200000000000083bdb82200000075528d85600f000050ff15f441670085c00f84bd00000089c78d8d482800005157ff150442670085c00f84a50000008d8dc022000051ffd08d8d302800005157ff150442670085c00f84860000008985b82200008d85c822000050ff95b82200008b85c82200008b95cc2200008b8dd02200008b9dd42200008985d02200008995d422000089cf09df744929c819da753785c078338985c8220000db85c8220000dfadc0220000def9d99dd8220000f30f1085d8220000f30f5d850c280000f30f1185d8220000c38b850c2800008985d8220000c3a1ecb49e0085c00f840404000083c01839f00f85f9030000a110ce7e003b0514ce7e00750a83f827741283f81c740d833d00b89d00000f84d50300000f57c90f2f8d882200000f83ab0300000f8aa5030000e8c3feffff83bdb8220000000f84930300008bbe8401000085ff0f848503000089f98b07ff505c89c38b96c801000085d20f846e03000081c25c1300000f10bd202800003bbdf0220000741d89bdf02200003bbde8220000745ac785e022000000000000e9c300000083bde422000000754283bde8220000007412ff8dec2200007f0ac785e82200000000000083bde0220000000f8492000000f30f1085dc220000f30f5885d8220000f30f1185dc220000eb78c785e422000000000000c785e82200000000000083bdf422000000745b31c90f10140a0f54d70f59d2e857fdfffff30f5c9500280000f30f59d20f2f951428000077357a3383c11083f93072d256578db5002300008dbd40230000b910000000f3a55f5ec785dc22000000000000c785e0220000010000000f1043300f54c70f1185802300000f104b6c0f54cf0f5cc80f28d10f59d2e8eafcffff0f2f95102800000f8649020000f30f51d2f30f1195b02300000fc6d2000f5eca0f118d902300000f1083200100000f54c70f1185a02300008b83780100008985b423000083bde0220000000f8497010000f30f10b5dc220000f30f5eb5882200000f2fb5002800000f83700100000f28c6f30f58c0f30f108d04280000f30f5cc8f30f59cef30f59f10fc6f6008d85402300008d8dd0230000e8a2fcffff0f1085d02300000f54c70f104a300f54cf0f58c10f108d80230000e83ffcffff0f1185802300008d8550230000e870fcffff0f1085d02300000f54c70f108d90230000e817fcffff0f28d00f59d2e8f9fbffff0f2f95102800007612f30f51d20fc6d2000f5ec20f1185902300008d8560230000e829fcffff0f1085d02300000f54c70f108da0230000e8d0fbffff0f1185a02300000f1085702300000f108db0230000e8b6fbffff0f1385b0230000f30f1085b02300000fc6c0000f108d902300000f59c80f1085802300000f58c80f118dc02300000f1095a02300000f58d10f58d0e863fbfffff30f5895b42300000f57dbf30f59d30f2ed30f8ab70000000f1343300f12c0f30f1143380f134b6c0f12c9f30f114b740f1085a02300000f1383200100000f12c0f30f1183280100008b85b4230000898378010000eb0ac785e0220000000000000f1085802300000f104a300f54cf0f5cc10f1185d02300008d85d02300008d8d00230000e8f6faffff8d85902300008d8d10230000e8e5faffff8d85a02300008d8d20230000e8d4faffff8b85b02300008985302300008b85b4230000898534230000c785f422000001000000c331c08985f42200008985e02200008985e42200008985e8220000c3ff742404b890165f00ffd09c60e8000000005d81ed742f0000e8d0fbffff619dc20400'
+$CycleCode2At = 0x2800; $CycleBlend = 0x2f62
+$CycleQol = 0x2280                                                # mouse smoothing, key smoothing, blend time (3 floats, seconds; 0 = off)
 $CycleMaxSlots = 21; $CycleSlotBytes = 0x5C
 $HookDrawVA = 0x591C4D; $HookDrawOrig = HexToBytes 'a10cd17e00'   # mov eax,[device] before EndScene/Present
 $HookLostVA = 0x591B01; $HookLostOrig = HexToBytes 'e81af7ffff'   # call 0x591220 (frees resources before Reset)
+# call 0x5F1690 (esi = camera manager, one float): once per drawn frame it works out, from the cameras' last two updates,
+# the state the view is built from. The block's wrapper calls it, then blends that state (see build_cycle.py). Read in the
+# disassembly and run against the game's own code on an emulated CPU (tools\cycle_real.py, 2026-10-14), not yet in the
+# running game; when the bytes there are not these, the blend is left out and View Change cuts as before.
+$HookBlendVA = 0x5C948C; $HookBlendOrig = HexToBytes 'e8ff810200'
 # the update method (vtable slot 3) of the cameras the mouse and keys steer: our wrappers write
 # their inputs just before they run (the game clears them earlier in the frame)
 $CamUpdateHooks = @(@(0x6EBB3C, 0x5F1E00, 'rot'), @(0x6ECBA4, 0x5F3FE0, 'free'), @(0x6ECC94, 0x5F3FE0, 'free'))
@@ -305,6 +324,26 @@ $overlayPx = 48
 if ($file.Top['overlay']) { $tmp = 0; if ([int]::TryParse($file.Top['overlay'], [ref]$tmp)) { $overlayPx = $tmp } }
 if ($Overlay -ge 0) { $overlayPx = $Overlay }
 $overlayPx = [Math]::Max(0, [Math]::Min(200, $overlayPx))
+# Two more settings of the file's top level, in seconds (a switch of the same name wins; missing or not a number = the
+# default; "off" = 0). CamLab's Launch file does not carry them: then the ones of profiles.yaml next to this script count.
+#   mouseSmoothing: time constant of the steerable cameras' mouse look (car rotate, free cams): after this long the
+#                   camera has made up 63% of a mouse movement. 0 = raw, as before. Their keys get twice this.
+#   cameraBlend:    how long the view takes from the old camera to the new one on View Change. 0 = cut, as before.
+$ownTop = $null
+function Get-Seconds([string]$key, [double]$fromSwitch, [double]$default, [double]$max) {
+    $v = $default; $t = "$($file.Top[$key.ToLower()])".Trim()
+    if (-not $t -and $ProfilesFile) {
+        if ($null -eq $script:ownTop) { $own = Join-Path $PSScriptRoot 'profiles.yaml'; $script:ownTop = if (Test-Path -LiteralPath $own) { (Read-ProfilesYaml $own).Top } else { @{} } }
+        $t = "$($script:ownTop[$key.ToLower()])".Trim()
+    }
+    $n = 0.0
+    if ($t -match '^(off|false|no)$') { $v = 0.0 }
+    elseif ($t -and [double]::TryParse($t, [Globalization.NumberStyles]::Float, $inv, [ref]$n) -and -not [double]::IsNaN($n)) { $v = $n }
+    if ($fromSwitch -ge 0) { $v = $fromSwitch }
+    return [Math]::Max(0.0, [Math]::Min($max, $v))
+}
+$lookSmooth = Get-Seconds 'mouseSmoothing' $MouseSmoothing 0.08 1.0
+$blendSec = Get-Seconds 'cameraBlend' $CameraBlend 0.5 3.0
 
 function Put([byte[]]$buf, [int]$off, [byte[]]$src) { [Array]::Copy($src, 0, $buf, $off, $src.Length) }
 function Str([string]$t, [int]$n) { $b = New-Object byte[] $n; $a = [Text.Encoding]::ASCII.GetBytes($t); [Array]::Copy($a, 0, $b, 0, [Math]::Min($a.Length, $n - 1)); return ,$b }
@@ -319,7 +358,7 @@ function Find-Cycle($h) {
 }
 # installs or updates the block; call with the game suspended
 function Install-Cycle($h) {
-    $code = HexToBytes $CycleCode
+    $code = HexToBytes $CycleCode; $code2 = HexToBytes $CycleCode2
     $base = Find-Cycle $h
     if (-not $base) {
         if (-not (Same ([Sr3Mem]::Read($h, $HookDrawVA, 5)) $HookDrawOrig) -or -not (Same ([Sr3Mem]::Read($h, $HookLostVA, 5)) $HookLostOrig)) {
@@ -327,8 +366,9 @@ function Install-Cycle($h) {
         }
         $base = [Sr3Mem]::Alloc($h, $CycleSize)
         [Sr3Mem]::Write($h, $base + $CycleDraw, $code, $true)
+        [Sr3Mem]::Write($h, $base + $CycleCode2At, $code2, $true)
     }
-    elseif (-not (Same ([Sr3Mem]::Read($h, $base + $CycleDraw, $code.Length)) $code)) {
+    elseif (-not (Same ([Sr3Mem]::Read($h, $base + $CycleDraw, $code.Length)) $code) -or -not (Same ([Sr3Mem]::Read($h, $base + $CycleCode2At, $code2.Length)) $code2)) {
         # a newer build: never rewrite code the game may be running; move to a fresh block,
         # keeping the state (font, camera list) and leaving the old one as it is
         $old = $base
@@ -338,7 +378,12 @@ function Install-Cycle($h) {
         [Sr3Mem]::Write($h, $base + 0xF98, (New-Object byte[] 0x10), $true)   # hint font, hint flag, text: start empty
         [Sr3Mem]::Write($h, $base + 0x2180, ([Sr3Mem]::Read($h, $old + 0x2180, 4 * $CycleGameCams)), $true)   # the game's list entries
         [Sr3Mem]::Write($h, $base + $CycleDraw, $code, $true)
+        [Sr3Mem]::Write($h, $base + $CycleCode2At, $code2, $true)              # its state (0x2280 ..) starts empty: nothing outstanding, no blend
     }
+    $qol = New-Object byte[] 12                                        # 0x2280: seconds; the keys of a steerable camera get twice the mouse's time:
+    Put $qol 0 ([BitConverter]::GetBytes([single]$lookSmooth))          # they are all or nothing, the mouse is not (a guess to be judged in the game)
+    Put $qol 4 ([BitConverter]::GetBytes([single](2 * $lookSmooth))); Put $qol 8 ([BitConverter]::GetBytes([single]$blendSec))
+    [Sr3Mem]::Write($h, $base + $CycleQol, $qol, $true)
     $settings = New-Object byte[] 0x18                                 # 0x14..0x2C
     Put $settings 0x00 ([BitConverter]::GetBytes([int]120))             # frames shown (2 s at 60 fps)
     Put $settings 0x04 ([BitConverter]::GetBytes([int]$overlayPx))
@@ -404,6 +449,20 @@ function Install-Cycle($h) {
     }
     [Sr3Mem]::Write($h, $HookLostVA, (CallTo $HookLostVA ($base + $CycleLost)), $false)
     [Sr3Mem]::Write($h, $HookDrawVA, (CallTo $HookDrawVA ($base + $CycleDraw)), $false)
+    # the blend's hook, only while there is a blend to do: with cameraBlend 0 the game's own call stays (or comes back)
+    $site = Test-BlendSite $h; $script:BlendHooked = $site -and $blendSec -gt 0
+    if ($script:BlendHooked) { [Sr3Mem]::Write($h, $HookBlendVA, (CallTo $HookBlendVA ($base + $CycleBlend)), $false) }
+    elseif ($site) { [Sr3Mem]::Write($h, $HookBlendVA, $HookBlendOrig, $false) }
+    else { Log ('Camera blend not installed (View Change cuts as before): unexpected bytes at 0x{0:X}.' -f $HookBlendVA) }
+}
+# The blend's hook site holds the game's own call, or a call into a block of ours (they start on a 64 KB boundary with "SR3V")
+function Test-BlendSite($h) {
+    $cur = [Sr3Mem]::Read($h, $HookBlendVA, 5)
+    if (Same $cur $HookBlendOrig) { return $true }
+    if (-not $cur -or $cur[0] -ne 0xE8) { return $false }
+    $to = [uint32](([long]$HookBlendVA + 5 + [BitConverter]::ToInt32($cur, 1)) -band 4294967295)
+    $sig = [Sr3Mem]::Read($h, ($to -band 0xFFFF0000), 4)
+    return [bool]($sig -and [Text.Encoding]::ASCII.GetString($sig) -eq 'SR3V')
 }
 # unhooks the block and puts the game's camera list back; call with the game suspended
 # Points the cockpit cam's eye back at the game's data if it uses this block's driver-seat copy.
@@ -420,6 +479,7 @@ function Remove-Cycle($h) {
     if (-not $base) { return }
     Restore-CockpitSeat $h $base
     [Sr3Mem]::Write($h, 0xA65794, ([BitConverter]::GetBytes([int]0)), $false)   # the game's visibility (PVS) back on
+    if (Test-BlendSite $h) { [Sr3Mem]::Write($h, $HookBlendVA, $HookBlendOrig, $false) }   # only over a call of ours (or the game's own, which changes nothing)
     [Sr3Mem]::Write($h, $HookDrawVA, $HookDrawOrig, $false)
     [Sr3Mem]::Write($h, $HookLostVA, $HookLostOrig, $false)
     foreach ($v in $CamUpdateHooks) { [Sr3Mem]::Write($h, $v[0], ([BitConverter]::GetBytes([int]$v[1])), $false) }
@@ -486,7 +546,7 @@ function Read-TrackSwitch([string]$gameExe) {
     $slots = @{}
     foreach ($p in $j.slots.PSObject.Properties) {
         $list = New-Object System.Collections.ArrayList
-        [void]$list.Add(@{ Title = "$($p.Value.title)"; Dir = 's'; Video = ''; Speech = "$($p.Value.speech)"; Ambience = ''; Music = ''; Events = '' })   # 0 = the game's own track
+        [void]$list.Add(@{ Title = "$($p.Value.title)"; Dir = 's'; Video = ''; Speech = "$($p.Value.speech)"; Ambience = ''; Music = ''; Events = ''; Tune = $null })   # 0 = the game's own track
         foreach ($a in @($p.Value.tracks)) {
             $d = "$($a.dir)"
             if ($d -notmatch '^[1-9]$') { continue }
@@ -494,7 +554,16 @@ function Read-TrackSwitch([string]$gameExe) {
             $video = "$($a.video)"
             if ($video -and @(Get-ChildItem -LiteralPath (Join-Path $dir 'frontend\PC\Videos') -Filter "LANG_*_$video.wmv" -ErrorAction SilentlyContinue).Count -lt 1) { $video = '' }
             $snd = @{}; foreach ($k in 'ambience', 'music', 'events') { $snd[$k] = if ("$($a.$k)" -match '^ID_TRACK_[A-Z]{1,12}_[0-9]$') { "$($a.$k)" } else { '' } }
-            [void]$list.Add(@{ Title = "$($a.title)"; Dir = $d; Video = $video; Speech = "$($a.speech)"; Ambience = $snd.ambience; Music = $snd.music; Events = $snd.events })
+            # a tune of its own, appended to the game's stream file by SR3 Extras (Set-CourseTune): only when it really is there
+            $tune = $null; $t = $a.tune
+            if ($t -and "$($t.stream)" -match '^\d{1,4}$' -and "$($t.offset)" -match '^\d{3,10}$' -and "$($t.bytes)" -match '^\d{3,10}$' -and "$($t.loopstart)" -match '^\d{1,10}$') {
+                $tune = @{ Stream = [int]"$($t.stream)"; Offset = [long]"$($t.offset)"; Bytes = [long]"$($t.bytes)"; LoopStart = [long]"$($t.loopstart)"; Loop = 1 }
+                $df = Join-Path $dir 'Audio\EnglishStreamData.stm'
+                if (($tune.Bytes % 4) -or ($tune.LoopStart % 4) -or $tune.LoopStart -ge $tune.Bytes -or -not (Test-Path -LiteralPath $df) -or ($tune.Offset + 0xC0 + $tune.Bytes) -gt (Get-Item -LiteralPath $df).Length -or ($tune.Offset + 0xC0 + $tune.Bytes) -gt 0x7FFFFFFF) {
+                    Log "Alternative tracks: the tune of $($a.title) is not in the game's sound file; it plays its slot's own music."; $tune = $null
+                }
+            }
+            [void]$list.Add(@{ Title = "$($a.title)"; Dir = $d; Video = $video; Speech = "$($a.speech)"; Ambience = $snd.ambience; Music = $snd.music; Events = $snd.events; Tune = $tune })
         }
         if ($list.Count -gt 1) { $slots[$p.Name] = $list }
     }
@@ -565,6 +634,41 @@ function Set-CardTrack($h, [long]$base, [string]$slot, $track, [bool]$own) {
         }
         [Sr3Mem]::Write($h, $site[0], ([BitConverter]::GetBytes([int]$name)), $true)
     }
+}
+# A track's own tune. SR3 Extras can append tunes to the game's stream file (Audio\EnglishStreamData.stm) after SEGA's own
+# streams, where nothing of the game points. A track that has one (switch.json, "tune") gets it by turning the stream record
+# of its slot's music, in the game's memory only: where the samples are, how many bytes, where the loop starts, that it loops.
+# With any other track the record is the game's own again, so nothing else ever plays such a tune. Game facts (stream open
+# 0x5686F0, stream read 0x5681C0): [0x9C4EC0] = the loaded stream header, [0x9C4EC4] and [0x9C4EC8] = its two tables of
+# 200-byte records {path[192], index, value}; value = offset of the stream's info record in the header / offset of its
+# 192-byte path block in the stream file (the samples follow). Info record: +0xC0 channels, +0xC4 rate, +0xC8 bytes,
+# +0xCC loop start in bytes (at the end of a looping stream the read position becomes this), +0xD0 loops. The game reads all
+# of it when a stream is opened and when it runs out, so a change made in the menus holds for the next race.
+$StreamHeader = 0x9C4EC0
+$script:TuneOwn = $null
+function Read-GamePtr($h, [long]$va) { $b = [Sr3Mem]::Read($h, $va, 4); if ($b) { return [long][BitConverter]::ToUInt32($b, 0) }; return [long]0 }
+function Write-GameInt($h, [long]$va, [long]$v) { [Sr3Mem]::Write($h, $va, ([BitConverter]::GetBytes([uint32]$v)), $true) }
+# $tune = @{ Stream; Offset; Bytes; LoopStart; Loop }, or $null for the game's own. Returns $false while the header is not loaded.
+function Set-CourseTune($h, $tune) {
+    if (-not $tune -and -not $script:TuneOwn) { return $true }
+    $hdr = Read-GamePtr $h $StreamHeader; $ta = Read-GamePtr $h ($StreamHeader + 4); $tb = Read-GamePtr $h ($StreamHeader + 8)
+    if (-not $hdr -or -not $ta -or -not $tb) { return $false }
+    $o = $script:TuneOwn
+    if ($o -and (-not $tune -or $tune.Stream -ne $o.Stream)) {      # the game's own values back
+        Write-GameInt $h ($o.Rb + 0xC4) $o.Offset; Write-GameInt $h ($o.Info + 0xC8) $o.Bytes; Write-GameInt $h ($o.Info + 0xCC) $o.LoopStart; Write-GameInt $h ($o.Info + 0xD0) $o.Loop
+        $script:TuneOwn = $null
+    }
+    if (-not $tune) { return $true }
+    $ra = $ta + 200 * $tune.Stream; $rb = $tb + 200 * $tune.Stream
+    $info = $hdr + (Read-GamePtr $h ($ra + 0xC4))
+    if ((Read-GamePtr $h ($ra + 0xC0)) -ne $tune.Stream -or (Read-GamePtr $h ($rb + 0xC0)) -ne $tune.Stream -or (Read-GamePtr $h ($info + 0xC0)) -ne 2 -or (Read-GamePtr $h ($info + 0xC4)) -ne 32000) {
+        Log "A track's own tune: stream $($tune.Stream) is not the stereo 32000 Hz stream expected; the slot's own music plays."; return $true
+    }
+    if (-not $script:TuneOwn) {
+        $script:TuneOwn = @{ Stream = $tune.Stream; Rb = $rb; Info = $info; Offset = (Read-GamePtr $h ($rb + 0xC4)); Bytes = (Read-GamePtr $h ($info + 0xC8)); LoopStart = (Read-GamePtr $h ($info + 0xCC)); Loop = (Read-GamePtr $h ($info + 0xD0)) }
+    }
+    Write-GameInt $h ($rb + 0xC4) $tune.Offset; Write-GameInt $h ($info + 0xC8) $tune.Bytes; Write-GameInt $h ($info + 0xCC) $tune.LoopStart; Write-GameInt $h ($info + 0xD0) $tune.Loop
+    return $true
 }
 # Checkpoint times. The seconds every checkpoint marker grants live in the game's ArcadeDatabase, one block of 0xC60 bytes
 # per track ([[0xB2A850] + 0xC] + 4 + 0xC60 x track; reader 0x661AA0, called at 0x5ABDF8 whenever a marker is crossed). An
@@ -688,6 +792,137 @@ function Set-ShaderTest($h, [string]$gameDir, [string]$slot, [string]$dir) {
     $back = [Sr3Mem]::Read($h, $va, 4)
     Log ("Shader experiment: effect at 0x{0:X}; wall pixel shader 0x{1:X} replaced by the untextured one 0x{2:X} (read back 0x{3:X}). Imported scenery should show without its pictures." -f $base, [BitConverter]::ToUInt32($a, 0), [BitConverter]::ToUInt32($b, 0), [BitConverter]::ToUInt32($back, 0))
 }
+
+# ---- START in a race: a screenshot, or back to the main menu ----
+# A short press takes a screenshot when START is let go; held for $StartHoldSeconds it leaves the race for the game's main
+# menu instead, and no picture is taken. The game has no flag we know that tells a race from the attract loop, so a race is
+# what follows the menus, and the picture is held back 1.5 s: if the menus come up in that time, START was "begin a game"
+# and the picture is dropped. Pictures are at least 2 s apart, and the file name is shown only after the picture was
+# taken, so it is never in it. Step-Start is the decision alone, apart from the game (tools\start_mocktest.ps1 drives it):
+# it returns what to do now, any of 'grab' (take the picture), 'save' (write the held one), 'drop' (forget it), 'exit'.
+$StartHoldSeconds = 1.2
+function New-StartState { return @{ Was = $false; At = [datetime]::MinValue; Armed = $false; Long = $false; Race = $false; WasMenu = $false; HeldAt = $null; ShotAt = [datetime]::MinValue } }
+function Step-Start($s, [bool]$down, [bool]$menu, [datetime]$now) {
+    $acts = @()
+    if ($s.WasMenu -and -not $menu) { $s.Race = $true }
+    if ($null -ne $s.HeldAt) {
+        if ($menu) { $s.HeldAt = $null; $s.Race = $false; $acts += 'drop' }                  # that START began a new game
+        elseif (($now - $s.HeldAt).TotalSeconds -ge 1.5) { $s.HeldAt = $null; $acts += 'save' }
+    }
+    if ($menu) { $s.Armed = $false }                                                       # a press that sees the menus does nothing
+    if ($down -and -not $s.Was) { $s.Armed = $s.Race -and -not $menu; $s.At = $now; $s.Long = $false }
+    elseif ($down -and $s.Armed -and -not $s.Long -and ($now - $s.At).TotalSeconds -ge $StartHoldSeconds) { $s.Long = $true; $acts += 'exit' }
+    elseif (-not $down -and $s.Was) {
+        if ($s.Armed -and -not $s.Long -and $null -eq $s.HeldAt -and ($now - $s.ShotAt).TotalSeconds -gt 2) { $s.HeldAt = $now; $s.ShotAt = $now; $acts += 'grab' }
+        $s.Armed = $false
+    }
+    $s.Was = $down; $s.WasMenu = $menu
+    return $acts
+}
+# Leaving a race the way the game itself does (FINDINGS.md, "Leaving a race"): the race update (0x5C89D0, every frame on
+# the game's thread) watches [0x9DB4F4]; when it is set it clears it and makes the next state 0x1B (CSR_GameMode::Finish),
+# which ends the mode and goes on to the race teardown (0x2A) and the front end. The pause menu's Quit (0x635970) and the
+# Classic result page (0x60DFA0) set the same flag, and like them this first starts the 0.5 s fade to black (0x5FBB10 keeps
+# its state at 0x9DB490-0x9DB4AB, timed by the game's clock [0x9C4A08] in microseconds; the teardown waits for it).
+# Only while a race runs: main state [0x7ECE10] = 0x27 with no change pending ([0x7ECE14] = 0x27), in a player's mode
+# [0x728598] (5 Quick Race, 6 Championship, 7 Classic; 2 is the attract demo, 3 "Press START"). In a Championship the stage
+# number [0x9DB820] is set to the number of stages first, as the Quit does, so that it ends instead of going on to its next
+# stage; and as the end of a championship takes a leader (race position [0x9DD61C] = 1) on to the Stadium4 bonus stage
+# (0x6358A2), the position reads 2 once the race has stopped (cars and positions move only in states 0x27 and 0x1C).
+$RaceExitFlagVA = 0x9DB4F4; $GameStateVA = 0x7ECE10; $GameModeVA = 0x728598; $FadeVA = 0x9DB490; $GameClockVA = 0x9C4A08
+$ChampStageVA = 0x9DB820; $PlayerPositionVA = 0x9DD61C; $RaceModes = @{ 5 = 'Quick Race'; 6 = 'Championship'; 7 = 'Classic race' }
+$script:RaceExit = $null
+function Request-RaceExit($h, [datetime]$now) {
+    $st = [Sr3Mem]::Read($h, $GameStateVA, 8); $mode = Read-GameInt $h $GameModeVA
+    if ($null -eq $st) { Log 'Race exit: the game state could not be read; nothing done.'; return }
+    $cur = [BitConverter]::ToInt32($st, 0); $next = [BitConverter]::ToInt32($st, 4)
+    if ($cur -ne 0x27 -or $next -ne 0x27 -or -not $RaceModes.ContainsKey($mode)) { Log ("Race exit: START was held, but no race is running (game state 0x{0:X} / 0x{1:X}, mode {2}); nothing done." -f $cur, $next, $mode); return }
+    $x = @{ At = $now; Mode = $mode; Taken = $false; Stage = $null; Fade = $false; Pos = $false }
+    if ($mode -eq 6) {
+        $n = Read-GameInt $h ((Read-GameInt $h ((Read-GameInt $h 0xB2A850) + 0x10)) + 4)
+        if ($n -lt 1 -or $n -gt 16) { Log "Race exit: the championship's number of stages could not be read ($n); nothing done."; return }
+        $x.Stage = Read-GameInt $h $ChampStageVA; Write-GameInt $h $ChampStageVA $n
+    }
+    # the fade to black as 0x5FBB10(500 ms, 0, 1) starts it, in one write: from now (+0, ms), out (+8 = 0), +0xC = 1, +0x10 = 0, 500.0 (+0x18)
+    $f = [Sr3Mem]::Read($h, $FadeVA, 0x1C); $c1 = [Sr3Mem]::Read($h, $GameClockVA, 8); $c2 = [Sr3Mem]::Read($h, $GameClockVA, 8)
+    if ($f -and $c1 -and $c2 -and [BitConverter]::ToInt32($f, 8) -ne 0 -and [BitConverter]::ToInt32($c1, 4) -eq [BitConverter]::ToInt32($c2, 4)) {
+        $x.Fade = $f.Clone()
+        $us = [BitConverter]::ToInt64($c2, 0); $ms = [long](($us - ($us % 1000)) / 1000)
+        Put $f 0 ([BitConverter]::GetBytes([long]$ms)); Put $f 8 ([BitConverter]::GetBytes([int]0)); Put $f 0xC ([BitConverter]::GetBytes([int]1))
+        Put $f 0x10 ([BitConverter]::GetBytes([int]0)); Put $f 0x18 ([BitConverter]::GetBytes([single]500))
+        [Sr3Mem]::Write($h, $FadeVA, $f, $true)
+    }
+    # still racing? (a race that ended or a load that began in these few milliseconds gets nothing: the flag is read only
+    # by the race update, and a load must never be cut short - its abort path can hang the game for good)
+    $st = [Sr3Mem]::Read($h, $GameStateVA, 8)
+    if ($null -eq $st -or [BitConverter]::ToInt32($st, 0) -ne 0x27 -or [BitConverter]::ToInt32($st, 4) -ne 0x27) { Undo-RaceExit $h $x 'the race ended just then'; return }
+    Write-GameInt $h $RaceExitFlagVA 1
+    $script:RaceExit = $x
+    Log ("Race exit: START held {0} s: leaving the {1} for the main menu." -f $StartHoldSeconds, $RaceModes[$mode])
+}
+function Undo-RaceExit($h, $x, [string]$why) {
+    Write-GameInt $h $RaceExitFlagVA 0
+    if ($null -ne $x.Stage) { Write-GameInt $h $ChampStageVA $x.Stage }
+    if ($x.Fade) { [Sr3Mem]::Write($h, $FadeVA, $x.Fade, $true) }                        # the fade as it was: the picture is back at once
+    Log "Race exit: $why; nothing changed in the game."
+    $script:RaceExit = $null
+}
+# After the request, on each pass: whether the game has taken it, the championship leader's position, and safety nets: a
+# request the game has not taken after 2 s, or one still waiting when the race ends some other way, is withdrawn
+# (everything put back), and a fade still not done after 4 s is let go (the teardown waits only while it runs).
+function Step-RaceExit($h, [datetime]$now) {
+    $x = $script:RaceExit; if (-not $x) { return }
+    $t = ($now - $x.At).TotalSeconds
+    $st = [Sr3Mem]::Read($h, $GameStateVA, 8); if ($null -eq $st) { $script:RaceExit = $null; return }
+    $cur = [BitConverter]::ToInt32($st, 0); $next = [BitConverter]::ToInt32($st, 4)
+    if (-not $x.Taken) {
+        if ((Read-GameInt $h $RaceExitFlagVA) -eq 0 -or $next -eq 0x1B -or $cur -eq 0x1B -or $cur -eq 0x2A) { $x.Taken = $true }
+        elseif ($cur -eq 0x27 -and $next -eq 0x27) { if ($t -ge 2) { Undo-RaceExit $h $x 'the game did not take the request within 2 s' }; return }
+        else { Undo-RaceExit $h $x ("the race ended another way before the game read the request (state 0x{0:X} / 0x{1:X})" -f $cur, $next); return }
+    }
+    $stopped = ($cur -eq 0x27 -and $next -ne 0x27) -or $cur -eq 0x1B -or $cur -eq 0x2A
+    if ($x.Mode -eq 6 -and $stopped -and (Read-GameInt $h $PlayerPositionVA) -eq 1) {
+        Write-GameInt $h $PlayerPositionVA 2
+        if (-not $x.Pos) { $x.Pos = $true; Log 'Race exit: you were leading the championship; the bonus stage is skipped.' }
+    }
+    if ($cur -eq 0x2A -and $t -gt 4 -and (Read-GameInt $h ($FadeVA + 8)) -eq 0) { Write-GameInt $h ($FadeVA + 8) 1; Log 'Race exit: the fade to black did not finish; the game goes on without it.' }
+    if (-not $stopped -and $cur -ne 0x27) { Log ("Race exit: done, the game is on its way to the menus (state 0x{0:X})." -f $cur); $script:RaceExit = $null; return }
+    if ($t -gt 15) { Log ("Race exit: the game is still in state 0x{0:X} / 0x{1:X} after 15 s; no longer followed." -f $cur, $next); $script:RaceExit = $null }
+}
+
+# ---- the watchdog: crashes and freezes recorded as they happen ----
+# watchdog.cs attaches to the game as a debugger once it has booted and the camera patch is in (TeknoParrot looks at the
+# process during its first seconds, hence not earlier). It changes nothing in the game: every exception goes back to it as
+# without a debugger, and when this window closes Windows detaches it and the game runs on. A crash, a freeze (the game's
+# window does not answer for $FreezeSeconds) or a message box of the game's is written to SR3CamLab\crash\ (a log per
+# session, plus a minidump), with a line here. -NoWatchdog leaves it out (another debugger cannot attach while it runs).
+# A load that never ends is one such freeze: the main thread waits without end on the loader threads in 0x5877E0
+# (WaitForSingleObject, no message loop), so the window stops answering; the samples show every loader thread by its
+# start address. No data breakpoints: debug registers on the game's threads made it quit by itself (2026-10-14).
+# Each record also gives the main state, the one pending, the mode and the menus flag (see Request-RaceExit).
+$FreezeSeconds = 10; $GameWindowVA = 0xA339A4                         # where the game keeps its window handle
+$WatchdogValues = 'state=0x7ECE10, next=0x7ECE14, mode=0x728598, menus=0x9D6E3C:1'
+$script:WatchdogOn = $false
+function Start-Watchdog($game) {
+    $cs = Join-Path $PSScriptRoot 'watchdog.cs'
+    if (-not (Test-Path -LiteralPath $cs)) { Log 'Watchdog: watchdog.cs is missing next to patch.ps1; crashes and freezes are not recorded this time.'; return }
+    try {
+        if (-not ('Sr3Watchdog' -as [type])) { Add-Type -Path $cs -ErrorAction Stop }
+        [Sr3Watchdog]::Values = $WatchdogValues
+        [void][Sr3Watchdog]::Start($game.Id, (Join-Path $PSScriptRoot 'crash'), $FreezeSeconds, $GameWindowVA)
+        $script:WatchdogOn = $true
+    } catch { Log "Watchdog: could not start ($($_.Exception.Message)); crashes and freezes are not recorded this time."; return }
+    for ($i = 0; $i -lt 30 -and -not [Sr3Watchdog]::Attached -and -not [Sr3Watchdog]::Finished; $i++) { Start-Sleep -Milliseconds 100 }
+    Start-Sleep -Milliseconds 100; Show-WatchdogNews
+}
+function Show-WatchdogNews { if ($script:WatchdogOn) { for ($m = [Sr3Watchdog]::NextMessage(); $null -ne $m; $m = [Sr3Watchdog]::NextMessage()) { Log "Watchdog: $m" } } }
+function Stop-Watchdog {
+    if (-not $script:WatchdogOn) { return }
+    if (-not [Sr3Watchdog]::WaitFinished(5000)) { [Sr3Watchdog]::Stop(5000) }           # the game has closed: its last events are in
+    Show-WatchdogNews
+}
+function Wait-GameExit($game) { while (-not $game.HasExited) { Show-WatchdogNews; Start-Sleep -Milliseconds 250 }; $game.WaitForExit(); Show-WatchdogNews }
+
 # Runs until the game closes.
 function Watch-Tracks($game, [string]$gameExe) {
     Add-Type -AssemblyName System.Drawing, System.Windows.Forms
@@ -702,19 +937,19 @@ public static class Sr3Pad {
 '@
     }
     [Sr3Pad]::SetProcessDPIAware() | Out-Null
-    $startWas = $false; $shotUntil = [datetime]::MinValue; $shotName = ''; $shotHeld = $null; $shotAt = [datetime]::MinValue; $raceOn = $false
+    $start = New-StartState; $script:RaceExit = $null; $shotUntil = [datetime]::MinValue; $shotName = ''; $shotHeld = $null
     $slots = Read-TrackSwitch $gameExe
-    if (-not $slots) { $game.WaitForExit(); return }
+    if (-not $slots) { Wait-GameExit $game; return }
     $h = [Sr3Mem]::Open($game.Id)
     try {
         $base = Find-Cycle $h
-        if (-not $base) { Log 'Alternative tracks need the camera patch; it is not in the game, so the cards keep their own tracks.'; $game.WaitForExit(); return }
+        if (-not $base) { Log 'Alternative tracks need the camera patch; it is not in the game, so the cards keep their own tracks.'; Wait-GameExit $game; return }
         Log ('Alternative tracks: ' + ((@($slots.Keys | Sort-Object) | ForEach-Object { "$_ +$($slots[$_].Count - 1)" }) -join ', ') + '. On the stage-select screen, View Change steps through them.')
         Initialize-TrackVideos $h $base $slots
         $text = $base + $SwitchTextOff
         [Sr3Mem]::Write($h, $text + 0x40, (Str 'Press VIEW CHANGE to select alternative tracks' 64), $true)
         $choice = @{}; foreach ($s in $slots.Keys) { $choice[$s] = 0 }
-        $soundNow = '//'; $ids = @{}; $pvsHeld = $false; $pvsWas = 0
+        $soundNow = '//'; $tuneNow = ''; $script:TuneOwn = $null; $ids = @{}; $pvsHeld = $false; $pvsWas = 0
         $modeSeen = $null; $modeLast = $null; $nameWas = ''; $classicVal = $null
         $classicFile = Join-Path (Split-Path -Parent $gameExe) 'Main_release\tracks\_SR3Extras\classic_mode.txt'
         if (Test-Path -LiteralPath $classicFile) { $t = ([IO.File]::ReadAllText($classicFile)).Trim(); if ($t -match '^-?\d+$') { $classicVal = [int]$t } }
@@ -731,7 +966,7 @@ public static class Sr3Pad {
                 }
             }
             $count = Read-GameInt $h 0x9C442C
-            if ($menu -and ($count -eq 6 -or $count -eq 2)) { $deep = $true }      # past the mode menu, which also has 3 entries
+            if ($menu -and ($count -ge 4 -or $count -eq 2)) { $deep = $true }      # past the mode menu, which also has 3 entries (the car select: 6, or every car with Set-CarLists)
             $stage = $menu -and $deep -and $count -eq 3
             $p1 = Read-GameInt $h 0x9DBDB0
             $name = ''
@@ -790,6 +1025,10 @@ public static class Sr3Pad {
                 }
                 $soundNow = $sound
             }
+            # ... and its own tune, when it has one (the slot's own music otherwise)
+            $tune = if ($cur) { $cur.Tune } else { $null }
+            $tuneKey = if ($tune) { "$($tune.Stream)/$($tune.Offset)/$($tune.Bytes)/$($tune.LoopStart)" } else { '' }
+            if ($tuneKey -ne $tuneNow -and (Set-CourseTune $h $tune)) { $tuneNow = $tuneKey }
             # An added track's scenery was sorted for its own game's cameras: with the game's visibility
             # lists on, far scenery comes and goes with the camera. While such a track is raced, every
             # scenery node counts as visible ([0xA65794], as for the CamLab cameras; the camera block
@@ -802,33 +1041,28 @@ public static class Sr3Pad {
             } elseif ($pvsHeld) {
                 [Sr3Mem]::Write($h, 0xA65794, ([BitConverter]::GetBytes([int]$pvsWas)), $true); $pvsHeld = $false
             }
-            # START takes a screenshot, in a race only. The game has no flag we know that tells a race from the attract
-            # loop, so: a race is what follows the menus ($raceOn), and the picture is held back for 1.5 s - if the menus
-            # come up in that time, START was "begin a game" and the picture is dropped. The file name is shown only
-            # after the picture was taken, so it is never in it.
-            if ($wasMenu -and -not $menu) { $raceOn = $true }
+            # START in a race: a short press takes a screenshot when it is let go, a long one leaves the race (Step-Start)
             $pad = New-Object Sr3Pad+XState
             $startDown = ([Sr3Pad]::XInputGetState(0, [ref]$pad) -eq 0) -and (($pad.Buttons -band 0x10) -ne 0)
-            if ($startDown -and -not $startWas -and $raceOn -and -not $menu -and -not $shotHeld -and ((Get-Date) - $shotAt).TotalSeconds -gt 2) {
-                try {
-                    $sb = [Windows.Forms.Screen]::PrimaryScreen.Bounds; $shotHeld = New-Object Drawing.Bitmap $sb.Width, $sb.Height
-                    $gr = [Drawing.Graphics]::FromImage($shotHeld); $gr.CopyFromScreen($sb.Location, [Drawing.Point]::Empty, $sb.Size); $gr.Dispose()
-                    $shotAt = Get-Date
-                } catch { Log "Screenshot failed: $($_.Exception.Message)"; $shotHeld = $null }
-            }
-            if ($shotHeld) {
-                if ($menu) { $shotHeld.Dispose(); $shotHeld = $null; $raceOn = $false }            # that START began a new game
-                elseif (((Get-Date) - $shotAt).TotalSeconds -ge 1.5) {
+            foreach ($act in (Step-Start $start $startDown $menu (Get-Date))) {
+                if ($act -eq 'grab') {
+                    try {
+                        $sb = [Windows.Forms.Screen]::PrimaryScreen.Bounds; $shotHeld = New-Object Drawing.Bitmap $sb.Width, $sb.Height
+                        $gr = [Drawing.Graphics]::FromImage($shotHeld); $gr.CopyFromScreen($sb.Location, [Drawing.Point]::Empty, $sb.Size); $gr.Dispose()
+                    } catch { Log "Screenshot failed: $($_.Exception.Message)"; if ($shotHeld) { $shotHeld.Dispose() }; $shotHeld = $null; $start.HeldAt = $null }
+                } elseif ($act -eq 'save' -and $shotHeld) {
                     try {
                         $shotDir = Join-Path (Split-Path -Parent $PSScriptRoot) 'Screenshots'; New-Item -ItemType Directory -Force $shotDir | Out-Null
-                        $shotName = 'SR3_{0:yyyyMMdd_HHmmss}.png' -f $shotAt
+                        $shotName = 'SR3_{0:yyyyMMdd_HHmmss}.png' -f $start.ShotAt
                         $shotHeld.Save((Join-Path $shotDir $shotName), [Drawing.Imaging.ImageFormat]::Png)
                         $shotUntil = (Get-Date).AddSeconds(3); Log "Screenshot: $shotName"
                     } catch { Log "Screenshot failed: $($_.Exception.Message)" }
                     $shotHeld.Dispose(); $shotHeld = $null
-                }
+                } elseif ($act -eq 'drop' -and $shotHeld) { $shotHeld.Dispose(); $shotHeld = $null }  # that START began a new game
+                elseif ($act -eq 'exit') { Request-RaceExit $h (Get-Date) }
             }
-            $startWas = $startDown
+            if ($script:RaceExit) { Step-RaceExit $h (Get-Date) }
+            Show-WatchdogNews
             if ($mode) {
                 $title = 'Classic: ' + $slots[$ClassicSlot][$choice[$ClassicSlot]].Title
                 if ($title -ne $shown) { [Sr3Mem]::Write($h, $text, (Str $title 48), $true); $shown = $title }
@@ -868,31 +1102,79 @@ public static class Sr3Pad {
     }
     catch { if (-not $game.HasExited) { Log "Alternative tracks stopped: $($_.Exception.Message)" } }
     finally { [Sr3Mem]::Close($h) }
-    $game.WaitForExit()
+    Wait-GameExit $game
 }
 
-# The arcade's menus count down from 15 seconds and then choose for you. The time is a constant in each
-# menu's code (15000 ms, compared with the time the menu has been up, and handed to the countdown on
-# screen): all of them are set to $MenuTimerMs while the game runs.
-$MenuTimerMs = 120000
-$MenuTimerSites = 0x63D900, 0x6480FA, 0x6481A5, 0x648333, 0x648563, 0x64862D, 0x648795, 0x6487B0, 0x6488A2, 0x648933, 0x648AD2, 0x648B7B, 0x64E209, 0x64E2A6, 0x650B84, 0x65B489, 0x666223, 0x666C39
+# The arcade's menus count down and then choose for you. The owner wants no timers in the menus at all (2026-10-14).
+# The time is a constant in each menu's code, compared with the time the menu has been up and handed to the countdown
+# on screen: the mode select, the accept-challenge prompt, the three car select pages (one per mode), the Classic car
+# select, the track select and the link-play car select have 15 s, the three gearbox pages 10 s, the name entry of
+# the scoreboard 30 s. All of them are set to $MenuTimerMs (24 days) while the game runs, and the countdown itself
+# (the frontend's flash_fade_timer element, on six screens) is not drawn: its draw routine leaves at once, so no
+# digits and no last-seconds beeps. Left as they were: the retire screen (5 s, 15 s when it offers a continue), which
+# is a results screen that would otherwise wait for a button.
+$MenuTimerMs = 0x7FFFFFFF
+$MenuTimerSites = [ordered]@{
+    0x63D900 = 15000; 0x6480FA = 15000; 0x6481A5 = 15000; 0x648333 = 15000; 0x648563 = 15000; 0x64862D = 15000; 0x648795 = 15000
+    0x6487B0 = 15000; 0x6488A2 = 15000; 0x648933 = 15000; 0x648AD2 = 15000; 0x648B7B = 15000; 0x64E209 = 15000; 0x64E2A6 = 15000
+    0x650B84 = 15000; 0x65B489 = 15000; 0x666223 = 15000; 0x666C39 = 15000
+    0x64801D = 10000; 0x64844F = 10000; 0x648A2D = 10000; 0x6667CB = 10000                 # the gearbox pages and their countdown
+    0x644492 = 30000; 0x65B551 = 30000                                                      # the name entry's deadline and its countdown
+}
+$TimerDrawSite = 0x61827A; $TimerDrawOrig = '0f84f8020000'; $TimerDrawNew = 'e9f902000090'   # je -> jmp to the routine's end (0x618578)
 function Set-MenuTimers($game) {
-    $h = [Sr3Mem]::Open($game.Id); $n = 0
+    $h = [Sr3Mem]::Open($game.Id); $n = 0; $hidden = $false
     try {
-        foreach ($a in $MenuTimerSites) {
-            $b = [Sr3Mem]::Read($h, $a, 4)
-            if ($b -and [BitConverter]::ToInt32($b, 0) -eq 15000) { [Sr3Mem]::Write($h, $a, ([BitConverter]::GetBytes([int]$MenuTimerMs)), $true); $n++ }
+        foreach ($e in $MenuTimerSites.GetEnumerator()) {        # (an [ordered] table indexed with an int takes it as a position)
+            $a = [long]$e.Key; $b = [Sr3Mem]::Read($h, $a, 4); if (-not $b) { continue }
+            $v = [BitConverter]::ToInt32($b, 0)
+            if ($v -eq $e.Value -or $v -eq 120000) { [Sr3Mem]::Write($h, $a, ([BitConverter]::GetBytes([int]$MenuTimerMs)), $true); $n++ }   # 120000: set by an older PLAY.bat
+            elseif ($v -eq $MenuTimerMs) { $n++ }
         }
+        $cur = [Sr3Mem]::Read($h, $TimerDrawSite, 6)
+        if (Same $cur (HexToBytes $TimerDrawOrig)) {
+            [Sr3Mem]::Suspend($h); try { [Sr3Mem]::Write($h, $TimerDrawSite, (HexToBytes $TimerDrawNew), $false) } finally { [Sr3Mem]::Resume($h) }
+        }
+        $hidden = Same ([Sr3Mem]::Read($h, $TimerDrawSite, 6)) (HexToBytes $TimerDrawNew)
         # (2026-10-07: a brighter stand-in for the light-map fallback 0xFF808080 was tried at 0x5001A6, 0x51186C, 0x5D6441 and
         # 0x640D89. It washed the whole picture out and did not help the cars: 0x80 is the neutral value. The cars were dark
         # because the road's overlay page texture, a sun / shadow map, was written as all shadow. Fixed in the track.)
     } catch { Log "Menu timers: $($_.Exception.Message)" } finally { [Sr3Mem]::Close($h) }
-    Log "Menu timers: $n of $($MenuTimerSites.Count) set to $([int]($MenuTimerMs / 1000)) seconds."
+    Log ("Menu timers: {0} of {1} off; countdown {2}." -f $n, $MenuTimerSites.Count, $(if ($hidden) { 'hidden' } else { 'NOT hidden (unexpected bytes)' }))
+}
+
+# Every car in every car select (the owner, 2026-10-14). The game fills its car selector from the car library of the
+# ArcadeDatabase with one of three routines: 0x600790 the cars with neither flag (Championship, Quick Race: the six SR3
+# cars), 0x6006F0 the cars with the Classic flag (Classic: ST205, Delta), 0x600740 the bonus cars (the secret-car page:
+# Bowler, Enduro). The first two get a jump to a routine of ours that adds the mode's own cars first and then every other
+# car of the library, in its order; the secret-car page keeps its two. Source and notes: tools\build_carlist.py. The
+# selector holds up to 38 cars; the library is a list read from the database file, with no fixed size.
+$CarListCode = 'ba00000000eb0eba01000000eb07ba02000000eb0085ff746256535589d38b0789f9ff505831eda150a8b2008b700483c608743e31c0837e14007405b802000000837e10007405b80100000031c939d80f95c139e975158b46048b4e408b176a006a006aff505189f9ff52548b3685f675c24583fd0272af5d5b5ec3'
+$CarListSites = @(@(0x600790, 0, '85ff74518b'), @(0x6006F0, 7, '85ff74408b'))      # site, entry in our routine, the game's bytes there
+function Set-CarLists($game) {
+    $h = [Sr3Mem]::Open($game.Id); $n = 0
+    try {
+        $todo = @()
+        foreach ($s in $CarListSites) {
+            $cur = [Sr3Mem]::Read($h, $s[0], 5)
+            if (Same $cur (HexToBytes $s[2])) { $todo += ,$s }
+            elseif ($cur -and $cur[0] -eq 0xE9) { $n++ }                                  # already ours (PLAY.bat run again on a running game)
+            else { Log ("Car lists: unexpected bytes at 0x{0:X}; that list is left as it is." -f $s[0]) }
+        }
+        if ($todo.Count) {
+            $cave = [Sr3Mem]::Alloc($h, 0x1000); [Sr3Mem]::Write($h, $cave, (HexToBytes $CarListCode), $true)
+            [Sr3Mem]::Suspend($h)
+            try { foreach ($s in $todo) { $j = CallTo $s[0] ($cave + $s[1]); $j[0] = 0xE9; [Sr3Mem]::Write($h, $s[0], $j, $false); $n++ } }   # jmp rel32
+            finally { [Sr3Mem]::Resume($h) }
+        }
+    } catch { Log "Car lists: $($_.Exception.Message)" } finally { [Sr3Mem]::Close($h) }
+    Log $(if ($n -eq $CarListSites.Count) { 'Car lists: every car in every mode (each mode''s own cars first).' } else { "Car lists: $n of $($CarListSites.Count) changed." })
 }
 
 function Release-StuckKeys($game) {
     Log 'Leave this window open: when the game closes it releases any stuck Alt/Ctrl/Shift/Win key.'
     Set-MenuTimers $game
+    Set-CarLists $game
     Watch-Tracks $game $script:GameExePath
     foreach ($vk in 0x12, 0xA4, 0xA5, 0x11, 0xA2, 0xA3, 0x10, 0xA0, 0xA1, 0x5B, 0x5C) { [SR3.Keys]::keybd_event([byte]$vk, 0, 2, [UIntPtr]::Zero) }
     Log 'Game closed. Modifier keys released.'
@@ -1003,9 +1285,17 @@ try {
     if (-not $cycleOk) { Log "  Camera cycle NOT installed: $cycleError" }
     else { Log ("  View Change cycles: Game: Chase cam, Bumper cam, Bonnet cam, then " + ((@($slots | Select-Object -Skip 1) | ForEach-Object { $_.Name }) -join ', ') + $(if ($showHidden) { ', then the Debug cameras' } else { '' })) }
     Log $(if ($overlayPx -gt 0) { "  Camera name popup: $overlayPx px (at 1080p)" } else { '  Camera name popup: off' })
+    if ($cycleOk) {
+        Log $(if ($lookSmooth -gt 0) { "  Cameras you steer: mouse smoothed over $([int][Math]::Round(1000 * $lookSmooth)) ms, keys over $([int][Math]::Round(2000 * $lookSmooth)) ms" } else { '  Cameras you steer: raw mouse and keys (no smoothing)' })
+        Log $(if ($blendSec -le 0) { '  View Change: cuts to the next camera (no blend, the game''s own code path)' } elseif ($script:BlendHooked) { "  View Change: the view travels to the next camera in $([int][Math]::Round(1000 * $blendSec)) ms" } else { '  View Change: cuts to the next camera (the blend could not be installed)' })
+    }
     Log ('  Strength={0:0.00}  FadeIn={1}-{2} km/h  Stiffness={3}-{4}  Damping={5}  MaxAngle={6} deg  CapStiffness={7}' -f $Strength, $FadeInStartKmh, $FadeInFullKmh, $StiffnessMin, $StiffnessMax, $Damping, $MaxAngleDeg, $CapStiffness)
     if ($Framing) { Log ('  Framing: distance {0} m, height {1} m, field of view {2} deg' -f $Distance, $Height, $Fov) }
     else { Log '  Framing: SR3 default' }
 }
 finally { [Sr3Mem]::Close($h) }
-if ($launched -and -not $Off) { Release-StuckKeys $proc }
+if ($launched -and -not $Off) {
+    if (-not $NoWatchdog) { Start-Watchdog $proc }                # the patch is in and TeknoParrot's checks are long done
+    Release-StuckKeys $proc
+    Stop-Watchdog
+}

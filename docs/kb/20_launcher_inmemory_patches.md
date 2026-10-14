@@ -122,6 +122,14 @@ with the signature "SR3V" (built by `tools\build_cycle.py`, tested on an emulate
 | 0x591B01 | `e81af7ffff` (`call 0x591220`, frees D3D resources before a device Reset) | release the block's fonts first |
 | 0x6EBB3C (orig 0x5F1E00) | vtable slot 3 of the car rotate cam | wrapper writes mouse / keyboard input, then the original update |
 | 0x6ECBA4, 0x6ECC94 (orig 0x5F3FE0) | vtable slot 3 of the free cams | same |
+| 0x5C948C | `e8ff810200` (`call 0x5F1690`: once per drawn frame, the cameras' state for that frame) | the block calls 0x5F1690 itself, then blends the view after a View Change. Only while `cameraBlend` is above 0; left out when the site holds other bytes |
+
+Smoothing and blend (2026-10-14; `mouseSmoothing`, `cameraBlend` in `profiles.yaml`, seconds, 0 = off): the mouse and keys of
+the steerable cameras are handed on a share per update (`1 - e^(-dt/tau)`), and on View Change the view travels from the old
+camera to the new one. How a camera reaches the screen (state objects, interpolation, the camera pointers at mgr +0x184 /
++0x188 / +0x18C / +0x190) is written up in `tools\build_cycle.py` and `FINDINGS.md`. VERIFIED (code) and run on an emulated CPU
+against the game's own routines (`tools\cycle_real.py`); NOT yet seen in game. Settings and state: block + 0x2280; second code
+area: block + 0x2800.
 
 What the per-frame entry does: extends the race camera list (Chase + the game's cameras + one Chase entry per profile + the
 hidden cameras; an entry `0x80000000 | offset` adds a camera a second time as a patched variant, the driver's-seat
@@ -194,17 +202,87 @@ Format of the visibility data: 05_scene_kind11.md. Run-time addresses, VERIFIED 
 - Draw distance: setting `DrawDistanceQuality` -> [0x89A014] (0-3) -> [0x9C10DC] = scale squared with scale 0.5 / 0.75 /
   1.0 / 1.5. VERIFIED (code).
 
-## 10. Menu timers
-The arcade's menus count down from 15 seconds and then choose for the player. The time is a constant in each menu's code
-(15000 ms, compared with the time the menu has been up and handed to the on-screen countdown). All 18 sites are set to one
-value while the game runs: 0x63D900, 0x6480FA, 0x6481A5, 0x648333, 0x648563, 0x64862D, 0x648795, 0x6487B0, 0x6488A2,
-0x648933, 0x648AD2, 0x648B7B, 0x64E209, 0x64E2A6, 0x650B84, 0x65B489, 0x666223, 0x666C39. VERIFIED in game ("menu timers
-120 s (18 sites)" is in the owner's list of things proven in game).
+## 10. Menu timers (`Set-MenuTimers`): off
+The arcade's menus count down and then choose for the player. Until 2026-10-14 the launcher set the 15 s ones to 120 s; the
+owner then asked for no timers at all. Each page of the frontend's page table (17 routines at 0x7246C8) notes the time it
+came up, and every frame compares the time since with a constant; when it is passed (or the page's selector was confirmed)
+it moves on. The same constant is handed to the on-screen countdown (0x65B070: element by ID, +0x818 = end time,
++0x828 = 5, the last seconds in red with SFX_TimerDigit). All sites are set to 0x7FFFFFFF ms (24 days) while the game runs:
+| Sites | Was | Page |
+|---|---|---|
+| 0x64E209, 0x64E2A6 | 15 s | mode select (Championship / Quick Race / Classic) |
+| 0x63D900 | 15 s | accept challenge |
+| 0x6480FA 0x6481A5, 0x648795 0x6487B0 0x6488A2 0x648933, 0x648AD2 0x648B7B | 15 s | car select, one page per mode (confirm flag [0x9C4328]) |
+| 0x648563, 0x64862D | 15 s | secret-car page (Bowler / Enduro, ID_PAGE_SPECIALCARSELECT, confirm flag [0x9C4334]) |
+| 0x648333 | 15 s | page 10 (0x648270), LIKELY the track select |
+| 0x64801D, 0x64844F, 0x648A2D, 0x6667CB | 10 s | gearbox select, one page per mode (confirm flag [0x9C433C]) and its countdown |
+| 0x666C39 | 15 s | track select countdown |
+| 0x650B84 | 15 s | [0xAD5064], the link-play car select (pages 0x63CD80 / 0x63D550) |
+| 0x65B489 | 15 s | waiting-for-challengers countdown |
+| 0x644492, 0x65B551 | 30 s | scoreboard name entry: the deadline [0xAE3130] and its countdown |
+| 0x666223 | 15 s | retire screen countdown text only (no element in the XML) |
+The countdown element is the frontend type `flash_fade_timer` (vtable 0x6E8120, made at 0x64B108 for the type hash
+[0xB4B560]); it is on six screens (acceptchallenge, carselect, specialcarselect, trackselect, transselect,
+waitingforchallengers). Its draw routine 0x618260 starts "if not visible, leave" (`je 0x618578` at 0x61827A); that jump
+is made unconditional (0F84F8020000 -> E9F902000090), so no digits and no beeps anywhere. Left as they were: the retire
+screen's own wait (0x6661EE: 15 s when it offers a continue, else 5 s), a results screen that would otherwise wait for a
+button; the 1.2 s / 1.8 s minimum waits (0x64E2B0, 0x648605). VERIFIED in game 2026-10-14: launcher log "Menu timers: 24 of
+24 off; countdown hidden", no countdown on the Classic car select, mode select or gearbox page, each left for minutes, a
+Classic race and a Championship race started from them.
+An older PLAY.bat's 120 s values are recognised and replaced.
 
-## 11. Screenshot button
-START takes a screenshot, in a race only. The game has no known flag that tells a race from the attract loop, so the patch
-treats "what follows the menus" as a race and holds the picture back for 1.5 s: if the menus come up in that time, START
-was "begin a game" and the picture is dropped. The file name is shown only after the capture.
+## 10b. Every car in every car select (`Set-CarLists`)
+The car library is the ArcadeDatabase's car list: `[[0xB2A850] + 4] + 8`, a linked list of nodes {+0 next, +4 car id,
++0x10 Classic flag, +0x14 bonus flag, +0x40 name (LANG_ID_...)}; 10 cars: 0 C4, 1 Focus, 2 Impreza, 3 SX4, 4 Evo, 5 207,
+6 ST205, 7 Delta, 8 Bowler, 9 Enduro. 0x5AF760 (ecx = car id, arg = player setup 0x9DBDA0 + 0x1F18 x player) is the only
+routine that sets a player's car (setup +0xC = the node; it logs "Player Car Choice : %s"). The car select of every mode is
+the same page and selector (ID_SELECTOR_CARSELECT, hash 6EACE04A); the XML entries (CarA..CarF, data 0..5) are replaced at
+run time by one of three fill routines (edi = the selector): 0x600790 cars with neither flag (Championship, Quick Race),
+0x6006F0 the Classic-flagged cars (Classic), 0x600740 the bonus cars (the secret-car page, ID_SELECTOR_SPECIALCARSELECT).
+Each clears the selector (vtable +0x58) and calls AddEntry (vtable +0x54: name, data = car id, -1, 0, 0); on confirm
+0x6621C0 reads the entry's data (0x606510) and calls 0x5AF760 with it. Selector: entries inline at +0xC4 (0x50 bytes each:
++0xC4 label[64], +0x104 data), count +0xC0, at most 38 (0x5464D0), cursor +0x94. The game's IDs are Bob Jenkins' lookup2
+of the name with 0 as start value (0x5470D0).
+The launcher allocates a 124-byte routine (`tools\build_carlist.py`, position independent) that clears the selector, adds
+the cars of one class, then every other car of the library in its order; 0x600790 and 0x6006F0 start with a jump to it
+(entries +0 and +7). So Championship and Quick Race list the six SR3 cars, then ST205, Delta, Bowler, Enduro; Classic lists
+ST205 and Delta first. The secret-car page keeps its two. Each car shows its own card and name (the frontend has cards for
+all ten). VERIFIED in game 2026-10-14: Championship's list C4 .. Enduro with their cards; the McRae Enduro raced on Tropical;
+Classic's selector held car ids [6, 7, 0, 1, 2, 3, 4, 5, 8, 9] and the C4 raced on the Classic track (Mountain).
+(Those runs had the routine put in by a test script; the launcher's own Set-CarLists is the same bytes.)
+More cars (SR2 / Daytona): the library has no fixed size and the selector takes 38, so more cars are records in
+`ArcadeDatabase\arcadedatabase_xdata.sbf` (count 10 before the first record; a record holds the next-record offset, id,
+6000, 1.0f, the two flags, ten small numbers (per-mode values, not decoded), three string offsets: name, name again,
+folder "C4"; then "ID_CAR_C4"), plus the car's files. Name-based switches with ten names exist at 0x599A20 (a per-car
+value at vehicle +0x1708), 0x5C6000 (which cars have bespoke data) and 0x610F30 (speech per car); a new car falls through
+them to a default (to be checked when one is added).
+
+## 11. START in a race: screenshot on release, long press = back to the menus (2026-10-14)
+A short press of START in a race takes a screenshot when START is let go. The game has no known flag that tells a race from
+the attract loop, so the patch treats "what follows the menus" as a race and holds the picture back for 1.5 s: if the menus
+come up in that time, START was "begin a game" and the picture is dropped. The file name is shown only after the capture.
+Held for 1.2 s (`$StartHoldSeconds`) START takes no picture and leaves the race the way the game's own Quit does: the
+flag [0x9DB4F4] that the race update 0x5C89D0 polls (at 0x5C90C2 it clears it and sets the next state 0x1B, Finish), plus
+the game's 0.5 s fade (28 bytes at 0x9DB490, as 0x5FBB10 starts it); in a Championship the stage number [0x9DB820] is set to
+the number of stages first, as the Quit does, and a race leader's position [0x9DD61C] is set to 2, because at 0x6358A2 a
+leader is sent on to the Stadium4 bonus stage (the bonus stage itself is untouched: winning the Championship still leads
+there). It acts only while the main state [0x7ECE10] and the pending state [0x7ECE14] are 0x27 (racing) in mode
+[0x728598] 5, 6 or 7 (Quick Race, Championship, Classic), never during loading, so it never takes the loader's abort path
+(09_authoring_status.md, the hang). Main state machine, the game's three users of the flag and the decision logic:
+FINDINGS.md section 10, "Leaving a race"; mock test `tools\start_mocktest.ps1` (34 checks). VERIFIED in game 2026-10-14
+(owner): screenshot on release; a long press left a Classic race and a Championship race for the menus ("Race exit: done").
+Not yet seen in game: a long press while 1st in a Championship stage, and a Quick Race.
+
+## 11b. Watchdog: crashes and freezes recorded as they happen
+`watchdog.cs` (C#, loaded by patch.ps1 with Add-Type; `-NoWatchdog` leaves it out) attaches to the game as a debugger
+after the camera patch is in, passes every exception on to the game (DBG_EXCEPTION_NOT_HANDLED; only the two attach
+break-ins are taken), never uses debug registers (data breakpoints made the game exit, 09) and never kills the game on
+detach (DebugSetProcessKillOnExit FALSE). A second-chance exception, a window that does not answer WM_NULL for 10 s
+(`$FreezeSeconds`) or a message box gets a record in `crash\watchdog_<time>.log` (registers, stacks, the game's last debug
+output, the state values above) and a minidump, with a line in play.log. While it is attached no other debugger (dbg.py)
+can attach. Test `tools\watchdog_test.ps1` (27 checks, stand-in programs). In game 2026-10-14: attached for a whole session,
+0 exceptions, a clean exit; but its freeze watch never logged "watching window" (it did not find the game's window), so that
+session was not watched for freezes. Being fixed.
 
 ## 12. Things tried and removed
 | Attempt | Result |

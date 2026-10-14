@@ -35,11 +35,18 @@ roofs and all sorts of weird things"):
      the feet of the rock and walls beside it - does not move at all, and the reach (1.) fades the rounding in from there.
      Rounded ground shrinks and sinks: looking straight down beside the road, build BASE had dropped more than 0.3 m in 5 000
      places, which opened holes along the tarmac where it meets rock (user, 2026-10-08). Sealing wall feet again closed 3.
+  6. WHERE PEOPLE STAND, THE GROUND STAYS: a corner within `STAND` of a spectator's feet (`keep_at`, the 1995 crowd table) does not move, and the
+     reach (1.) fades the rounding in from there. A small standing shape has no kept corner of its own and the smoothing shrinks it towards its
+     middle: the box-shaped ledge and the thin pillar at lap 1047 - 1075 became a mound and a stump, and 17 spectators hung up to 7 m in the air
+     with sky under them (R2 and R4 with baked light, compared against R1 on 2026-10-13).
+  7. NOTHING TURNS OVER: a piece whose drawn triangle ends up turned more than about 78 degrees from the flat polygon it was cut from is folded,
+     not rounded (R4: 1 728 pieces, a black line along the rim of that ledge and under a boulder at lap 1866 - their backs). Its corners go
+     back to where the stage began, again and again until no piece is folded.
 Everything is done on arrays (the first version walked Python lists: fine for R2, minutes and gigabytes for R16)."""
 import numpy as np
 
 NATURAL = ('rock', 'grass', 'dirt', 'sand', 'gravel')
-CAP = 2.5; FADE = 0.5; KEEP_GAP = 0.05; FLAT = 0.02; APRON = 0.75
+CAP = 2.5; FADE = 0.5; KEEP_GAP = 0.05; FLAT = 0.02; APRON = 0.75; STAND = 2.5; FOLD = 0.2
 
 def _subdivide(P, U):
     """(n, k, 3) corners and (n, k, 2) texture coordinates of triangles (k = 3) or quads (k = 4) -> four times as many"""
@@ -107,7 +114,10 @@ def _gap_over(X, S, cell=4.0):
         v = v[ins]; g = np.abs(X[v, 1] - (A[1] - (n[t, 0] * (X[v, 0] - A[0]) + n[t, 2] * (X[v, 2] - A[2])) / n[t, 1])); np.minimum.at(gap, v, g)
     return gap
 
-def round_natural(faces, level=1, origin=None, passes=2, lam=0.5, weld=0.02, log=print, exclude=(), road=None, cap=CAP, fade=FADE):
+def round_natural(faces, level=1, origin=None, passes=2, lam=0.5, weld=0.02, log=print, exclude=(), road=None, cap=CAP, fade=FADE, slide=True, keep_at=None):
+    # slide=False (course setting round_slide): a corner moves only along the normal of the surface it sits in. The smoothing pulls a corner towards the
+    # middle of its neighbours, which is partly ALONG the surface: the shape hardly changes by that part, but the picture is fixed to the corners and
+    # is stretched on one side and squeezed on the other (owner, 2026-10-13: "watch out for texture warping").
     import retex
     if origin is None:
         import overlay_bake as OB
@@ -139,10 +149,11 @@ def round_natural(faces, level=1, origin=None, passes=2, lam=0.5, weld=0.02, log
         ids = [i for i in nat if len(faces[i][2]) == k]
         if ids: grp[k] = [np.array([faces[i][2] for i in ids], float), np.array([faces[i][3] for i in ids], float), np.array(ids, np.int64)]; orig[k] = grp[k][0].copy()      # orig: the same cuts of the polygons as they were
     sched = [(level, passes)] if level <= 3 else [(3, int(64 * 2 ** (level - 2)))] + [(1, 8)] * (level - 3)
+    AB = {k: np.repeat(np.array([[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)][:k] if k == 4 else [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)]], float), len(grp[k][2]), axis=0) for k in grp}      # where a piece's corners lie in the square of the polygon it was cut from (light maps: PATCH)
     tot = dict(moved=0.0, most=0.0, free=0, held_by_reach=0, held_by_order=0, kept_shared=0, kept_border=0); worst = []
     for stage, (lv, ps) in enumerate(sched):
         for k in grp:
-            for _ in range(lv): grp[k][0], grp[k][1] = _subdivide(grp[k][0], grp[k][1]); grp[k][2] = np.repeat(grp[k][2], 4); orig[k] = _subdivide(orig[k], np.zeros(orig[k].shape[:2] + (2,)))[0]
+            for _ in range(lv): grp[k][0], grp[k][1] = _subdivide(grp[k][0], grp[k][1]); grp[k][2] = np.repeat(grp[k][2], 4); orig[k] = _subdivide(orig[k], np.zeros(orig[k].shape[:2] + (2,)))[0]; AB[k] = _subdivide(np.zeros(AB[k].shape[:2] + (3,)), AB[k])[1]
         allp = np.concatenate([grp[k][0].reshape(-1, 3) for k in grp]); keys, inv = np.unique(_pack(allp, weld), return_inverse=True); inv = inv.reshape(-1); nv = len(keys)
         cnt = np.bincount(inv, minlength=nv).astype(float); X = np.stack([np.bincount(inv, weights=allp[:, c], minlength=nv) for c in range(3)], 1) / cnt[:, None]
         E = []; off = 0
@@ -153,6 +164,11 @@ def round_natural(faces, level=1, origin=None, passes=2, lam=0.5, weld=0.02, log
         deg = np.bincount(ea, minlength=nv) + np.bincount(eb, minlength=nv); border = np.zeros(nv, bool); border[ea[ec == 1]] = True; border[eb[ec == 1]] = True
         shared = np.isin(keys, fixed); free = ~shared & ~border & (deg >= 3); start = X.copy()
         apron_ = _gap_over(X, SR) < APRON; tot['apron'] = int((free & apron_).sum()); free &= ~apron_          # (5.)
+        if keep_at is not None and len(keep_at):                   # (6.) corners sorted by x, a slab of them looked at per spectator
+            K_ = np.asarray(keep_at, float)[:, :3]; xo_ = np.argsort(X[:, 0], kind='stable'); xs_ = X[xo_, 0]; stand_ = np.zeros(nv, bool)
+            for (kx, ky, kz), a_, b_ in zip(K_.tolist(), np.searchsorted(xs_, K_[:, 0] - STAND).tolist(), np.searchsorted(xs_, K_[:, 0] + STAND).tolist()):
+                c_ = xo_[a_:b_]; stand_[c_[((X[c_, 0] - kx) ** 2 + (X[c_, 2] - kz) ** 2 < STAND * STAND) & (np.abs(X[c_, 1] - ky) < 3.0)]] = True
+            tot['stands'] = int((free & stand_).sum()); free &= ~stand_
         # reach: the distance along the surface from the nearest corner that stays
         el = np.linalg.norm(X[ea] - X[eb], axis=1); dist = np.where(free, np.inf, 0.0)
         for _ in range(400):
@@ -163,13 +179,32 @@ def round_natural(faces, level=1, origin=None, passes=2, lam=0.5, weld=0.02, log
         def held(X):
             d = X - start; n = np.linalg.norm(d, axis=1); s = np.where(n > reach, reach / np.maximum(n, 1e-12), 1.0); return start + d * s[:, None], int((s < 1.0).sum())
         w = 1.0 / np.maximum(deg, 1)
+        if not slide:                                              # the surface's normal at every corner: the polygons round it, larger ones counting more
+            cn = np.zeros((nv, 3))
+            for k in grp:
+                vi = grp[k][3]; Pk = start[vi]; pn_ = np.cross(Pk[:, 1] - Pk[:, 0], Pk[:, 2] - Pk[:, 0]) + (np.cross(Pk[:, 2] - Pk[:, 0], Pk[:, 3] - Pk[:, 0]) if k == 4 else 0.0)
+                for a in range(k): np.add.at(cn, vi[:, a], pn_)
+            cl = np.linalg.norm(cn, axis=1); okn = cl > 1e-9; cn = np.where(okn[:, None], cn / np.maximum(cl, 1e-12)[:, None], 0.0)
+            def along(X):
+                d = X - start; return np.where(okn[:, None], start + (d * cn).sum(1)[:, None] * cn, X)
         for it in range(ps):
             M = np.stack([np.bincount(ea, weights=X[eb, c], minlength=nv) + np.bincount(eb, weights=X[ea, c], minlength=nv) for c in range(3)], 1) * w[:, None]
             X = np.where(free[:, None], X + lam * (M - X), X)
+            if not slide and (it % 4 == 3 or it == ps - 1): X = along(X)
             if it % 8 == 7: X, _ = held(X)
         X, nreach = held(X)
         lo, hi = _order_limits(start, X, free, S); bad = lo > hi; y = np.clip(X[:, 1], lo, np.maximum(hi, lo))
         nord = int((np.abs(y - X[:, 1]) > 1e-6).sum() + bad.sum()); X[:, 1] = y; X[bad] = start[bad]          # (a corner squeezed between two surfaces stays where it was)
+        for rnd in range(40):                                      # (7.) the two triangles the game draws of a four-corner piece: corners 0 1 2 and 0 2 3
+            fold_ = np.zeros(nv, bool)
+            for k in grp:
+                vi = grp[k][3]; O = orig[k]; Pk = X[vi]
+                for a_, b_, c_ in (((0, 1, 2),) if k == 3 else ((0, 1, 2), (0, 2, 3))):
+                    n0 = np.cross(O[:, b_] - O[:, a_], O[:, c_] - O[:, a_]); n1 = np.cross(Pk[:, b_] - Pk[:, a_], Pk[:, c_] - Pk[:, a_]); l0 = np.linalg.norm(n0, axis=1); l1 = np.linalg.norm(n1, axis=1)
+                    fold_[vi[(l0 > 1e-9) & ((n0 * n1).sum(1) < FOLD * l0 * l1)].ravel()] = True
+            fold_ &= np.abs(X - start).max(1) > 0
+            if not fold_.any(): break
+            X[fold_] = start[fold_]; tot['unfolded'] = tot.get('unfolded', 0) + int(fold_.sum())
         mv = np.linalg.norm(X - start, axis=1) * free; tot['moved'] += float(mv.sum()); tot['most'] = max(tot['most'], float(mv.max())); tot['free'] = int(free.sum()); tot['held_by_reach'] += nreach; tot['held_by_order'] += nord
         tot['kept_shared'] = int(shared.sum()); tot['kept_border'] = int((border & ~shared).sum()); tot['corners'] = int(nv)
         if stage == 0: worst = [(tuple(np.round(start[q], 1)), tuple(np.round(X[q], 1)), round(float(mv[q]), 1)) for q in np.argsort(-mv)[:8]]
@@ -192,20 +227,57 @@ def round_natural(faces, level=1, origin=None, passes=2, lam=0.5, weld=0.02, log
         if __import__('os').environ.get('ROUND_DBG') and stage == len(sched) - 1: __import__('pickle').dump({k: X[grp[k][3]] for k in grp}, open(__import__('os').environ['ROUND_DBG'], 'wb'))
         for k in grp: vi = grp[k].pop(); grp[k][0] = X[vi]
     round_natural.worst = worst
-    out_nat = []
+    # how much the pictures are stretched: every edge of every piece, its length now over its length before (the picture's coordinates did not move)
+    sr_ = []; sc_ = []
     for k in grp:
-        P, U, ids = grp[k]
+        O = orig[k]; Pk = grp[k][0]; mx = np.ones(len(Pk))
+        for a in range(k):
+            l0 = np.linalg.norm(O[:, (a + 1) % k] - O[:, a], axis=1); l1 = np.linalg.norm(Pk[:, (a + 1) % k] - Pk[:, a], axis=1); ok_ = l0 > 1e-6; r_ = np.where(ok_, l1 / np.maximum(l0, 1e-9), 1.0); sr_.append(r_[ok_]); mx = np.maximum(mx, np.maximum(r_, 1.0 / np.maximum(r_, 1e-6)))
+        sc_.append((mx, Pk.mean(1)))
+    if sr_:
+        sr_ = np.concatenate(sr_); mxa = np.concatenate([m_ for m_, c_ in sc_]); cea = np.concatenate([c_ for m_, c_ in sc_]); pct = lambda m_: round(100.0 * float(m_.mean()), 1)
+        stat['texture_stretch'] = dict(edges=int(len(sr_)), percent_within_10=pct(np.abs(sr_ - 1) <= 0.10), percent_longer_by_25=pct(sr_ > 1.25), percent_longer_by_50=pct(sr_ > 1.5), percent_twice_as_long=pct(sr_ > 2.0), percent_shorter_than_080=pct(sr_ < 0.8), percent_shorter_than_half=pct(sr_ < 0.5),
+                                       pieces_with_an_edge_changed_by_half=int((mxa > 1.5).sum()), pieces_with_an_edge_doubled_or_halved=int((mxa > 2.0).sum()), largest=round(float(sr_.max()), 2), smallest=round(float(sr_.min()), 2))
+        round_natural.stretched = [(cea[q].round(2).tolist(), round(float(mxa[q]), 2)) for q in np.argsort(-mxa)[:400]]
+        if __import__('os').environ.get('ROUND_STRETCH'): __import__('json').dump(dict(stat=stat['texture_stretch'], worst=round_natural.stretched), open(__import__('os').environ['ROUND_STRETCH'], 'w'))
+    out_nat = []; pk_ = []; pa_ = []; pi_ = []
+    for k in grp:
+        P, U, ids = grp[k]; A = AB[k]
         if k in coarse and coarse[k].any():                         # the flat ones: as they came
-            m = np.repeat(coarse[k], 4 ** level); out_nat += [faces[i] for i in ids[m][::4 ** level].tolist()]; P, U, ids = P[~m], U[~m], ids[~m]
+            m = np.repeat(coarse[k], 4 ** level); out_nat += [faces[i] for i in ids[m][::4 ** level].tolist()]; P, U, ids = P[~m], U[~m], ids[~m]; A = A[~m]
         r = np.round(P, 3); distinct = np.ones(len(P), np.int64)
         for a in range(1, k): distinct += ~np.any([(r[:, a] == r[:, b]).all(1) for b in range(a)], axis=0)
         good = distinct >= 3; Pl = P[good].tolist(); Ul = U[good].tolist(); il = ids[good].tolist()
+        Pg = P[good]; Ag = A[good]
+        if k == 3: Pg = np.concatenate([Pg, Pg[:, 2:3]], 1); Ag = np.concatenate([Ag, Ag[:, 2:3]], 1)      # (the mesh writer has a triangle as four corners, the last one twice)
+        pk_.append(corner_keys(Pg)); pa_.append(Ag); pi_.append(ids[good])
         out_nat += [(faces[i][0], faces[i][1], [tuple(q) for q in p], [tuple(q) for q in u]) for i, p, u in zip(il, Pl, Ul)]
+    if pk_:
+        hk = np.concatenate(pk_); PATCH['ab'] = np.concatenate(pa_); PATCH['id'] = np.concatenate(pi_).astype(np.int64); PATCH['corner'] = hk; PATCH['row'] = {b_.tobytes(): r_ for r_, b_ in enumerate(np.sort(hk, axis=1))}
     out = [fc for i, fc in enumerate(faces) if not isnat[i]] + out_nat
     stat.update(polygons_after=len(out_nat), corners=tot['corners'], corners_moved=tot['free'], kept_because_shared_with_other_things=tot['kept_shared'], kept_on_borders=tot['kept_border'],
-                mean_move_m=round(tot['moved'] / max(tot['free'], 1), 3), largest_move_m=round(tot['most'], 2), held_back_by_reach=tot['held_by_reach'], held_to_their_side_of_road_and_fills=tot['held_by_order'], kept_on_the_road_apron=tot.get('apron', 0), polygons_left_whole_because_flat=tot.get('flat', 0), largest_gap_at_their_edges_m=tot.get('seam', 0.0), schedule=sched)
+                mean_move_m=round(tot['moved'] / max(tot['free'], 1), 3), largest_move_m=round(tot['most'], 2), held_back_by_reach=tot['held_by_reach'], held_to_their_side_of_road_and_fills=tot['held_by_order'], kept_on_the_road_apron=tot.get('apron', 0), kept_where_people_stand=tot.get('stands', 0), put_back_because_folded=tot.get('unfolded', 0), polygons_left_whole_because_flat=tot.get('flat', 0), largest_gap_at_their_edges_m=tot.get('seam', 0.0), schedule=sched)
     log('       ROUNDED natural surfaces (experiment, level %d): %s' % (level, stat))
     return out, stat
+
+# ---------------------------------------------------------------- the pieces of a rounded polygon share its light-map rectangle
+PATCH = {}                                                             # filled by round_natural: 'row' piece (its corners, sorted) -> row ; 'corner' (n, 4) the corners' numbers in the order they were written ; 'ab' (n, 4, 2) where they lie in the square of the polygon the piece was cut from ; 'id' (n) that polygon
+def corner_keys(P4):
+    """(n, 4, 3) corners -> (n, 4) one number per corner: its place to the millimetre, taken from the float32 the mesh writer stores"""
+    q = np.round(np.asarray(P4, np.float32).astype(np.float64) * 1000.0).astype(np.int64) + (1 << 20); return (q[..., 0] << 42) | (q[..., 1] << 21) | q[..., 2]
+def patch_lookup(P4, back=None):
+    """(n, 4, 3) corners as the mesh writer has them -> (id per polygon, -1 = not a piece of a rounded polygon ; (n, 4, 2) the corners' places in that
+    polygon's square, the unit square where it is none). back[n] = this polygon is the other-side copy of one written once per side: it never
+    shares (its light is another light), and it is known by its corners running the other way round."""
+    n = len(P4); ids = np.full(n, -1, np.int64); ab = np.tile(np.array([(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]), (n, 1, 1))
+    if not n or 'row' not in PATCH: return ids, ab
+    hq = corner_keys(P4); hs = np.sort(hq, axis=1); get = PATCH['row'].get; rows = np.array([get(b_.tobytes(), -1) for b_ in hs], np.int64); m = np.nonzero(rows >= 0)[0]
+    if not len(m): return ids, ab
+    st = PATCH['corner'][rows[m]]; sa = PATCH['ab'][rows[m]]; got = np.zeros((len(m), 4, 2))
+    for c in range(4): j = (st == hq[m][:, c:c + 1]).argmax(1); got[:, c] = sa[np.arange(len(m)), j]
+    area = 0.5 * sum(got[:, c, 0] * got[:, (c + 1) % 4, 1] - got[:, (c + 1) % 4, 0] * got[:, c, 1] for c in range(4))      # the corners as cut run one way round the square, a polygon turned round the other
+    keep = np.ones(len(m), bool) if back is None else ~(np.asarray(back, bool)[m] & (area < 0))
+    ids[m[keep]] = PATCH['id'][rows[m]][keep]; ab[m[keep]] = got[keep]; return ids, ab
 
 # compiled / array versions of the slow functions above (fastround.py, checked to give the same bytes; SR3_FASTGEO=0 switches them off)
 import sys as _sys, fastround as _fr_mod; _fr_mod.install(_sys.modules[__name__])

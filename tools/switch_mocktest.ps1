@@ -65,7 +65,7 @@ foreach ($v in 'CA1', 'CA2', 'AL1') { Set-Content (Join-Path $fake "frontend\PC\
     ConvertTo-Json -Depth 6 | Set-Content (Join-Path $fake 'Main_release\tracks\_SR3Extras\switch.json')
 function B([int]$v) { ,[BitConverter]::GetBytes($v) }
 $h = [IntPtr]::Zero
-[MockGame]::Write($h, $HookDrawVA, $HookDrawOrig, $false); [MockGame]::Write($h, $HookLostVA, $HookLostOrig, $false)
+[MockGame]::Write($h, $HookDrawVA, $HookDrawOrig, $false); [MockGame]::Write($h, $HookLostVA, $HookLostOrig, $false); [MockGame]::Write($h, $HookBlendVA, $HookBlendOrig, $false)
 foreach ($v in $CamUpdateHooks) { [MockGame]::Write($h, $v[0], (B $v[1]), $false) }
 foreach ($a in $TrackDirSites) { [MockGame]::Write($h, $a, [byte[]]@(0x73), $false) }
 [MockGame]::Write($h, 0x6CF084, (Str 'SP_Tropical' 12), $false); [MockGame]::Write($h, 0x6CF098, (Str 'SP_Alpine' 12), $false); [MockGame]::Write($h, 0x6CF0AC, (Str 'SP_Canyon' 12), $false)

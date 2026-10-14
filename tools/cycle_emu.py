@@ -48,6 +48,9 @@ for i in range(1, 5): put(0x500 + 0x5C * i + 0x44, struct.pack('<i', 1))
 name(0xFB0, 'Use mouse/WASD to navigate'); put(0xF90, struct.pack('<ff', 1.5706, -1.5706)); put(0xFE0, struct.pack('<4f', 3.0, 30.0, 0.5, 20.0)); put(0xFD0, struct.pack('<f', -0.01))   # profiles: own framing on (cave+0x68)
 u.mem_write(BASE, bytes(blk)); u.mem_write(BASE + 0x1000, CODE)
 assert len(CODE) <= 0x1000
+# the second code area. The smoothing and the blend stay off (their settings 0, as in a block that never had them)
+# for every check up to "NEW CHECKS" below: those are the checks of the block as it was, and must not change
+u.mem_write(BASE + j['code2Off'], bytes.fromhex(j['code2']))
 
 # ---- the fake game
 w32(0x9EB4EC, MGR_OWNER); wf(MGR, 1 / 60)
@@ -235,3 +238,265 @@ frame('card video reopened in object 5')
 for x in seen: print('    ', x)
 print('    request now', r32(BASE + D['REOPEN']), '(want 0)')
 seen.clear(); frame('next frame'); print('    calls', [x[0] for x in seen], '(want hash, selector only)')
+
+# ==== NEW CHECKS: the smoothing of the steerable cameras' mouse and keys, and the blend between cameras ====
+# Each one prints its verdict; the count is on the last line. The fake game below does what the disassembly says the
+# real one does (build_cycle.py, "How a camera reaches the screen"); none of it has been seen in the running game.
+print('\n==== NEW CHECKS (smoothing, blend) ====')
+res = [0, 0]
+def check(what, ok, detail=''):
+    res[0 if ok else 1] += 1; print('  %s %s%s' % ('ok    ' if ok else 'FAILED', what, '   [%s]' % detail if detail else ''))
+f32 = lambda x: struct.unpack('<f', struct.pack('<f', x))[0]
+raw = lambda a, n=1: bytes(u.mem_read(a, 4 * n))
+x87_empty = lambda: (u.reg_read(UC_X86_REG_FPSW) >> 11) & 7 == 0          # as many pops as pushes
+def quiet_frame(): log.clear(); call(BASE + j['drawOff'])
+def upd(entry=0):                            # one update of the camera asked for: its wrapper, up to the jump into the game's own update
+    log.clear(); call(BASE + (entry or j['freeOff'])); assert log[-1][0].startswith('jumped to'), log
+CX, CY, SENS, RATE, FREE, ROT = 1920, 1080, 0.0025, 0.02, MGR + 0xC78, MGR + 0xEEC
+def steer(cam, tau, tauk, dt):               # a steerable camera freshly selected: nothing outstanding, cursor centred
+    wf(BASE + D['K_LOOKTAU'], tau); wf(BASE + D['K_MOVETAU'], tauk); wf(MGR, dt); state.update(cursor=(CX, CY), keys=set(), fore=0x5555)
+    w32(MGR + 0x190, MGR + 0x510); quiet_frame()
+    w32(MGR + 0x190, cam); wf(FREE + 0x268, 0.0); wf(ROT + 0x20, 0.0); wf(ROT + 0x48, 0.0); upd(j['rotOff'] if cam == ROT else 0)
+def look(dx, dy, keys=()):                   # one free cam update with this mouse movement: the angles the game adds (yaw, pitch), its move inputs
+    state['cursor'] = (CX + dx, CY + dy); state['keys'] = set(keys); upd()
+    return rf(MGR + 0x1A8) * RATE, rf(MGR + 0x1AC) * RATE, rf(MGR + 0x1B0), rf(MGR + 0x1B4), rf(MGR + 0x1B8)
+
+print('-- smoothing off (0): the camera gets the raw mouse and keys, as before')
+steer(FREE, 0.0, 0.0, 1 / 60); same = True; yawok = True
+for dx, dy, keys in ((40, -24, {0x57}), (-3, 1, {0x57, 0x44}), (0, 0, {0x53, 0x11}), (500, 300, ()), (-1, -1, {0x41, 0x20})):
+    y, p, f, s, v = look(dx, dy, keys)
+    same &= raw(BASE + D['SMXY'], 2) == struct.pack('<2f', dx, dy) and raw(BASE + D['MREM'], 2) == bytes(8)
+    same &= (f, s, v) == ((0x57 in keys) - (0x53 in keys), (0x44 in keys) - (0x41 in keys), (0x20 in keys) - (0x11 in keys))
+    yawok &= raw(MGR + 0x1A8) == struct.pack('<f', f32(f32(dx * f32(SENS)) / f32(RATE)))
+check('smoothing 0: mouse part = the movement read, to the bit; nothing left over; keys -1 / 0 / +1 exactly (5 updates)', same)
+check('smoothing 0: yaw input = pixels x 0.0025 / camera rate in single precision, to the bit (the old arithmetic)', yawok)
+for bad in (0.0, -0.01, 0.3, float('nan')):
+    steer(FREE, 0.08, 0.16, bad); y, p, f, s, v = look(80, 0, {0x57})
+    check('smoothing on but frame time %g is no usable time: raw (yaw %.4f want 0.2, forward %g want 1)' % (bad, y, f), abs(y - 0.2) < 1e-6 and f == 1.0)
+
+print('-- smoothed look: a share of what is outstanding per update, 1 - e^(-dt / tau)')
+TAU = 0.08; steer(FREE, TAU, 0.0, 1 / 60); tot = [0.0, 0.0]; parts = []
+while len(parts) < 240 and not (parts and raw(BASE + D['MREM'], 2) == bytes(8)):
+    y, p, *_ = look(0 if parts else 120, 0 if parts else -60); parts.append((y, -p)); tot[0] += y; tot[1] += p
+n = len(parts)
+def shrinking(v):                            # ever smaller, never backwards; an axis' last part takes the rest with it once that is under 0.001 pixel
+    v = [x for x in v if x != 0]; return all(b <= a for a, b in zip(v, v[1:-1])) and all(x > 0 for x in v) and v[-1] <= 0.0013 * SENS
+check('a 120 / -60 pixel flick is handed out in ever smaller parts, never backwards (first %.4f rad of 0.3, then %.4f, %.4f ... the last, with the crumb, %.2g)' % (parts[0][0], parts[1][0], parts[2][0], parts[-1][0]),
+      shrinking([p[0] for p in parts]) and shrinking([p[1] for p in parts]) and 0 < parts[0][0] < 0.1)
+check('...and ends exactly on the raw target: yaw %.7f (raw 0.3), pitch %.7f (raw -0.15), nothing left after %d updates (%.2f s)' % (tot[0], tot[1], n, n / 60),
+      abs(tot[0] - 0.3) < 2e-6 and abs(tot[1] + 0.15) < 2e-6 and n < 240)
+T = 0.2; want = 1 - math.exp(-T / TAU); got = {}
+for fps in (30, 60, 120, 240):
+    steer(FREE, TAU, 0.0, 1 / fps); got[fps] = sum(look(120 if k == 0 else 0, 0)[0] for k in range(round(T * fps))) / 0.3
+check('time constant %g s at 30 / 60 / 120 / 240 updates a second: after %g s %s of the flick is out (want %.5f = 1 - e^(-%g/%g))' % (TAU, T, ' / '.join('%.5f' % got[k] for k in sorted(got)), want, T, TAU),
+      all(abs(v - want) < 2e-5 for v in got.values()))
+steer(FREE, TAU, 0.0, 1 / 60); a1 = look(100, 0)[0] / 0.25
+check('one update of 1/60 s hands out %.5f of what is outstanding (want %.5f)' % (a1, 1 - math.exp(-1 / 60 / TAU)), abs(a1 - (1 - math.exp(-1 / 60 / TAU))) < 1e-6)
+steer(FREE, TAU, 0.0, 1 / 60); ys = [look(10, 0)[0] for k in range(180)]
+check('a steady 10 pixels per update comes through at the full rate: %.6f rad per update after 3 s (raw 0.025), %.2f pixels behind (want %.2f)' % (ys[-1], rf(BASE + D['MREM']), 10 * math.exp(-1 / 60 / TAU) / (1 - math.exp(-1 / 60 / TAU))),
+      abs(ys[-1] - 0.025) < 1e-6 and all(b >= a - 1e-9 for a, b in zip(ys, ys[1:])))
+steer(FREE, TAU, 0.0, 1 / 60); wf(FREE + 0x268, 1.5); worst = -9
+for k in range(120):
+    y, p, *_ = look(0, 400 if k == 0 else 0); wf(FREE + 0x268, rf(FREE + 0x268) + p); worst = max(worst, rf(FREE + 0x268))
+check('pitch stopper with smoothing: 400 pixels down from 1.5 rad never passes 1.5706 (highest %.5f, ends %.5f)' % (worst, rf(FREE + 0x268)), worst <= 1.5706 + 1e-6 and worst > 1.57)
+steer(FREE, TAU, 0.0, 1 / 60); look(200, 100); left = rf(BASE + D['MREM']); state['keys'] = {0xDC}; state['cursor'] = (CX, CY)
+saved = r32(FREE); w32(RVT + 4, RESETFN); w32(FREE, RVT); upd(); w32(FREE, saved)
+check('reset key: the camera is reset and what was outstanding (%.1f pixels) is dropped: inputs %g / %g, left over %s' % (left, rf(MGR + 0x1A8), rf(MGR + 0x1AC), raw(BASE + D['MREM'], 2).hex()),
+      any('camera reset' in l[0] for l in log) and left > 100 and rf(MGR + 0x1A8) == 0 and rf(MGR + 0x1AC) == 0 and raw(BASE + D['MREM'], 2) == bytes(8))
+steer(FREE, TAU, 0.16, 1 / 60); look(200, 100, {0x57}); state['fore'] = 0x9999; upd()
+check('game not in front: nothing stays outstanding (mouse %s, keys %s), inputs zeroed' % (raw(BASE + D['MREM'], 2).hex(), raw(BASE + D['KAX'], 4).hex()),
+      raw(BASE + D['MREM'], 2) == bytes(8) and raw(BASE + D['KAX'], 4) == bytes(16) and all(rf(MGR + 0x1A8 + 4 * i) == 0 for i in range(8)))
+
+print('-- smoothed keys: the same share of the way to -1 / 0 / +1 per update')
+TK = 0.16; curve = {}
+for fps in (30, 60, 120):
+    steer(FREE, 0.0, TK, 1 / fps); curve[fps] = [look(0, 0, {0x57, 0x41, 0x20})[2:] for k in range(round(0.3 * fps))][-1]
+want = 1 - math.exp(-0.3 / TK)
+check('W + A + Space held 0.3 s at 30 / 60 / 120 updates a second: forward %s (want %.5f), sideways and up the same size' % (' / '.join('%.5f' % curve[k][0] for k in sorted(curve)), want),
+      all(abs(c[0] - want) < 2e-5 and abs(c[1] + want) < 2e-5 and abs(c[2] - want) < 2e-5 for c in curve.values()))
+steer(FREE, 0.0, TK, 1 / 60); up = [look(0, 0, {0x57})[2] for k in range(200)]; n1 = up.index(1.0) if 1.0 in up else -1
+down = [look(0, 0)[2] for k in range(200)]; n0 = down.index(0.0) if 0.0 in down else -1
+check('W held: rises without a step back and lands on exactly 1 (after %d updates); released: falls and lands on exactly 0 (after %d, want about %d)' % (n1 + 1, n0 + 1, round(TK * math.log(1000) * 60)),
+      n1 > 30 and n0 > 30 and all(b >= a for a, b in zip(up, up[1:])) and all(b <= a for a, b in zip(down, down[1:])) and abs(n0 + 1 - TK * math.log(1000) * 60) < 3)
+check('x87 stack as it was after all these updates (the share is worked out on it)', x87_empty())
+
+print('-- car rotate cam: the same smoothing in front of its own scaling and limits')
+steer(ROT, TAU, TK, 1 / 60); orbit = tilt = 0.0; zoom = []
+for k in range(200):
+    state['cursor'] = (CX + (90 if k == 0 else 0), CY + (40 if k == 0 else 0)); state['keys'] = {0x57} if k < 100 else set(); upd(j['rotOff'])
+    orbit += rf(MGR + 0x1A8) * (1 / 60) * math.pi / 2; tilt += rf(MGR + 0x1B8) * (1 / 60) * 10; zoom.append(rf(MGR + 0x1AC))
+check('90 / 40 pixel flick: orbit ends on %.6f rad (raw 0.225), height on %.6f m (raw -0.4)' % (orbit, tilt), abs(orbit - 0.225) < 2e-6 and abs(tilt + 0.4) < 2e-6)
+check('W (zoom in) eases to -1 and back to 0: %.4f after 19 updates (want %.4f), %.6f while held, %g at the end' % (zoom[18], -(1 - math.exp(-19 / 60 / TK)), zoom[99], zoom[-1]),
+      abs(zoom[18] + 1 - math.exp(-19 / 60 / TK)) < 2e-5 and abs(zoom[99] + 1.0) < 1e-5 and zoom[-1] == 0.0)
+steer(ROT, TAU, TK, 1 / 60); wf(ROT + 0x20, -3.9); low = 99
+for k in range(120):
+    state['keys'] = {0x57}; upd(j['rotOff']); wf(ROT + 0x20, rf(ROT + 0x20) + rf(MGR + 0x1AC) * (1 / 60) * 10); low = min(low, 7.0 + rf(ROT + 0x20))
+check('zoom limit with smoothing: W held from 3.1 m stops at %.4f m (want 3, the limit)' % low, abs(low - 3.0) < 1e-4)
+wf(ROT + 0x20, 0.0); wf(BASE + D['K_LOOKTAU'], 0.0); wf(BASE + D['K_MOVETAU'], 0.0); w32(MGR + 0x190, MGR + 0x510); state['keys'] = set(); quiet_frame()
+
+# ---- the fake game's side of a drawn frame: camera state objects, the car, 0x5F1690, the clock
+print('-- blend between cameras')
+SOFF = {0x510: 0x54, 0x8C4: 0x54, 0xEEC: 0x64}                           # camera -> its state object (vtable slot 23); +8 for the other classes
+for o, v in vt.items():
+    n = SOFF.get(o, 8); fn = {0x54: 0x412710, 0x64: 0x4126C0, 8: 0x413790}[n]
+    u.mem_write(fn, bytes([0x8D, 0x41, n, 0xC3])); w32(v + 0x5C, fn)     # lea eax,[ecx+n] ; ret, as in the game
+CAR = MGR_OWNER + 0xA000; MAT = CAR + 0x135C; car = {}
+def set_car(pos, yaw, scale=1.0):
+    c, s = math.cos(yaw), math.sin(yaw); car.update(R=(c, 0, -s), U=(0, 1, 0), F=(s, 0, c), P=pos)
+    u.mem_write(MAT, struct.pack('<16f', *(x * scale for x in car['R']), 0, *(x * scale for x in car['U']), 0, *(x * scale for x in car['F']), 0, *pos, 1))
+def world(p, point=True): return tuple(p[0] * car['R'][i] + p[1] * car['U'][i] + p[2] * car['F'][i] + (car['P'][i] if point else 0) for i in range(3))
+deg = math.pi / 180
+VIEWS = dict(daytona=((0.3, 1.9, -4.7), (0, 1.0, -0.87), (0, 1, 0), 72 * deg), drone=((-0.2, 4.6, -6.9), (0, 1.0, -0.87), (0, 1, 0), 87 * deg),
+             bonnet=((0, 1.19, 0.94), (0, 0, 20), (0, 1, 0), 60 * deg), bumper=((0, 0.75, 1.45), (0, 0, 20), (0.05, 1, 0), 60 * deg),
+             wheel=((-1.3, 0.3, 2.1), (-1.2, 0, 1.2), (0, 1, 0), 60 * deg))        # eye, look-at, up in the car's frame, field of view
+shown = {}                                                               # camera offset -> the view its state holds in this frame
+def pose(view):                                                          # that view in the world: eye, look-at, up, field of view
+    e, a, up, fov = VIEWS[view]; return world(e), world(a), world(up, False), fov
+def sobj(cam): return cam + SOFF.get(cam - MGR, 8)
+game = dict(calls=[], running=True, garbage=None)
+def interpolate(a):                                                      # 0x5F1690: esi = manager, one float; the camera the frame is drawn from gets its state
+    esi = u.reg_read(UC_X86_REG_ESI); game['calls'].append((esi, a[0]))
+    if esi != MGR or not (r32(0x9DB800) or (r32(0x7ECE10) == r32(0x7ECE14) and r32(0x7ECE10) in (0x27, 0x1C))): return 0x5F1690
+    w32(MGR + 0x184, r32(MGR + 0x188)); cam = r32(MGR + 0x184)
+    if cam:
+        e, at, up, fov = game['garbage'] or pose(shown[cam - MGR]); s = sobj(cam)
+        u.mem_write(s + 0x30, struct.pack('<4f', *e, 777.0)); u.mem_write(s + 0x6C, struct.pack('<4f', *at, 777.0))      # 777: the float after each vec3,
+        u.mem_write(s + 0x120, struct.pack('<4f', *up, 777.0)); u.mem_write(s + 0x178, struct.pack('<2f', fov, 777.0))    # which is not the blend's to write
+    return 0x5F1690
+stub(0x5F1690, 1, interpolate)
+QF = 10000000; state['qpc'] = 123456789012; state['qpcalls'] = 0
+names['QueryPerformanceFrequency'] = STUB + 0xE0; names['QueryPerformanceCounter'] = STUB + 0xE8
+stub(STUB + 0xE0, 1, lambda a: u.mem_write(a[0], struct.pack('<q', QF)) or 1)
+def qpc(a): state['qpcalls'] += 1; u.mem_write(a[0], struct.pack('<q', state['qpc'])); return 1
+stub(STUB + 0xE8, 1, qpc)
+ALPHA = struct.unpack('<I', struct.pack('<f', 0.375))[0]
+def render(dt=1 / 60, mgr=MGR):              # one drawn frame: the hooked call at 0x5C948C. Returns what the view is then built from
+    state['qpc'] += round(dt * QF); game['calls'].clear(); game['dt'] = round(dt * QF) / QF
+    esp = STACK - 4; w32(esp, ALPHA); esp -= 4; w32(esp, DONE); regs = (UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_EDX, UC_X86_REG_EDI, UC_X86_REG_EBP)
+    u.reg_write(UC_X86_REG_ESP, esp); u.reg_write(UC_X86_REG_ESI, mgr)
+    for k, r in enumerate(regs): u.reg_write(r, 0x51510000 + k)
+    u.emu_start(BASE + j['blendOff'], DONE, count=200000)
+    game['clean'] = game.get('clean', True) and u.reg_read(UC_X86_REG_ESP) == STACK and u.reg_read(UC_X86_REG_ESI) == mgr and all(u.reg_read(r) == 0x51510000 + k for k, r in enumerate(regs)) and x87_empty()   # since setup()
+    return view()
+def view():                                  # eye, look-at, up, field of view in the state of the camera the frame is drawn from
+    s = sobj(r32(MGR + 0x184)); return struct.unpack('<3f', raw(s + 0x30, 3)), struct.unpack('<3f', raw(s + 0x6C, 3)), struct.unpack('<3f', raw(s + 0x120, 3)), rf(s + 0x178)
+def own(): cam = r32(MGR + 0x184); e, a, up, fov = pose(shown[cam - MGR]); return tuple(f32(x) for x in e), tuple(f32(x) for x in a), tuple(f32(x) for x in up), f32(fov)
+def untouched():                             # the state is exactly what the game wrote, the floats after the vectors included
+    s = sobj(r32(MGR + 0x184)); return view() == own() and all(rf(s + o) == 777.0 for o in (0x3C, 0x78, 0x12C, 0x17C))
+sub = lambda a, b: tuple(x - y for x, y in zip(a, b)); mix = lambda a, b, s: tuple(x + (y - x) * s for x, y in zip(a, b)); norm = lambda a: math.sqrt(sum(x * x for x in a))
+def carframe(v):                             # a drawn view as the block keeps it: eye, unit direction, up in the car's frame, look distance, field of view
+    e, at, up, fov = v; d = sub(at, e); n = norm(d); tc = lambda p: tuple(sum(p[i] * car[ax][i] for i in range(3)) for ax in 'RUF')
+    return tc(sub(e, car['P'])), tc(tuple(x / n for x in d)), tc(up), n, fov
+def blended(frm, s):                         # the model: from a kept view (car frame), carried by the car as it is now, s of the way to the camera's own
+    e1, a1, u1, f1 = pose(shown[r32(MGR + 0x184) - MGR]); d1 = sub(a1, e1); n1 = norm(d1)
+    e = mix(world(frm[0]), e1, s); d = mix(world(frm[1], False), tuple(x / n1 for x in d1), s); n = norm(d); dist = frm[3] + (n1 - frm[3]) * s
+    return e, tuple(e[i] + d[i] / n * dist for i in range(3)), mix(world(frm[2], False), u1, s), frm[4] + (f1 - frm[4]) * s
+def err(v, w): return max(max(abs(x - y) for x, y in zip(v[i], w[i])) for i in range(3)), abs(v[3] - w[3])
+ease = lambda t: t * t * (3 - 2 * t)
+def setup(dur, cam, view_, idx):             # a race under way on this camera, a few frames drawn: the block has seen the view
+    wf(BASE + D['K_BLEND'], dur); w32(0x7ECE10, 0x27); w32(0x7ECE14, 0x27); w32(0x9DB800, 0); w32(MGR + 0x1C8, CAR); set_car((100.0, 5.0, -40.0), 0.3); game.update(garbage=None, clean=True)
+    for o in vt: shown[o] = 'bonnet'
+    shown[cam] = view_; w32(MGR + 0x190, MGR + cam); w32(MGR + 0x18C, MGR + cam); w32(MGR + 0x188, MGR + cam)
+    w32(MGR + 0x230, idx); w32(BASE + 0x1C, idx)
+    for k in range(3): render()
+def press(idx): go(idx); quiet_frame()       # View Change: the game stepped its index, the block's draw hook sees it at the end of the frame
+def travel(dur, dt, frames, frm, drive=None):                            # draw frames of a running blend; the worst distance from the model, per frame
+    out = []; t = 0.0
+    for k in range(frames):
+        if drive: drive(k)
+        v = render(dt); t = k * game['dt'] / dur
+        out.append((t, v, None if t >= 1 else err(v, blended(frm, ease(t))), untouched()))
+    return out
+
+# 1. the same camera object with other settings: CamLab Daytona -> CamLab Chase (both the chase camera)
+setup(0.5, 0x510, 'daytona', 3); frm = carframe(view()); before = view()
+check('before any View Change the hook leaves the state as the game wrote it; the game\'s routine ran once per frame with the caller\'s esi and float; registers, stack and x87 as before',
+      untouched() and game['clean'] and game['calls'] == [(MGR, ALPHA)])
+press(4); shown[0x510] = 'drone'
+check('View Change to a slot of the same object: the blend is armed for the next frame (go %d, waiting for %#x)' % (r32(BASE + D['BGO']), r32(BASE + D['BWAIT'])), r32(BASE + D['BGO']) == 1 and r32(BASE + D['BWAIT']) == 0)
+tr = travel(0.5, 1 / 60, 40, frm); e0 = err(tr[0][1], before)
+check('first frame of the blend = the old view (off by %.2g m, %.2g rad of field of view) although the camera already holds the new one' % e0, max(e0) < 1e-4 and not tr[0][3])
+mid = tr[15]; em = err(mid[1], blended(frm, 0.5)); way = lambda k: (tr[k][1][0][1] - before[0][1]) / (own()[0][1] - before[0][1])     # by the eye's height
+check('ease in / ease out: at t = %.3f the view is half way (off by %.2g m); at t = %.3f it is %.1f%% of the way (want %.1f%%), at t = %.3f %.1f%% (want %.1f%%)'
+      % (mid[0], em[0], tr[6][0], 100 * way(6), 100 * ease(tr[6][0]), tr[24][0], 100 * way(24), 100 * ease(tr[24][0])),
+      abs(mid[0] - 0.5) < 1e-3 and max(em) < 2e-4 and abs(way(6) - ease(tr[6][0])) < 1e-3 and abs(way(24) - ease(tr[24][0])) < 1e-3 and way(6) < 0.2 * 0.6 and way(24) > 1 - 0.2 * 0.6)
+worst = max(max(x[2]) for x in tr if x[2]); done = [k for k, x in enumerate(tr) if x[3]]
+check('every frame on the eased straight path from the old view to the new (eye, look-at, up, field of view): worst %.2g m' % worst, worst < 3e-4)
+check('ends exactly on the new camera: from frame %d (%.3f s) on the state is the game\'s own, to the bit, and stays so (%d frames checked); the frame before was %.2g m short' % (done[0], done[0] * game['dt'], len(done), err(tr[done[0] - 1][1], own())[0]),
+      done == list(range(done[0], 40)) and done[0] in (30, 31) and err(tr[done[0] - 1][1], own())[0] < 0.05 and r32(BASE + D['BACTIVE']) == 0)
+check('...and only 3 floats of each vector and the field of view were ever written; registers, stack and x87 as before in every frame', all(rf(sobj(MGR + 0x510) + o) == 777.0 for o in (0x3C, 0x78, 0x12C, 0x17C)) and game['clean'])
+
+# 2. frame rate: the same blend drawn at other rates
+at = {}
+for fps in (30, 60, 144):
+    setup(0.5, 0x510, 'daytona', 3); frm = carframe(view()); press(4); shown[0x510] = 'drone'; tr = travel(0.5, 1 / fps, round(0.7 * fps), frm)
+    k = round(0.25 * fps); at[fps] = (tr[k][0], tr[k][1][0][1], [i for i, x in enumerate(tr) if x[3]][0] / fps, max(max(x[2]) for x in tr if x[2]))
+yref = lambda t: before[0][1] + (own()[0][1] - before[0][1]) * ease(t)
+check('duration is real time, whatever the frame rate: at 30 / 60 / 144 frames a second the eye height %s m at t = %s (want %s), the blend over after %s s (want 0.5)'
+      % (' / '.join('%.4f' % at[k][1] for k in sorted(at)), ' / '.join('%.3f' % at[k][0] for k in sorted(at)), ' / '.join('%.4f' % yref(at[k][0]) for k in sorted(at)), ' / '.join('%.3f' % at[k][2] for k in sorted(at))),
+      all(abs(v[1] - yref(v[0])) < 3e-4 and abs(v[2] - 0.5) <= 1 / k + 1e-6 and v[3] < 3e-4 for k, v in at.items()))
+setup(0.5, 0x510, 'daytona', 3); frm = carframe(view()); press(4); shown[0x510] = 'drone'; render(1 / 60); v = render(2.0); t = 0.1 / 0.5
+check('a 2 s hitch does not eat the blend: one frame adds at most 0.1 s (view %.2g m from the model at t = 0.2)' % err(v, blended(frm, ease(t)))[0], max(err(v, blended(frm, ease(t)))) < 3e-4)
+
+# 3. duration 0: a cut, as before
+setup(0.0, 0x510, 'daytona', 3); n0 = state['qpcalls']; press(4); shown[0x510] = 'drone'; cut = [render() and untouched() for k in range(5)]
+w32(MGR + 0x188, MGR + 0x1700); shown[0x1700] = 'bumper'; press(5); cut += [render() and untouched() for k in range(5)]
+check('duration 0 = cut: the state is never written, same object or another (10 frames), nothing armed, the clock not even read',
+      all(cut) and state['qpcalls'] == n0 and raw(BASE + D['BACTIVE'], 3) == bytes(12) and r32(BASE + D['BHAVE']) == 0)
+
+# 4. another camera object: Game: Bonnet cam -> CamLab: Daytona. The game draws from the old one for a few frames more
+setup(0.4, 0x189C, 'bonnet', 2); press(3); shown[0x510] = 'daytona'; w32(MGR + 0x190, MGR + 0x510)
+check('View Change to another object: the blend waits for the view to move to it (go %d, waiting for the chase camera: %s)' % (r32(BASE + D['BGO']), r32(BASE + D['BWAIT']) == MGR + 0x510), r32(BASE + D['BGO']) == 0 and r32(BASE + D['BWAIT']) == MGR + 0x510)
+wait = [render() and untouched() for k in range(3)]; frm = carframe(view()); before = view()
+check('while the game still draws from the old camera (3 frames) nothing is written', all(wait) and r32(BASE + D['BACTIVE']) == 0)
+w32(MGR + 0x18C, MGR + 0x510); w32(MGR + 0x188, MGR + 0x510); tr = travel(0.4, 1 / 60, 30, frm); e0 = err(tr[0][1], before); done = [k for k, x in enumerate(tr) if x[3]]
+check('the frame the view moves to the new camera shows the old view (off by %.2g m), then travels (worst %.2g m off the path) and ends on the new camera, to the bit, at frame %d (%.3f s)' % (e0[0], max(max(x[2]) for x in tr if x[2]), done[0], done[0] * game['dt']),
+      max(e0) < 1e-4 and max(max(x[2]) for x in tr if x[2]) < 5e-4 and done == list(range(done[0], 30)) and done[0] in (24, 25) and r32(BASE + D['BWAIT']) == 0)
+
+# 5. the old view rides with the car: the car drives and turns during the blend
+setup(0.5, 0x189C, 'bonnet', 2); press(3); shown[0x510] = 'daytona'; render(); frm = carframe(view()); w32(MGR + 0x188, MGR + 0x510)
+tr = travel(0.5, 1 / 60, 34, frm, lambda k: set_car((100.0 + 0.9 * k, 5.0 + 0.02 * k, -40.0 + 0.3 * k), 0.3 + 0.02 * k)); done = [k for k, x in enumerate(tr) if x[3]]
+check('car at 200 km/h turning 69 deg/s through the blend: every frame is the kept view carried by the car, eased towards the camera (worst %.2g m off), ends to the bit at frame %d' % (max(max(x[2]) for x in tr if x[2]), done[0]),
+      max(max(x[2]) for x in tr if x[2]) < 1e-3 and done == list(range(done[0], 34)))
+
+# 6. View Change again while a blend runs: on from where the view is, no jump
+setup(0.5, 0x510, 'daytona', 3); frm = carframe(view()); press(4); shown[0x510] = 'drone'; tr = travel(0.5, 1 / 60, 12, frm); midv = tr[-1][1]; frm2 = carframe(midv)
+press(5); shown[0x510] = 'daytona'; tr2 = travel(0.5, 1 / 60, 40, frm2); done = [k for k, x in enumerate(tr2) if x[3]]
+check('a second View Change 0.2 s into a blend starts from the view as it is (first frame off by %.2g m), no jump, and ends on its camera to the bit at frame %d' % (err(tr2[0][1], midv)[0], done[0]),
+      max(err(tr2[0][1], midv)) < 2e-4 and max(max(x[2]) for x in tr2 if x[2]) < 5e-4 and done[0] in (30, 31))
+
+# 7. a camera change of the game's own stays a cut, and ends a running blend
+setup(0.5, 0x510, 'daytona', 3); w32(MGR + 0x188, MGR + 0x1700); shown[0x1700] = 'bumper'; cut = [render() and untouched() for k in range(4)]
+check('the game changes camera by itself (no View Change): a cut, nothing written (4 frames)', all(cut) and r32(BASE + D['BACTIVE']) == 0)
+setup(0.5, 0x510, 'daytona', 3); frm = carframe(view()); press(4); shown[0x510] = 'drone'; tr = travel(0.5, 1 / 60, 8, frm)
+w32(MGR + 0x188, MGR + 0x189C); cut = [render() and untouched() for k in range(4)]
+check('...also in the middle of a blend (it was %.0f%% along): the cut is shown at once' % (100 * ease(tr[-1][0])), not tr[-1][3] and all(cut) and r32(BASE + D['BACTIVE']) == 0)
+setup(0.5, 0x189C, 'bonnet', 2); press(3); shown[0x510] = 'daytona'; idle = [render() and untouched() for k in range(125)]; w32(MGR + 0x188, MGR + 0x510); late = [render() and untouched() for k in range(4)]
+check('a View Change the game never follows is forgotten after 120 frames: a move to that camera later is a cut (waiting for %#x)' % r32(BASE + D['BWAIT']), all(idle) and all(late) and r32(BASE + D['BWAIT']) == 0)
+
+# 8. things the blend must not trip over
+setup(0.5, 0x510, 'daytona', 3); press(4); shown[0x510] = 'drone'; w32(0x7ECE10, 0x30); s = sobj(MGR + 0x510); keep = raw(s, 0x60); r = [render() for k in range(3)]
+check('game not in a running state: its routine interpolates nothing and the hook writes nothing (state bytes unchanged, blend not started: go still %d)' % r32(BASE + D['BGO']), raw(s, 0x60) == keep and r32(BASE + D['BGO']) == 1 and r32(BASE + D['BACTIVE']) == 0)
+setup(0.5, 0x510, 'daytona', 3); press(4); shown[0x510] = 'drone'; other = MGR_OWNER + 0x4000; keep = raw(BASE + D['BDT'], 10); n0 = state['qpcalls']; render(mgr=other)
+check('another player\'s manager: the game\'s routine is called with it, the block does nothing else', game['calls'] == [(other, ALPHA)] and raw(BASE + D['BDT'], 10) == keep and state['qpcalls'] == n0 and game['clean'])
+setup(0.5, 0x510, 'daytona', 3); press(4); shown[0x510] = 'drone'; w32(MGR + 0x1C8, 0); r = [render() and untouched() for k in range(3)]
+check('no car: nothing written, nothing kept', all(r) and r32(BASE + D['BHAVE']) == 0 and r32(BASE + D['BACTIVE']) == 0)
+setup(0.5, 0x510, 'daytona', 3); frm = carframe(view()); press(4); shown[0x510] = 'drone'; tr = travel(0.5, 1 / 60, 5, frm)
+u.mem_write(MAT + 0x10, struct.pack('<f', float('nan'))); v = render(); bad = any(x != x for part in v[:3] for x in part)
+check('car matrix turns into no-numbers in the middle of a blend: nothing but the game\'s values in the state, blend dropped', not bad and r32(BASE + D['BACTIVE']) == 0 and r32(BASE + D['BHAVE']) == 0)
+setup(0.5, 0x510, 'daytona', 3); set_car((100.0, 5.0, -40.0), 0.3, 2.0); render(); press(4); shown[0x510] = 'drone'; r = [render() for k in range(3)]
+check('car axes of length 2 (not the rigid matrix the blend assumes): the change stays a cut', r32(BASE + D['BACTIVE']) == 0 and r32(BASE + D['BGO']) == 0)
+setup(0.5, 0x510, 'daytona', 3); frm = carframe(view()); press(4); shown[0x510] = 'drone'; tr = travel(0.5, 1 / 60, 5, frm)
+e, a, up, fov = pose('drone'); game['garbage'] = (e, e, up, fov); v = render(); s = sobj(MGR + 0x510)
+check('a camera whose look-at point is its eye (no direction): its state is left alone, blend dropped', raw(s + 0x30, 3) == raw(s + 0x6C, 3) and r32(BASE + D['BACTIVE']) == 0)
+game['garbage'] = None
+VIEWS['back'] = ((-1.3, 0.3, 2.1), (-1.3, 0.3, -3.0), (0, 1, 0), 60 * deg); VIEWS['fwd'] = ((-1.3, 0.3, 2.1), (-1.3, 0.3, 7.0), (0, 1, 0), 60 * deg)
+setup(0.5, 0x1A38, 'fwd', 8); press(9); shown[0x1A38] = 'back'; r = [render() for k in range(33)]; finite = all(x == x and abs(x) < 1e6 for v in r for part in v[:3] for x in part)
+check('old and new view looking in exactly opposite directions: every frame still a view of numbers with a direction (shortest eye-to-look-at %.3f m), ends on the camera' % min(norm(sub(v[1], v[0])) for v in r),
+      finite and min(norm(sub(v[1], v[0])) for v in r) > 1.0 and untouched())
+setup(0.5, 0x510, 'daytona', 3); names.pop('QueryPerformanceCounter'); w32(BASE + D['PQPC'], 0); press(4); shown[0x510] = 'drone'; r = [render() and untouched() for k in range(3)]; names['QueryPerformanceCounter'] = STUB + 0xE8
+check('no QueryPerformanceCounter to be had: no blend, nothing written', all(r) and r32(BASE + D['BACTIVE']) == 0)
+
+# back to how the old checks left things: smoothing and blend off, the chase camera
+wf(BASE + D['K_BLEND'], 0.0); w32(MGR + 0x190, MGR + 0x510)
+print('NEW CHECKS: %d passed, %d failed' % tuple(res))

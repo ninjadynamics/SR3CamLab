@@ -399,6 +399,10 @@ static int overlayPx = 48, readOverlay = -1;
 static int showHidden = 1, readHidden = -1;
 // the speedometer's unit (click it to switch); saved as speedUnits: km/h / mph
 static int useMph = 0, readMph = -1;
+// two settings of the game CamLab has no control for (patch.ps1 reads them, seconds): how softly the steerable
+// cameras follow the mouse, and how long the view travels to the next camera. Kept as written in profiles.yaml
+// and written back by every save and Launch, so that saving here does not throw them away
+static char keepSmoothing[24], keepBlend[24];
 static char status[96]; static float statusT = 0;
 
 static void SetStatus(const char *s) { snprintf(status, sizeof status, "%s", s); statusT = 3.0f; }
@@ -481,7 +485,7 @@ static int ReadProfilesYaml(const char *path, YamlProfile *out, int max, char *d
 {
     char *text = FileExists(path) ? LoadFileText(path) : NULL;
     if (!text) return -1;
-    if (defName) defName[0] = 0;
+    if (defName) defName[0] = keepSmoothing[0] = keepBlend[0] = 0;
     int n = 0, inProfiles = 0, profIndent = -1;
     YamlProfile *cur = NULL;
     for (char *line = strtok(text, "\r\n"); line; line = strtok(NULL, "\r\n")) {
@@ -503,6 +507,8 @@ static int ReadProfilesYaml(const char *path, YamlProfile *out, int max, char *d
             if (strcasecmp(key, "hiddenCameras") == 0 && defName)
                 readHidden = !(strcasecmp(val, "false") == 0 || strcasecmp(val, "no") == 0 || strcasecmp(val, "off") == 0 || strcmp(val, "0") == 0);
             if (strcasecmp(key, "speedUnits") == 0 && defName) readMph = strcasecmp(val, "mph") == 0;
+            if (strcasecmp(key, "mouseSmoothing") == 0 && defName) snprintf(keepSmoothing, sizeof keepSmoothing, "%.23s", val);
+            if (strcasecmp(key, "cameraBlend") == 0 && defName) snprintf(keepBlend, sizeof keepBlend, "%.23s", val);
             cur = NULL;
             continue;
         }
@@ -665,9 +671,14 @@ static int WriteProfiles(void)
                "# In a race, View Change cycles the game's cameras, every profile, then the debug ones.\n"
                "# \"overlay\" is the size of the camera name shown on a change (px at 1080p, 0 = off);\n"
                "# \"hiddenCameras\" adds the cameras the game hides to View Change;\n"
-               "# \"speedUnits\" is CamLab's speedometer: km/h or mph.\n\n"
-               "default: %s\noverlay: %d\nhiddenCameras: %s\nspeedUnits: %s\n\nprofiles:\n", hasDefault ? defaultName : (nprof > NBUILTIN ? prof[NBUILTIN].name : ""),
+               "# \"speedUnits\" is CamLab's speedometer: km/h or mph.\n"
+               "# \"mouseSmoothing\" is how softly the cameras you steer follow the mouse and keys (seconds, 0 = raw);\n"
+               "# \"cameraBlend\" is the time the view takes to travel to the next camera on View Change (seconds, 0 = cut).\n\n"
+               "default: %s\noverlay: %d\nhiddenCameras: %s\nspeedUnits: %s\n", hasDefault ? defaultName : (nprof > NBUILTIN ? prof[NBUILTIN].name : ""),
                overlayPx, showHidden ? "true" : "false", useMph ? "mph" : "km/h");
+    if (keepSmoothing[0]) fprintf(f, "mouseSmoothing: %s\n", keepSmoothing);
+    if (keepBlend[0]) fprintf(f, "cameraBlend: %s\n", keepBlend);
+    fprintf(f, "\nprofiles:\n");
     for (int n = 0; n < nprof; n++)
         if (!prof[n].builtin) WriteProfileYaml(f, prof[n].name, prof[n].base, NULL, prof[n].preset);
     fclose(f);
@@ -709,7 +720,10 @@ static int LaunchGame(const Profile *p)
     FILE *f = fopen(yaml, "w");
     if (!f) return 0;
     fprintf(f, "# Written by CamLab's Launch button: the profiles as they were on screen.\n\n"
-               "default: %s\noverlay: %d\nhiddenCameras: %s\n\nprofiles:\n", p->name, overlayPx, showHidden ? "true" : "false");
+               "default: %s\noverlay: %d\nhiddenCameras: %s\n", p->name, overlayPx, showHidden ? "true" : "false");
+    if (keepSmoothing[0]) fprintf(f, "mouseSmoothing: %s\n", keepSmoothing);
+    if (keepBlend[0]) fprintf(f, "cameraBlend: %s\n", keepBlend);
+    fprintf(f, "\nprofiles:\n");
     for (int n = 0; n < nprof; n++) {
         if (prof[n].builtin) continue;
         float v[NPARAM];

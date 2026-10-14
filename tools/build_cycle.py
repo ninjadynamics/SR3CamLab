@@ -8,15 +8,20 @@ position-independent: code finds its own base with call/pop. Layout (offsets fro
   0x1000 code: DRAW (Present hook) and LOST (device-lost hook)
   0x2000 game cameras (names, list entries, offsets, extras, colours) and the driver-seat
          copy of the cockpit cam's eye
+  0x2280 smoothing and blend: settings, then their state (zero in a new block, never copied from an older one)
+  0x2400 scratch strings of the track switcher (patch.ps1)
+  0x2800 second code area: constants (0x70 bytes), then the smoothing of the steerable cameras' mouse and keys
+         and the blend between cameras (BLEND, the third hook)
 
 Hooks (5-byte call rel32, written by patch.ps1):
   0x591C4D  mov eax,[0x7ED10C]  (just before EndScene/Present)  -> call DRAW
   0x591B01  call 0x591220       (frees D3D resources before Reset) -> call LOST
+  0x5C948C  call 0x5F1690       (the cameras' state of this drawn frame) -> call BLEND, which calls it first
 
 Game facts used (found in the disassembly):
   [0x9EB4EC] + 0x18 = camera manager of the local player; [mgr+0] = frame time (float)
   mgr+0x510 chase camera (vtable 0x6EB808), mgr+0x8C4 far chase (vtable 0x6EB8B8)
-  mgr+0x190 = the camera in use
+  mgr+0x190 = the camera in use (more exactly the camera asked for: see "How a camera reaches the screen")
   race camera list: count mgr+0x22C, index mgr+0x230, camera pointers from mgr+0x234 (max 21)
     View Change does index = (index + 1) % count; a pointer equal to the current camera keeps it
   developer camera inputs, never written by the arcade game: floats mgr+0x1A8..0x1C4
@@ -63,8 +68,54 @@ rebuilds its list the camera in use before is selected again.
 List layout written by the block: [chase] + the game's other cameras + [chase] x one per
 CamLab profile + the hidden ones (debug cameras). Slot 0 = SR3's stock chase settings (also used for the
 far chase cam), slots 1.. = the profiles.
+
+How a camera reaches the screen (read in the disassembly on 2026-10-14, NOT yet seen in the running game; the
+smoothing and the blend below rest on it):
+  The game updates its cameras in steps of its own (0x5F17A0, and the same code inline at 0x5CAE45) and draws
+  frames in between, so every camera keeps a "state" object that is interpolated for each drawn frame:
+    state = camera vtable slot 23 (+0x5C), a one-line "lea eax,[ecx+N]": +0x54 chase / far chase, +0x64 car
+    rotate, +8 every other class looked at (bumper, bonnet, cockpit, wheel, free, car free)
+    six records of 0x3C bytes from state+0: eye, look-at point, eye and look-at of the look-behind view, up,
+    one more; each = five vec3: value before the update, value after it, the two the drawn frame lies
+    between, the interpolated one (+0x30). Field of view (radians) the same way at +0x168 .. +0x178.
+    0x413CA0 shifts "after" to "before" (first thing in an update), 0x413850 latches both for drawing (slot 2),
+    0x413990 interpolates (slot 4, alpha in xmm0).
+  mgr+0x190 = the camera asked for, mgr+0x18C = the one being updated, mgr+0x188 / mgr+0x184 = the one the
+  frame is drawn from. View Change (0x5EE250, with mgr+0x1A0 set) steps the list of group [mgr+0x198] (0x5C
+  bytes per group from mgr+0x1D0; the race list at mgr+0x22C is group 1) and stores the entry at +0x190; an
+  entry that is another object is then updated twice alongside the old camera before +0x18C moves to it.
+  0x5F1690 (esi = mgr, one float = alpha, ret 4) is called for every player once per drawn frame from
+  0x5C948C: [mgr+0x184] = [mgr+0x188], then slot 4 of the cameras. It does nothing unless the game is in
+  state 0x27 / 0x1C ([0x7ECE10] = [0x7ECE14]) or [0x9DB800] is set. Its only other caller, 0x5FEA43, sits in
+  the replay page's routine 0x5FE810 ("ID_BUTTON_REPLAY_PLAYPAUSE") and is left alone.
+  The view is built from the interpolated state of [mgr+0x184] only (0x5A1A70: D3DXMatrixLookAtLH of eye
+  state+0x30, look-at +0x6C, up +0x120, and the field of view +0x178; with mgr+0x1A4, look-behind, eye +0xA8 and
+  look-at +0xE4). Nothing was found that reads the interpolated values back into an update.
+  Free cams (update 0x5F3FE0): angle += [cam+0x230] x input and position += speed x input PER UPDATE, with no
+  frame time in it; the car rotate cam's handler 0x5EED30 multiplies its inputs by [mgr] (frame time).
+  car + 0x135C: the car's matrix, rows right / up / forward / position (the cameras' updates read it there).
+
+Smoothing of the steerable cameras (K_LOOKTAU, K_MOVETAU; 0 = raw, as before): the update wrappers hand the
+camera only a share of the mouse movement that is outstanding, 1 - e^(-dt / tau) of it per update (dt = [mgr]),
+and keep the rest for the next updates: the camera turns towards where the raw mouse would have put it, at a
+rate that does not depend on the frame rate, and ends exactly there. The keys' -1 / 0 / +1 go the same share
+of the way to their value per update, so a movement starts and stops softly.
+
+Blend between cameras (K_BLEND seconds; 0 = cut, as before): BLEND runs after the game has interpolated its
+cameras for the frame and keeps the view of every frame in the car's frame (eye, direction, look distance, up,
+field of view). After a View Change it rewrites the interpolated eye / look-at / up / field of view of the camera
+the frame is drawn from: the view the change left from, carried along by the car, towards the camera's own,
+by t x t x (3 - 2t) of the way, t = real time since the start / K_BLEND (QueryPerformanceCounter). At t = 1 it
+stops writing, so the camera's own values are shown untouched. Only a View Change this block accepted starts
+one; a camera change of the game's own (intro, time over, replay) stays a cut and ends a running blend.
+Assumed, not measured: the rows of the car's matrix are unit length (checked when a blend starts: no blend
+otherwise), and nothing but the view reads the interpolated state in a way that minds the blend.
+Known and left: directions are mixed in a straight line and made unit length again, so between views that look
+nearly opposite ways most of the turn happens in the middle of the blend; the look-behind records are not
+blended; the PVS switch above follows the new camera at once, not the travelling view.
+tools/cycle_real.py runs BLEND and the update wrappers against the game's own routines named here.
 """
-import json, os
+import json, os, struct
 from keystone import Ks, KS_ARCH_X86, KS_MODE_32
 
 D = dict(MAGIC=0x00, FONT=0x08, FONTH=0x0C, FRAMES=0x10, SHOWFRAMES=0x14, SIZE=0x18, LASTIDX=0x1C,
@@ -80,13 +131,553 @@ D = dict(MAGIC=0x00, FONT=0x08, FONTH=0x0C, FRAMES=0x10, SHOWFRAMES=0x14, SIZE=0
          HINT=0xFA0, TEXT=0xFA4, KEEP=0xFA8, S_HINT=0xFB0, K_TILTS=0xFD0, RESETPREV=0xFD8, K_RDMIN=0xFE0, K_RDMAX=0xFE4, K_RHMIN=0xFE8, K_RHMAX=0xFEC,
          GAMENAMES=0x2000, ORIG=0x2180, CAMOFF=0x21B0, EXTRA=0x21E0, CAMCOLOR=0x2210,
          MIRROR=0x2240, SAVEDPTR=0x2258, PATCHIDX=0x225C, NGAME=0x2260, LOADVIDEOS=0x2264, PHINT=0x2268,
-         HILITE=0x226C, REOPEN=0x2270, REOPENPATH=0x2274, MODESEL=0x2278)
+         HILITE=0x226C, REOPEN=0x2270, REOPENPATH=0x2274, MODESEL=0x2278,
+         # settings (seconds, written by patch.ps1): mouse and key smoothing of the steerable cameras, blend time
+         K_LOOKTAU=0x2280, K_MOVETAU=0x2284, K_BLEND=0x2288,
+         # smoothing: mouse movement not handed out yet (x, y pixels), smoothed keys (free cams forward, sideways,
+         # up; car rotate zoom), this update's mouse part (x, y), the keys' share of this update, x87 scratch
+         MREM=0x2290, KAX=0x2298, SMXY=0x22A8, SHARE_K=0x22B0, FTMP=0x22B4,
+         # blend: QueryPerformanceCounter and its readings, seconds since the last frame / into the blend, running,
+         # start with the next frame, start when the view moves to this camera (for so many frames), the camera
+         # the last frame was drawn from, BLAST holds a view
+         PQPC=0x22B8, QFREQ=0x22C0, QNOW=0x22C8, QPREV=0x22D0, BDT=0x22D8, BT=0x22DC, BACTIVE=0x22E0, BGO=0x22E4,
+         BWAIT=0x22E8, BWAITN=0x22EC, BLASTCAM=0x22F0, BHAVE=0x22F4,
+         # views (0x40 each: eye, direction, up as 4 floats, then look distance and field of view): the last
+         # frame's and the one the blend left from, both in the car's frame; this frame's in the world; then the
+         # look-at point written back and a scratch vector. Ends at 0x23E0, below the switcher's strings (0x2400)
+         BLAST=0x2300, BFROM=0x2340, BNOW=0x2380, BAT=0x23C0, BTMP=0x23D0)
 SLOT_PARAMS = 0x5C          # 11 + 12 dwords copied into the cave
 MAX_SLOTS = 21              # the game's list holds 21 pointers
 MAX_GAMECAMS = 12
 CODE = 0x1000
 SIZE = 0x3000
 CAVE = 0x673C80
+ks = Ks(KS_ARCH_X86, KS_MODE_32)
+strip = lambda a: "\n".join(l.split(';')[0].rstrip() for l in a.splitlines() if l.split(';')[0].strip())
+
+# ---- the second code area (the first one, below, is nearly full): constants, then code. Everything here is reached
+# with ebp = the block's base; the first area calls these routines by their offsets, so they are assembled first.
+CODE2 = 0x2800              # after the track switcher's strings (0x2400 .. 0x27C0)
+CODE2_END = 0x3000
+C2 = dict(ONE=CODE2, THREE=CODE2 + 4, DTBIG=CODE2 + 8, DTMAX=CODE2 + 0xC, TINY2=CODE2 + 0x10, UNIT2=CODE2 + 0x14, MASK=CODE2 + 0x20,
+          S_QPC=CODE2 + 0x30, S_QPF=CODE2 + 0x48)
+consts2 = (struct.pack('<6f', 1.0, 3.0,
+                       0.25,        # DTBIG: a frame time over this (or not above 0) is not smoothed over: raw
+                       0.1,         # DTMAX: the most real time one frame may add to a blend (a hitch does not eat it)
+                       1e-6,        # TINY2: (0.001)^2: pixels, key travel and metres under 0.001 count as nothing
+                       0.0625       # UNIT2: (0.25)^2: a car axis with a length squared within 1 +- 0.25 passes for unit length
+                       ).ljust(0x20, b'\0') + struct.pack('<4I', 0xffffffff, 0xffffffff, 0xffffffff, 0)   # MASK: x, y, z of 4 floats
+           + b'QueryPerformanceCounter'.ljust(0x18, b'\0') + b'QueryPerformanceFrequency'.ljust(0x28, b'\0'))
+assert len(consts2) == 0x70
+BWAIT_FRAMES = 120          # the game moves to another camera object 2 updates after View Change; 2 s is ample
+
+asm2 = f"""
+; eax = address of a time constant (seconds), esi = camera manager: xmm2 = the share of what is outstanding that
+; goes out in this update, 1 - e^(-dt / tau), dt = the game's frame time [mgr]. 1 = everything now = no smoothing:
+; tau 0 (or less, or no number), or a dt that is no usable time (not above 0, over DTBIG). Keeps xmm0, xmm1.
+; e^x on the x87: 2^(x log2 e), whole part by fscale, the rest (-0.5 .. 0.5) by f2xm1; two stack slots, like the
+; fpatan of the chase camera's cave
+share:
+    movss xmm2, dword ptr [ebp + {C2['ONE']}]
+    xorps xmm3, xmm3
+    comiss xmm3, dword ptr [eax]
+    jae sh_ret
+    jp sh_ret
+    movss xmm4, dword ptr [esi]
+    comiss xmm4, xmm3
+    jbe sh_ret
+    comiss xmm4, dword ptr [ebp + {C2['DTBIG']}]
+    ja sh_ret
+    fld dword ptr [esi]
+    fdiv dword ptr [eax]
+    fchs
+    fldl2e
+    fmulp st(1), st(0)
+    fld st(0)
+    frndint
+    fsub st(1), st(0)
+    fxch st(1)
+    f2xm1
+    fld1
+    faddp st(1), st(0)
+    fscale
+    fstp st(1)
+    fld1
+    fsubrp st(1), st(0)
+    fstp dword ptr [ebp + {D['FTMP']}]
+    movss xmm2, dword ptr [ebp + {D['FTMP']}]
+sh_ret:
+    ret
+
+; xmm0 = movement that came in, [eax] = what was left over, xmm2 = the share: xmm0 = the part for this update, the
+; rest stays at [eax]. A rest under 0.001 goes out with it, so the total handed out is exactly the total that
+; came in (and with share 1: xmm0 unchanged, to the bit). Keeps xmm1.
+sm_axis:
+    addss xmm0, dword ptr [eax]
+    movaps xmm3, xmm0
+    mulss xmm0, xmm2
+    subss xmm3, xmm0
+    movaps xmm4, xmm3
+    mulss xmm4, xmm4
+    comiss xmm4, dword ptr [ebp + {C2['TINY2']}]
+    jae sa_keep
+    addss xmm0, xmm3
+    xorps xmm3, xmm3
+sa_keep:
+    movss dword ptr [eax], xmm3
+    ret
+
+; xmm0 / xmm1 = the mouse movement read in this update (pixels), esi = camera manager: returns the part of it
+; the camera gets now (also left at SMXY), and sets SHARE_K, the keys' share of this update
+smooth_mouse:
+    lea eax, [ebp + {D['K_MOVETAU']}]
+    call share
+    movss dword ptr [ebp + {D['SHARE_K']}], xmm2
+    lea eax, [ebp + {D['K_LOOKTAU']}]
+    call share
+    lea eax, [ebp + {D['MREM']}]
+    call sm_axis
+    movss dword ptr [ebp + {D['SMXY']}], xmm0
+    movaps xmm0, xmm1
+    lea eax, [ebp + {D['MREM'] + 4}]
+    call sm_axis
+    movss dword ptr [ebp + {D['SMXY'] + 4}], xmm0
+    movaps xmm1, xmm0
+    movss xmm0, dword ptr [ebp + {D['SMXY']}]
+    ret
+
+; xmm0 = a key pair now (-1 / 0 / +1), eax = address of its smoothed value: xmm0 = the smoothed value, which goes
+; SHARE_K of the way to the keys' in every update and lands on it once within 0.001 (a released key ends on
+; exactly 0; with share 1 the value is the keys', to the bit)
+smooth_key:
+    movss xmm2, dword ptr [ebp + {D['SHARE_K']}]
+    movaps xmm5, xmm0
+    subss xmm0, dword ptr [eax]
+    mulss xmm0, xmm2
+    addss xmm0, dword ptr [eax]
+    movaps xmm3, xmm5
+    subss xmm3, xmm0
+    mulss xmm3, xmm3
+    comiss xmm3, dword ptr [ebp + {C2['TINY2']}]
+    jae sk_keep
+    movaps xmm0, xmm5
+sk_keep:
+    movss dword ptr [eax], xmm0
+    ret
+
+; nothing outstanding: no mouse movement left over, keys at rest (when no steerable camera is on, the game is
+; not in front, or the reset key was pressed). No xmm registers: the draw hook comes through here too
+smooth_reset:
+    push eax
+    xor eax, eax
+    mov dword ptr [ebp + {D['MREM']}], eax
+    mov dword ptr [ebp + {D['MREM'] + 4}], eax
+    mov dword ptr [ebp + {D['KAX']}], eax
+    mov dword ptr [ebp + {D['KAX'] + 4}], eax
+    mov dword ptr [ebp + {D['KAX'] + 8}], eax
+    mov dword ptr [ebp + {D['KAX'] + 12}], eax
+    pop eax
+    ret
+
+; a View Change was accepted (esi = camera manager, from the draw hook: no xmm registers). The same camera object
+; with other settings (a CamLab profile, the cockpit's other seat) moves at its next update: the blend starts with
+; the next frame. Another object takes over only after the game has updated it twice: the blend starts on the
+; frame the view is first drawn from it, and is forgotten if that has not happened after BWAIT_FRAMES frames
+blend_arm:
+    push eax
+    mov eax, dword ptr [esi + 0x230]
+    mov eax, dword ptr [esi + eax*4 + 0x234]
+    cmp eax, dword ptr [ebp + {D['BLASTCAM']}]
+    je ba_go
+    mov dword ptr [ebp + {D['BWAIT']}], eax
+    mov dword ptr [ebp + {D['BWAITN']}], {BWAIT_FRAMES}
+    pop eax
+    ret
+ba_go:
+    mov dword ptr [ebp + {D['BGO']}], 1
+    mov dword ptr [ebp + {D['BWAIT']}], 0
+    pop eax
+    ret
+
+; xmm2 = x + y + z of xmm2 (uses xmm3)
+hsum:
+    movaps xmm3, xmm2
+    shufps xmm3, xmm3, 0x55
+    addss xmm3, xmm2
+    movhlps xmm2, xmm2
+    addss xmm2, xmm3
+    ret
+
+; xmm0 = xmm0 + (xmm1 - xmm0) x xmm6: from xmm0 to xmm1, xmm6 of the way (exactly xmm0 at 0)
+lerp:
+    subps xmm1, xmm0
+    mulps xmm1, xmm6
+    addps xmm0, xmm1
+    ret
+
+; [ecx] = the direction [eax] of the world (3 floats) seen in the car's frame: its parts along the car's right,
+; up and forward axes, the rows of the car's matrix at edx (uses xmm0, xmm1; eax and ecx must differ)
+w2c:
+    push ebx
+    xor ebx, ebx
+w2c_l:
+    movss xmm0, dword ptr [eax]
+    mulss xmm0, dword ptr [edx + ebx*4]
+    movss xmm1, dword ptr [eax + 4]
+    mulss xmm1, dword ptr [edx + ebx*4 + 4]
+    addss xmm0, xmm1
+    movss xmm1, dword ptr [eax + 8]
+    mulss xmm1, dword ptr [edx + ebx*4 + 8]
+    addss xmm0, xmm1
+    movss dword ptr [ecx + ebx], xmm0
+    add ebx, 4
+    cmp ebx, 12
+    jb w2c_l
+    pop ebx
+    ret
+
+; [ecx] = the car-frame direction [eax] back in the world: that much of the car's right, up and forward axes
+c2w:
+    push ebx
+    xor ebx, ebx
+c2w_l:
+    movss xmm0, dword ptr [eax]
+    mulss xmm0, dword ptr [edx + ebx]
+    movss xmm1, dword ptr [eax + 4]
+    mulss xmm1, dword ptr [edx + ebx + 0x10]
+    addss xmm0, xmm1
+    movss xmm1, dword ptr [eax + 8]
+    mulss xmm1, dword ptr [edx + ebx + 0x20]
+    addss xmm0, xmm1
+    movss dword ptr [ecx + ebx], xmm0
+    add ebx, 4
+    cmp ebx, 12
+    jb c2w_l
+    pop ebx
+    ret
+
+; BDT = seconds since the previous frame by QueryPerformanceCounter, at most DTMAX; 0 on the first frame. The blend
+; runs on real time: it is stepped once per drawn frame, whatever the game's update rate. PQPC stays 0 (no
+; blend) when kernel32 does not give the two functions. Uses eax, ebx, ecx, edx, edi, xmm0
+frame_dt:
+    mov dword ptr [ebp + {D['BDT']}], 0
+    cmp dword ptr [ebp + {D['PQPC']}], 0
+    jne fd_have
+    lea eax, [ebp + {D['S_K32']}]
+    push eax
+    call dword ptr [0x6741f4]
+    test eax, eax
+    jz fd_ret
+    mov edi, eax
+    lea ecx, [ebp + {C2['S_QPF']}]
+    push ecx
+    push edi
+    call dword ptr [0x674204]
+    test eax, eax
+    jz fd_ret
+    lea ecx, [ebp + {D['QFREQ']}]
+    push ecx
+    call eax
+    lea ecx, [ebp + {C2['S_QPC']}]
+    push ecx
+    push edi
+    call dword ptr [0x674204]
+    test eax, eax
+    jz fd_ret
+    mov dword ptr [ebp + {D['PQPC']}], eax
+fd_have:
+    lea eax, [ebp + {D['QNOW']}]
+    push eax
+    call dword ptr [ebp + {D['PQPC']}]
+    mov eax, dword ptr [ebp + {D['QNOW']}]
+    mov edx, dword ptr [ebp + {D['QNOW'] + 4}]
+    mov ecx, dword ptr [ebp + {D['QPREV']}]
+    mov ebx, dword ptr [ebp + {D['QPREV'] + 4}]
+    mov dword ptr [ebp + {D['QPREV']}], eax
+    mov dword ptr [ebp + {D['QPREV'] + 4}], edx
+    mov edi, ecx
+    or edi, ebx
+    jz fd_ret
+    sub eax, ecx
+    sbb edx, ebx
+    jnz fd_long
+    test eax, eax
+    js fd_long
+    mov dword ptr [ebp + {D['QNOW']}], eax
+    fild dword ptr [ebp + {D['QNOW']}]
+    fild qword ptr [ebp + {D['QFREQ']}]
+    fdivp st(1), st(0)
+    fstp dword ptr [ebp + {D['BDT']}]
+    movss xmm0, dword ptr [ebp + {D['BDT']}]
+    minss xmm0, dword ptr [ebp + {C2['DTMAX']}]
+    movss dword ptr [ebp + {D['BDT']}], xmm0
+    ret
+fd_long:
+    mov eax, dword ptr [ebp + {C2['DTMAX']}]
+    mov dword ptr [ebp + {D['BDT']}], eax
+fd_ret:
+    ret
+
+; esi = a camera manager whose cameras the game has just interpolated for the frame to draw (or not: see below)
+blend_step:
+    mov eax, dword ptr [0x9eb4ec]
+    test eax, eax
+    jz bs_ret
+    add eax, 0x18
+    cmp eax, esi
+    jne bs_ret
+    ; 0x5F1690's own test: outside the states 0x27 / 0x1C it interpolated nothing, unless [0x9DB800] is set, and
+    ; the state would still hold what was written into it for the frame before
+    mov eax, dword ptr [0x7ece10]
+    cmp eax, dword ptr [0x7ece14]
+    jne bs_forced
+    cmp eax, 0x27
+    je bs_on
+    cmp eax, 0x1c
+    je bs_on
+bs_forced:
+    cmp dword ptr [0x9db800], 0
+    je bs_ret
+bs_on:
+    xorps xmm1, xmm1
+    comiss xmm1, dword ptr [ebp + {D['K_BLEND']}]
+    jae bs_none
+    jp bs_none
+    call frame_dt
+    cmp dword ptr [ebp + {D['PQPC']}], 0
+    je bs_none
+    mov edi, dword ptr [esi + 0x184]
+    test edi, edi
+    jz bs_none
+    mov ecx, edi
+    mov eax, dword ptr [edi]
+    call dword ptr [eax + 0x5c]
+    mov ebx, eax
+    mov edx, dword ptr [esi + 0x1c8]
+    test edx, edx
+    jz bs_none
+    add edx, 0x135c
+    movups xmm7, xmmword ptr [ebp + {C2['MASK']}]
+    ; -- does a blend start, go on, or end with a cut?
+    cmp edi, dword ptr [ebp + {D['BLASTCAM']}]
+    je bs_same
+    mov dword ptr [ebp + {D['BLASTCAM']}], edi
+    cmp edi, dword ptr [ebp + {D['BWAIT']}]
+    je bs_start
+    mov dword ptr [ebp + {D['BACTIVE']}], 0
+    jmp bs_live
+bs_same:
+    cmp dword ptr [ebp + {D['BGO']}], 0
+    jne bs_start
+    cmp dword ptr [ebp + {D['BWAIT']}], 0
+    je bs_run
+    dec dword ptr [ebp + {D['BWAITN']}]
+    jg bs_run
+    mov dword ptr [ebp + {D['BWAIT']}], 0
+bs_run:
+    cmp dword ptr [ebp + {D['BACTIVE']}], 0
+    je bs_live
+    movss xmm0, dword ptr [ebp + {D['BT']}]
+    addss xmm0, dword ptr [ebp + {D['BDT']}]
+    movss dword ptr [ebp + {D['BT']}], xmm0
+    jmp bs_live
+bs_start:
+    mov dword ptr [ebp + {D['BGO']}], 0
+    mov dword ptr [ebp + {D['BWAIT']}], 0
+    cmp dword ptr [ebp + {D['BHAVE']}], 0
+    je bs_live
+    ; the car's axes must be unit length for a view to keep its place in the car's frame: each row's
+    ; length squared within 0.75 .. 1.25, or the change stays a cut
+    xor ecx, ecx
+bs_unit:
+    movups xmm2, xmmword ptr [edx + ecx]
+    andps xmm2, xmm7
+    mulps xmm2, xmm2
+    call hsum
+    subss xmm2, dword ptr [ebp + {C2['ONE']}]
+    mulss xmm2, xmm2
+    comiss xmm2, dword ptr [ebp + {C2['UNIT2']}]
+    ja bs_live
+    jp bs_live
+    add ecx, 0x10
+    cmp ecx, 0x30
+    jb bs_unit
+    push esi
+    push edi
+    lea esi, [ebp + {D['BLAST']}]
+    lea edi, [ebp + {D['BFROM']}]
+    mov ecx, 16
+    rep movsd dword ptr es:[edi], dword ptr [esi]
+    pop edi
+    pop esi
+    mov dword ptr [ebp + {D['BT']}], 0
+    mov dword ptr [ebp + {D['BACTIVE']}], 1
+bs_live:
+    ; -- the camera's own view of this frame, in the world: eye, unit direction, look distance, up, field of view
+    movups xmm0, xmmword ptr [ebx + 0x30]
+    andps xmm0, xmm7
+    movups xmmword ptr [ebp + {D['BNOW']}], xmm0
+    movups xmm1, xmmword ptr [ebx + 0x6c]
+    andps xmm1, xmm7
+    subps xmm1, xmm0
+    movaps xmm2, xmm1
+    mulps xmm2, xmm2
+    call hsum
+    comiss xmm2, dword ptr [ebp + {C2['TINY2']}]
+    jbe bs_none
+    sqrtss xmm2, xmm2
+    movss dword ptr [ebp + {D['BNOW'] + 0x30}], xmm2
+    shufps xmm2, xmm2, 0
+    divps xmm1, xmm2
+    movups xmmword ptr [ebp + {D['BNOW'] + 0x10}], xmm1
+    movups xmm0, xmmword ptr [ebx + 0x120]
+    andps xmm0, xmm7
+    movups xmmword ptr [ebp + {D['BNOW'] + 0x20}], xmm0
+    mov eax, dword ptr [ebx + 0x178]
+    mov dword ptr [ebp + {D['BNOW'] + 0x34}], eax
+    cmp dword ptr [ebp + {D['BACTIVE']}], 0
+    je bs_keep
+    ; -- how far along: t = time / duration, eased in and out: s = t x t x (3 - 2t), in all four of xmm6
+    movss xmm6, dword ptr [ebp + {D['BT']}]
+    divss xmm6, dword ptr [ebp + {D['K_BLEND']}]
+    comiss xmm6, dword ptr [ebp + {C2['ONE']}]
+    jae bs_end
+    movaps xmm0, xmm6
+    addss xmm0, xmm0
+    movss xmm1, dword ptr [ebp + {C2['THREE']}]
+    subss xmm1, xmm0
+    mulss xmm1, xmm6
+    mulss xmm6, xmm1
+    shufps xmm6, xmm6, 0
+    ; -- the view the blend left from sits in the car's frame: where is it in the world now, and s of the way on
+    lea eax, [ebp + {D['BFROM']}]
+    lea ecx, [ebp + {D['BTMP']}]
+    call c2w
+    movups xmm0, xmmword ptr [ebp + {D['BTMP']}]
+    andps xmm0, xmm7
+    movups xmm1, xmmword ptr [edx + 0x30]
+    andps xmm1, xmm7
+    addps xmm0, xmm1
+    movups xmm1, xmmword ptr [ebp + {D['BNOW']}]
+    call lerp
+    movups xmmword ptr [ebp + {D['BNOW']}], xmm0
+    lea eax, [ebp + {D['BFROM'] + 0x10}]
+    call c2w
+    movups xmm0, xmmword ptr [ebp + {D['BTMP']}]
+    andps xmm0, xmm7
+    movups xmm1, xmmword ptr [ebp + {D['BNOW'] + 0x10}]
+    call lerp
+    movaps xmm2, xmm0
+    mulps xmm2, xmm2
+    call hsum
+    comiss xmm2, dword ptr [ebp + {C2['TINY2']}]
+    jbe bs_dir
+    sqrtss xmm2, xmm2
+    shufps xmm2, xmm2, 0
+    divps xmm0, xmm2
+    movups xmmword ptr [ebp + {D['BNOW'] + 0x10}], xmm0
+bs_dir:
+    lea eax, [ebp + {D['BFROM'] + 0x20}]
+    call c2w
+    movups xmm0, xmmword ptr [ebp + {D['BTMP']}]
+    andps xmm0, xmm7
+    movups xmm1, xmmword ptr [ebp + {D['BNOW'] + 0x20}]
+    call lerp
+    movups xmmword ptr [ebp + {D['BNOW'] + 0x20}], xmm0
+    movups xmm0, xmmword ptr [ebp + {D['BFROM'] + 0x30}]
+    movups xmm1, xmmword ptr [ebp + {D['BNOW'] + 0x30}]
+    call lerp
+    movlps qword ptr [ebp + {D['BNOW'] + 0x30}], xmm0
+    ; -- look-at = eye + direction x look distance; all of it numbers?
+    movss xmm0, dword ptr [ebp + {D['BNOW'] + 0x30}]
+    shufps xmm0, xmm0, 0
+    movups xmm1, xmmword ptr [ebp + {D['BNOW'] + 0x10}]
+    mulps xmm1, xmm0
+    movups xmm0, xmmword ptr [ebp + {D['BNOW']}]
+    addps xmm1, xmm0
+    movups xmmword ptr [ebp + {D['BAT']}], xmm1
+    movups xmm2, xmmword ptr [ebp + {D['BNOW'] + 0x20}]
+    addps xmm2, xmm1
+    addps xmm2, xmm0
+    call hsum
+    addss xmm2, dword ptr [ebp + {D['BNOW'] + 0x34}]
+    xorps xmm3, xmm3
+    mulss xmm2, xmm3
+    ucomiss xmm2, xmm3
+    jp bs_none
+    ; -- into the camera's interpolated state, which is what the view is built from (3 floats each, no more)
+    movlps qword ptr [ebx + 0x30], xmm0
+    movhlps xmm0, xmm0
+    movss dword ptr [ebx + 0x38], xmm0
+    movlps qword ptr [ebx + 0x6c], xmm1
+    movhlps xmm1, xmm1
+    movss dword ptr [ebx + 0x74], xmm1
+    movups xmm0, xmmword ptr [ebp + {D['BNOW'] + 0x20}]
+    movlps qword ptr [ebx + 0x120], xmm0
+    movhlps xmm0, xmm0
+    movss dword ptr [ebx + 0x128], xmm0
+    mov eax, dword ptr [ebp + {D['BNOW'] + 0x34}]
+    mov dword ptr [ebx + 0x178], eax
+    jmp bs_keep
+bs_end:
+    mov dword ptr [ebp + {D['BACTIVE']}], 0
+bs_keep:
+    ; -- this frame's view (the camera's own, or the blended one) in the car's frame: where the next blend leaves from
+    movups xmm0, xmmword ptr [ebp + {D['BNOW']}]
+    movups xmm1, xmmword ptr [edx + 0x30]
+    andps xmm1, xmm7
+    subps xmm0, xmm1
+    movups xmmword ptr [ebp + {D['BTMP']}], xmm0
+    lea eax, [ebp + {D['BTMP']}]
+    lea ecx, [ebp + {D['BLAST']}]
+    call w2c
+    lea eax, [ebp + {D['BNOW'] + 0x10}]
+    lea ecx, [ebp + {D['BLAST'] + 0x10}]
+    call w2c
+    lea eax, [ebp + {D['BNOW'] + 0x20}]
+    lea ecx, [ebp + {D['BLAST'] + 0x20}]
+    call w2c
+    mov eax, dword ptr [ebp + {D['BNOW'] + 0x30}]
+    mov dword ptr [ebp + {D['BLAST'] + 0x30}], eax
+    mov eax, dword ptr [ebp + {D['BNOW'] + 0x34}]
+    mov dword ptr [ebp + {D['BLAST'] + 0x34}], eax
+    mov dword ptr [ebp + {D['BHAVE']}], 1
+    ret
+bs_none:
+    ; no blend (off, no clock, no camera, no car, a view that is no view): nothing kept, nothing pending
+    xor eax, eax
+    mov dword ptr [ebp + {D['BHAVE']}], eax
+    mov dword ptr [ebp + {D['BACTIVE']}], eax
+    mov dword ptr [ebp + {D['BGO']}], eax
+    mov dword ptr [ebp + {D['BWAIT']}], eax
+bs_ret:
+    ret
+
+; replaces "call 0x5F1690" at 0x5C948C (esi = camera manager, one float on the stack, the callee removes it):
+; the game's routine first, untouched, then the blend on what it left
+blend_wrap:
+    push dword ptr [esp + 4]
+    mov eax, 0x5f1690
+    call eax
+    pushfd
+    pushad
+    call bw_base
+bw_base:
+    pop ebp
+    sub ebp, BWBASE
+    call blend_step
+    popad
+    popfd
+    ret 4
+"""
+asm2 = strip(asm2)
+CODE2_CODE = CODE2 + len(consts2)
+def entry2(label): return CODE2_CODE + len(bytes(ks.asm(asm2.split(label + ':')[0], addr=CODE2_CODE)[0]))
+SM_MOUSE, SM_KEY, SM_RESET, B_ARM, blend_off = (entry2(l) for l in ('smooth_mouse', 'smooth_key', 'smooth_reset', 'blend_arm', 'blend_wrap'))
+code2 = consts2 + bytes(ks.asm(asm2.replace('BWBASE', str(blend_off + 18)), addr=CODE2_CODE)[0])   # 18 = up to and with "call bw_base"
+assert code2[blend_off - CODE2:blend_off - CODE2 + 19] == bytes.fromhex('ff742404' 'b890165f00' 'ffd0' '9c60' 'e800000000' '5d'), code2[blend_off - CODE2:blend_off - CODE2 + 19].hex()
+assert CODE2 + len(code2) <= CODE2_END <= SIZE
+assert max(D[k] for k in ('BTMP',)) + 0x10 <= 0x2400     # the switcher's strings start there
 
 asm = f"""
 draw_hook:
@@ -475,6 +1066,7 @@ setname:
     jnz nocam
     mov eax, dword ptr [ebp + {D['SHOWFRAMES']}]
     mov dword ptr [ebp + {D['FRAMES']}], eax
+    call {B_ARM}
 nocam:
     call controls_idle
 
@@ -937,14 +1529,16 @@ c_center:
     mov ecx, edi
     mov eax, dword ptr [edi]
     call dword ptr [eax + 4]
+    call {SM_RESET}
 c_noreset:
     cvtsi2ss xmm0, dword ptr [ebp + {D['DX']}]
     cvtsi2ss xmm1, dword ptr [ebp + {D['DY']}]
+    call {SM_MOUSE}
     mulss xmm0, dword ptr [ebp + {D['K_SENS']}]
     mulss xmm1, dword ptr [ebp + {D['K_SENS']}]
     cmp ebx, 1
     jne c_free
-    cvtsi2ss xmm1, dword ptr [ebp + {D['DY']}]
+    movss xmm1, dword ptr [ebp + {D['SMXY'] + 4}]
     mulss xmm1, dword ptr [ebp + {D['K_TILTS']}]
     movss xmm2, dword ptr [esi]
     xorps xmm3, xmm3
@@ -965,6 +1559,8 @@ c_rot_ok:
     push 0x53
     push 0x57
     call keypair
+    lea eax, [ebp + {D['KAX'] + 12}]
+    call {SM_KEY}
     movss dword ptr [esi + 0x1ac], xmm0
     xorps xmm0, xmm0
     movss dword ptr [esi + 0x1bc], xmm0
@@ -1027,14 +1623,20 @@ c_pitch_ok:
     push 0x57
     push 0x53
     call keypair
+    lea eax, [ebp + {D['KAX']}]
+    call {SM_KEY}
     movss dword ptr [esi + 0x1b0], xmm0
     push 0x44
     push 0x41
     call keypair
+    lea eax, [ebp + {D['KAX'] + 4}]
+    call {SM_KEY}
     movss dword ptr [esi + 0x1b4], xmm0
     push 0x20
     push 0x11
     call keypair
+    lea eax, [ebp + {D['KAX'] + 8}]
+    call {SM_KEY}
     movss dword ptr [esi + 0x1b8], xmm0
     ret
 c_off:
@@ -1042,6 +1644,7 @@ c_off:
     cmp dword ptr [ebp + {D['ACTIVE']}], 0
     je c_ret
     mov dword ptr [ebp + {D['ACTIVE']}], 0
+    call {SM_RESET}
     mov esi, dword ptr [ebp + {D['MGR']}]
     test esi, esi
     jz c_ret
@@ -1135,8 +1738,7 @@ l_none2:
     ret
 """
 
-ks = Ks(KS_ARCH_X86, KS_MODE_32)
-asm = "\n".join(l.split(';')[0].rstrip() for l in asm.splitlines() if l.split(';')[0].strip())
+asm = strip(asm)
 def entry(label):
     t = asm.split(label + ':')[0]
     for k in ('ROTBASE', 'FREEBASE', 'LOSTBASE'): t = t.replace(k, '65536')
@@ -1149,6 +1751,8 @@ assert code[:2] == b'\x9c\x60', code[:4].hex()
 assert code[lost_off - CODE:lost_off - CODE + 2] == b'\x9c\x60'
 assert len(code) <= 0x1000
 out = dict(code=code.hex(), codeOff=CODE, drawOff=CODE, lostOff=lost_off, rotOff=rot_off, freeOff=free_off, size=SIZE, data=D,
-           slotParams=SLOT_PARAMS, maxSlots=MAX_SLOTS, maxGameCams=MAX_GAMECAMS)
+           slotParams=SLOT_PARAMS, maxSlots=MAX_SLOTS, maxGameCams=MAX_GAMECAMS,
+           code2=code2.hex(), code2Off=CODE2, blendOff=blend_off, consts2=C2)
 json.dump(out, open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cycle.json'), 'w'), indent=1)
-print('code bytes', len(code), 'lost', hex(lost_off), 'rot', hex(rot_off), 'free', hex(free_off))
+print('code bytes', len(code), 'lost', hex(lost_off), 'rot', hex(rot_off), 'free', hex(free_off),
+      ' second area: bytes', len(code2), 'of', CODE2_END - CODE2, 'blend', hex(blend_off))

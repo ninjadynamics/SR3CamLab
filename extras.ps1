@@ -22,12 +22,17 @@
 
   Race sounds of the alternative tracks (ambience, its zones, music): see Update-TrackSounds.
 
-  Co-driver: another pace-note voice from the clips in SR3CamLab\codriver\ (SR3Ultimate.bat -CoDriver
-  on / off); see Set-CoDriver.
+  Co-driver: another pace-note voice, SEGA Rally 2's or the 1995 SEGA Rally Championship's, from the clips
+  in SR3CamLab\codriver\ (Options tab, or SR3Ultimate.bat -CoDriver sr3 / sr2 / src); see Set-CoDriverSource.
+
+  Music: the 1995 SEGA Rally Championship's tunes for the 1995 courses in the Classic mode, from SR3CamLab\music\
+  (Options tab, or SR3Ultimate.bat -Music sr3 / src). SEGA Rally 3's own stages and menus always keep their music;
+  see Set-MusicSource.
 
   Nothing original is ever deleted; state.json in tracks\_SR3Extras remembers what is where.
 #>
-param([switch]$NoWindow, [ValidateSet('', 'on', 'off')][string]$AltArt = '', [ValidateSet('', 'on', 'off')][string]$CoDriver = '')
+param([switch]$NoWindow, [ValidateSet('', 'on', 'off')][string]$AltArt = '',
+      [ValidateSet('', 'on', 'off', 'sr3', 'sr2', 'src')][string]$CoDriver = '', [ValidateSet('', 'off', 'sr3', 'src')][string]$Music = '')
 
 . (Join-Path $PSScriptRoot 'setup.ps1')
 
@@ -41,13 +46,15 @@ function Get-TracksDir([string]$gameExe) {
 function Get-StoreDir([string]$tracks) { return (Join-Path $tracks '_SR3Extras') }
 
 function Read-ExtrasState([string]$tracks) {
-    $st = @{ revo = ''; slots = @{}; alts = @{}; art = $false; announcer = @{} }
+    $st = @{ revo = ''; slots = @{}; alts = @{}; art = $false; announcer = @{}; codriver = ''; music = '' }
     $f = Join-Path (Get-StoreDir $tracks) 'state.json'
     if (Test-Path -LiteralPath $f) {
         try {
             $j = [IO.File]::ReadAllText($f) | ConvertFrom-Json
             if ($j.revo) { $st.revo = "$($j.revo)" }
             if ($j.art) { $st.art = $true }
+            if ($j.codriver) { $st.codriver = "$($j.codriver)" }
+            if ($j.music) { $st.music = "$($j.music)" }
             if ($j.announcer) { foreach ($p in $j.announcer.PSObject.Properties) { $st.announcer[$p.Name] = "$($p.Value)" } }
             if ($j.alts) {
                 foreach ($p in $j.alts.PSObject.Properties) {
@@ -59,6 +66,11 @@ function Read-ExtrasState([string]$tracks) {
             if ($j.slots) { foreach ($p in $j.slots.PSObject.Properties) { $st.slots[$p.Name] = @{ source = "$($p.Value.source)"; enabled = [bool]$p.Value.enabled; track = "$($p.Value.track)"; origin = "$($p.Value.origin)" } } }
         } catch { }
     }
+    # Whose co-driver is in the game: the kept originals decide (no folder = the game's own). A co-driver put in
+    # before the choice was written down is SEGA Rally 2's, the only one there was. Music: what music.json says was
+    # appended to the stream file, when the file really ends with it (Get-MusicInstall).
+    if (-not (Test-Path -LiteralPath (Join-Path (Get-StoreDir $tracks) 'original\codriver'))) { $st.codriver = '' } elseif (-not $st.codriver) { $st.codriver = 'sr2' }
+    $m = Get-MusicInstall (Split-Path -Parent (Split-Path -Parent $tracks)); $st.music = $(if ($m) { $m.source } else { '' })
     return $st
 }
 function Write-ExtrasState([string]$tracks, $st) {
@@ -479,6 +491,30 @@ function Get-Alternatives($st, [string]$slot) {
     if (-not $st.alts.ContainsKey($slot)) { $st.alts[$slot] = New-Object System.Collections.ArrayList }
     return ,$st.alts[$slot]
 }
+# Which 1995 course an alternative of the Classic slot is: 'desert', 'forest', 'mountain', 'lakeside', or '' for anything
+# else. The importer leaves texmap.json in the folder of every course it builds; its first lines name the game and the
+# course the textures came from (...\courses\src\course1_mountain\...). Without that file the title decides.
+function Get-ClassicCourse([string]$tracks, [string]$dir, [string]$title) {
+    $name = $title; $f = Join-Path (Get-AltDir $tracks $dir 'Desert4') 'texmap.json'
+    if (Test-Path -LiteralPath $f) {
+        $b = New-Object byte[] 600; $fs = [IO.File]::OpenRead($f)
+        try { $n = $fs.Read($b, 0, 600) } finally { $fs.Dispose() }
+        $head = [Text.Encoding]::ASCII.GetString($b, 0, $n)
+        if ($head -match 'courses[\\/]+src[\\/]+course\d+_([a-z]+)') { $name = $Matches[1] }
+        elseif ($head -match 'courses[\\/]+[a-z0-9]+[\\/]+course') { return '' }               # a course of another game
+    } elseif ($title -match 'SR2|Rally 2') { return '' }
+    foreach ($c in $script:TuneCourses) { if ($name -match $c.Match) { return $c.Key } }
+    return ''
+}
+# Where the tune of a Classic alternative is, for the switcher (patch.ps1, Set-CourseTune): only a 1995 course whose own
+# tune was appended to the stream file gets one ($m = Get-MusicInstall). Every other track plays its slot's music.
+function Get-ClassicTune([string]$tracks, $m, [string]$dir, [string]$title) {
+    if (-not $m) { return $null }
+    $course = Get-ClassicCourse $tracks $dir $title
+    if (-not $course) { return $null }
+    foreach ($t in @($m.tunes)) { if ("$($t.course)" -eq $course) { return @{ stream = [int]$m.stream; offset = [long]"$($t.offset)"; bytes = [long]"$($t.bytes)"; loopstart = [long]"$($t.loopstart)" } } }
+    return $null
+}
 function Write-SwitchFile([string]$tracks, $st) {
     $file = Join-Path (Get-StoreDir $tracks) 'switch.json'
     $slots = @{}; $sounds = Read-TrackSounds $tracks
@@ -494,7 +530,11 @@ function Write-SwitchFile([string]$tracks, $st) {
     if (Test-Path -LiteralPath $cf) {
         try {
             $c = @([IO.File]::ReadAllText($cf) | ConvertFrom-Json | ForEach-Object { $_ } | Where-Object { "$($_.dir)" -match '^[1-9]$' -and (Test-Path -LiteralPath (Get-AltDir $tracks "$($_.dir)" 'Desert4')) })
-            if ($c.Count) { $slots['Desert4'] = @{ title = "Desert '95"; speech = ''; tracks = @($c | ForEach-Object { @{ title = "$($_.title)"; dir = "$($_.dir)"; video = ''; speech = ''; ambience = ''; music = ''; events = '' } }) } }
+            $m = Get-MusicInstall (Get-GameDir $tracks)
+            if ($c.Count) { $slots['Desert4'] = @{ title = "Desert '95"; speech = ''; tracks = @($c | ForEach-Object {
+                $e = @{ title = "$($_.title)"; dir = "$($_.dir)"; video = ''; speech = ''; ambience = ''; music = ''; events = '' }
+                $t = Get-ClassicTune $tracks $m "$($_.dir)" "$($_.title)"; if ($t) { $e.tune = $t }
+                $e }) } }
         } catch { }
     }
     if ($slots.Count -eq 0) { if (Test-Path -LiteralPath $file) { [IO.File]::Delete($file) }; return }
@@ -628,8 +668,10 @@ function Remove-Alternative([string]$tracks, $st, [string]$slot, [string]$k) {
 $script:AnnouncerSpares = @{ arctic = @{ Event = 'SP_SEGARALLYREVO'; Stream = 'segarallyrevo'; File = 'Arctic.wav' }
                              safari = @{ Event = 'SP_SEGARALLYREVOLUTION'; Stream = 'segarallyrevolution'; File = 'Safari.wav' } }
 function Get-AnnouncerDir { return (Join-Path $PSScriptRoot 'announcer') }
-# name -> @{ Offset; Size } of every stream's samples in the data file
-function Get-AnnouncerStreams([string]$game) {
+# The streams as the header file lists them: @{ Streams = name -> @{ Index; Offset; Size; Channels; Rate } (where each
+# one's samples are in the data file); End = where SEGA's last stream ends }. One name is used twice, for a speech clip
+# and for a tune ("gameoveryeah"): $channels (1 or 2) picks the streams of that kind only.
+function Read-StreamLayout([string]$game, [int]$channels = 0) {
     $hf = Join-Path $game 'Audio\EnglishStreamHeader.stm'
     if (-not (Test-Path -LiteralPath $hf)) { return $null }
     $h = [IO.File]::ReadAllBytes($hf)
@@ -643,17 +685,26 @@ function Get-AnnouncerStreams([string]$game) {
         $name = ([Text.Encoding]::ASCII.GetString($h, $r, $n - $r) -split '\\')[-1].ToLower()
         $idx = [BitConverter]::ToInt32($h, $r + 192); $info = [BitConverter]::ToInt32($h, $r + 196)
         if ($info -lt 0 -or $info + 224 -gt $h.Length) { return $null }
-        $byIndex[$idx] = @{ Name = $name; Channels = [BitConverter]::ToInt32($h, $info + 192); Rate = [BitConverter]::ToInt32($h, $info + 196); Size = [BitConverter]::ToInt32($h, $info + 200) }
+        $byIndex[$idx] = @{ Name = $name; Index = $idx; Channels = [BitConverter]::ToInt32($h, $info + 192); Rate = [BitConverter]::ToInt32($h, $info + 196); Size = [BitConverter]::ToInt32($h, $info + 200) }
     }
     $map = @{}; $pos = 0x100
     for ($i = 0; $i -lt $count; $i++) {
         if (-not $byIndex.ContainsKey($i)) { return $null }
         $s = $byIndex[$i]; $s.Offset = $pos + 192; $pos += 192 + $s.Size
-        $map[$s.Name] = $s
+        if (-not $channels -or $s.Channels -eq $channels) { $map[$s.Name] = $s }
     }
+    return @{ Streams = $map; End = [long]$pos }
+}
+# name -> @{ Index; Offset; Size; Channels; Rate } of every stream's samples in the data file, or $null when the data file is
+# not the one this tool knows: it must end with SEGA's last stream, or with the tunes this tool appended after it
+# (Set-MusicSource; music.json says how many bytes).
+function Get-AnnouncerStreams([string]$game, [int]$channels = 0) {
+    $l = Read-StreamLayout $game $channels
     $df = Join-Path $game 'Audio\EnglishStreamData.stm'
-    if (-not (Test-Path -LiteralPath $df) -or (Get-Item -LiteralPath $df).Length -ne $pos) { return $null }     # not the layout this tool knows
-    return $map
+    if (-not $l -or -not (Test-Path -LiteralPath $df)) { return $null }
+    $len = (Get-Item -LiteralPath $df).Length
+    if ($len -ne $l.End) { $m = Read-MusicFile $game; if (-not $m -or $m.dataLength -ne $l.End -or $len -ne $l.End + $m.appended) { return $null } }
+    return $l.Streams
 }
 # Puts the recordings that are needed (an alternative track of that environment is on a card) into the
 # game, takes the others out, and remembers in $st.announcer which clip says which environment.
@@ -848,71 +899,203 @@ function Update-TrackSounds([string]$tracks, $st) {
 }
 
 # ---- another co-driver ----
-# Replaces the game's pace-note voice with the clips in SR3CamLab\codriver\ (one WAV per clip, named
-# after the game's own clip: "easyright.wav"...; 16-bit mono 32000 Hz, no longer than the clip it
-# replaces). Meant for SEGA Rally 2's co-driver, taken from your own copy of that game. Clips without
-# a file keep the game's voice. Only samples are overwritten, in place (the sound file keeps its
-# size); what was there is kept in tracks\_SR3Extras\original\codriver\ and put back by "off".
-function Get-CoDriverDir { return (Join-Path $PSScriptRoot 'codriver') }
-# the samples of a WAV file, or $null when it is not 16-bit mono at that rate
-function Read-WavSamples([string]$file, [int]$rate = 32000) {
+# The game's speech is made of streams of one big file (Audio\EnglishStreamData.stm, layout above at the announcer).
+# A stream can be given other samples in place: the file keeps its size and the stream its length, so a shorter
+# clip is followed by silence and a longer one is cut. What the game had is kept in
+# tracks\_SR3Extras\original\codriver\<stream>.bin and put back before anything else goes in, so one voice never
+# sits on top of another and the game's own is always one step away.
+#   One WAV per clip, named after the game's clip ("easyright.wav"...), 16-bit mono 32000 Hz. Clips without a file
+#   keep the game's voice.
+#     sr2  SEGA Rally 2's: SR3CamLab\codriver\ (or codriver\sr2\ when that folder holds clips)
+#     src  SEGA Rally Championship's (1995): SR3CamLab\codriver\src\, made from your own ROM set by
+#          scripts\rom_tools\src_audio.py codriver
+# state.json remembers the choice ("codriver"); the kept originals decide what is really in the game.
+$script:VoiceSources = [ordered]@{
+    ''    = @{ Title = "SEGA Rally 3 (the game's own)" }
+    'sr2' = @{ Title = 'SEGA Rally 2'; Hint = 'Its clips go in the codriver folder (one WAV per clip).' }
+    'src' = @{ Title = 'SEGA Rally Championship (1995)'; Hint = 'Make its clips from your ROM set: scripts\rom_tools\src_audio.py codriver' } }
+function Test-HasWavs([string]$dir) { return [bool]((Test-Path -LiteralPath $dir -PathType Container) -and @(Get-ChildItem -LiteralPath $dir -Filter '*.wav' -File).Count) }
+function Get-CoDriverDir([string]$source = 'sr2') {
+    $root = Join-Path $PSScriptRoot 'codriver'
+    if ($source -eq 'sr2' -and -not (Test-HasWavs (Join-Path $root 'sr2'))) { return $root }      # where SEGA Rally 2's clips were put at first
+    return (Join-Path $root $source)
+}
+# the samples of a WAV file, or $null when it is not 16-bit PCM with that many channels at that rate
+function Read-WavSamples([string]$file, [int]$rate = 32000, [int]$channels = 1) {
     $b = [IO.File]::ReadAllBytes($file)
     if ($b.Length -lt 44 -or [Text.Encoding]::ASCII.GetString($b, 0, 4) -ne 'RIFF' -or [Text.Encoding]::ASCII.GetString($b, 8, 4) -ne 'WAVE') { return $null }
     $p = 12; $ok = $false
     while ($p + 8 -le $b.Length) {
         $id = [Text.Encoding]::ASCII.GetString($b, $p, 4); $n = [BitConverter]::ToInt32($b, $p + 4)
         if ($n -lt 0 -or $p + 8 + $n -gt $b.Length) { $n = $b.Length - $p - 8 }
-        if ($id -eq 'fmt ') { $ok = [BitConverter]::ToInt16($b, $p + 8) -eq 1 -and [BitConverter]::ToInt16($b, $p + 10) -eq 1 -and [BitConverter]::ToInt32($b, $p + 12) -eq $rate -and [BitConverter]::ToInt16($b, $p + 22) -eq 16 }
+        if ($id -eq 'fmt ') { $ok = [BitConverter]::ToInt16($b, $p + 8) -eq 1 -and [BitConverter]::ToInt16($b, $p + 10) -eq $channels -and [BitConverter]::ToInt32($b, $p + 12) -eq $rate -and [BitConverter]::ToInt16($b, $p + 22) -eq 16 }
         if ($id -eq 'data') { if (-not $ok) { return $null }; $d = New-Object byte[] $n; [Array]::Copy($b, $p + 8, $d, 0, $n); return ,$d }
         $p += 8 + $n + ($n % 2)
     }
     return $null
 }
-# Returns notes for the user.
-function Set-CoDriver([string]$tracks, [bool]$on) {
+# Puts the game's own samples back into every stream whose original is kept in $keep, then (when $dir is given)
+# the WAV files of $dir over the streams of the same names. $channels: the streams of that kind only (1 = speech).
+# Returns @{ Done; Back; Skipped (file names); Cut (file names) }.
+function Set-StreamClips([string]$tracks, [string]$keep, [string]$dir, [int]$channels) {
     Assert-GameClosed
-    $game = Get-GameDir $tracks; $store = Join-Path (Get-StoreDir $tracks) 'original\codriver'
-    $streams = Get-AnnouncerStreams $game
+    $game = Get-GameDir $tracks
+    $streams = Get-AnnouncerStreams $game $channels
     if (-not $streams) { throw "The game's sound files aren't laid out the way SR3Ultimate expects." }
     $df = Join-Path $game 'Audio\EnglishStreamData.stm'
     $spare = @{}; foreach ($s in $script:AnnouncerSpares.Values) { $spare[$s.Stream] = $true }
-    $done = 0; $back = 0; $skipped = @()
+    $r = @{ Done = 0; Back = 0; Skipped = @(); Cut = @() }
     $fs = [IO.File]::Open($df, 'Open', 'ReadWrite', 'Read')
     try {
-        # first everything back to the game's own voice
-        if (Test-Path -LiteralPath $store) {
-            foreach ($f in Get-ChildItem -LiteralPath $store -Filter '*.bin') {
+        # first everything back to the game's own
+        if (Test-Path -LiteralPath $keep) {
+            foreach ($f in Get-ChildItem -LiteralPath $keep -Filter '*.bin' -File) {
                 $name = [IO.Path]::GetFileNameWithoutExtension($f.Name)
+                if (-not $streams.ContainsKey($name) -or $streams[$name].Size -ne $f.Length) { continue }
                 $orig = [IO.File]::ReadAllBytes($f.FullName)
-                if ($streams.ContainsKey($name) -and $streams[$name].Size -eq $orig.Length) { $fs.Position = $streams[$name].Offset; $fs.Write($orig, 0, $orig.Length); $back++; [IO.File]::Delete($f.FullName) }
+                $fs.Position = $streams[$name].Offset; $fs.Write($orig, 0, $orig.Length); $fs.Flush()
+                [IO.File]::Delete($f.FullName); $r.Back++
             }
         }
-        if ($on) {
-            $dir = Get-CoDriverDir
-            if (-not (Test-Path -LiteralPath $dir)) { throw "There is no co-driver to put in: $dir is missing." }
-            [void][IO.Directory]::CreateDirectory($store)
-            foreach ($f in Get-ChildItem -LiteralPath $dir -Filter '*.wav') {
+        if ($dir) {
+            [void][IO.Directory]::CreateDirectory($keep)
+            foreach ($f in Get-ChildItem -LiteralPath $dir -Filter '*.wav' -File) {
                 $name = [IO.Path]::GetFileNameWithoutExtension($f.Name).ToLower()
-                if ($spare[$name] -or -not $streams.ContainsKey($name)) { $skipped += $f.Name; continue }
-                $s = $streams[$name]
-                if ($s.Channels -ne 1 -or $s.Rate -ne 32000) { $skipped += $f.Name; continue }
-                $pcm = Read-WavSamples $f.FullName
-                if ($null -eq $pcm) { $skipped += $f.Name; continue }
+                if ($spare[$name] -or -not $streams.ContainsKey($name)) { $r.Skipped += $f.Name; continue }
+                $s = $streams[$name]; $bak = Join-Path $keep "$name.bin"
+                if ($s.Channels -ne $channels -or $s.Rate -ne 32000) { $r.Skipped += $f.Name; continue }
+                if (Test-Path -LiteralPath $bak) { $r.Skipped += $f.Name; continue }        # an original that could not be put back: never overwritten
+                $pcm = Read-WavSamples $f.FullName 32000 $channels
+                if ($null -eq $pcm) { $r.Skipped += $f.Name; continue }
                 $head = New-Object byte[] 192; $fs.Position = $s.Offset - 192; [void]$fs.Read($head, 0, 192)
-                if ([Text.Encoding]::ASCII.GetString($head).ToLower().IndexOf('\' + $name + '.wav') -lt 0) { $skipped += $f.Name; continue }
+                if ([Text.Encoding]::ASCII.GetString($head).ToLower().IndexOf('\' + $name + '.wav') -lt 0) { $r.Skipped += $f.Name; continue }
                 $orig = New-Object byte[] $s.Size; $fs.Position = $s.Offset; [void]$fs.Read($orig, 0, $s.Size)
-                [IO.File]::WriteAllBytes((Join-Path $store "$name.bin"), $orig)
-                $buf = New-Object byte[] $s.Size
-                [Array]::Copy($pcm, 0, $buf, 0, [Math]::Min($pcm.Length - ($pcm.Length % 2), $s.Size - ($s.Size % 2)))
-                $fs.Position = $s.Offset; $fs.Write($buf, 0, $buf.Length); $done++
+                [IO.File]::WriteAllBytes($bak, $orig)
+                $frame = 2 * $channels; $buf = New-Object byte[] $s.Size
+                [Array]::Copy($pcm, 0, $buf, 0, [Math]::Min($pcm.Length - ($pcm.Length % $frame), $s.Size - ($s.Size % $frame)))
+                if ($pcm.Length -gt $s.Size) { $r.Cut += $f.Name }
+                $fs.Position = $s.Offset; $fs.Write($buf, 0, $buf.Length); $r.Done++
             }
         }
         $fs.Flush()
     } finally { $fs.Dispose() }
-    if ((Test-Path -LiteralPath $store) -and @(Get-ChildItem -LiteralPath $store).Count -eq 0) { [IO.Directory]::Delete($store) }
+    if ((Test-Path -LiteralPath $keep) -and @(Get-ChildItem -LiteralPath $keep).Count -eq 0) { [IO.Directory]::Delete($keep) }
+    return $r
+}
+function Get-ClipNotes($r, [string]$format) {
     $notes = @()
-    if ($on) { $notes += "$done of the co-driver's clips replaced." } else { $notes += "$back clips are the game's own again." }
-    if ($skipped.Count) { $notes += "$($skipped.Count) files were not used (no clip of that name, or not 16-bit mono 32000 Hz): $((@($skipped) | Select-Object -First 5) -join ', ')$(if ($skipped.Count -gt 5) { '...' })" }
+    if ($r.Skipped.Count) { $notes += "Not used (no clip of that name, or not $format): $((@($r.Skipped) | Select-Object -First 5) -join ', ')$(if ($r.Skipped.Count -gt 5) { " and $($r.Skipped.Count - 5) more" })." }
+    if ($r.Cut.Count) { $notes += "Longer than what it replaces, so cut at the end: $((@($r.Cut) | Select-Object -First 5) -join ', ')$(if ($r.Cut.Count -gt 5) { " and $($r.Cut.Count - 5) more" })." }
+    return $notes
+}
+# The pace-note voice: '' = the game's own, 'sr2', 'src' ($script:VoiceSources). Returns notes for the user.
+function Set-CoDriverSource([string]$tracks, [string]$source) {
+    if (-not $script:VoiceSources.Contains($source)) { throw "There is no co-driver called '$source'." }
+    $dir = ''
+    if ($source) {
+        $dir = Get-CoDriverDir $source
+        if (-not (Test-HasWavs $dir)) { throw "There are no clips of $($script:VoiceSources[$source].Title) to put in: $dir holds none. $($script:VoiceSources[$source].Hint)" }
+    }
+    $r = Set-StreamClips $tracks (Join-Path (Get-StoreDir $tracks) 'original\codriver') $dir 1
+    $st = Read-ExtrasState $tracks; $st.codriver = $(if ($r.Done) { $source } else { '' }); Write-ExtrasState $tracks $st
+    $notes = @()
+    if ($source) { $notes += "Co-driver: $($script:VoiceSources[$source].Title), $($r.Done) clips; every other call keeps the game's voice." }
+    else { $notes += "Co-driver: the game's own again ($($r.Back) clips put back)." }
+    return ,(@($notes) + @(Get-ClipNotes $r '16-bit mono 32000 Hz'))
+}
+function Set-CoDriver([string]$tracks, [bool]$on) { return ,(Set-CoDriverSource $tracks $(if ($on) { 'sr2' } else { '' })) }
+
+# ---- the music of the imported courses ----
+# Another game's tunes are never put in the place of SEGA Rally 3's music: every stage and the menus keep theirs,
+# whatever is chosen here. A tune is APPENDED to the stream file (Audio\EnglishStreamData.stm) after SEGA's last
+# stream, where nothing of the game points: a 192-byte block and the samples (16-bit stereo 32000 Hz), the way the
+# game's own streams lie in that file. tracks\_SR3Extras\music.json says what was appended and how long the file was
+# before; taking the music out cuts the file back to that length, which makes it byte for byte what it was. No
+# other file of the game changes.
+# Who plays a tune: only the course it belongs to. A 1995 course in the Classic mode (Get-ClassicCourse) whose tune
+# is there gets the tune's place in switch.json ("tune"). PLAY.bat's switcher then turns the stream record of the
+# Classic mode's music to it, in the game's memory, while that course is the one chosen, and back for every other
+# track (patch.ps1, Set-CourseTune). A course without a tune plays the Classic mode's own music, as it always did.
+#   src  SEGA Rally Championship's (1995): SR3CamLab\music\src\desert.wav, forest.wav, mountain.wav, lakeside.wav
+#        (any of them) and tunes.json (where each one's loop starts), made from your own ROM set by
+#        scripts\rom_tools\src_music.py
+$script:MusicSources = [ordered]@{
+    ''    = @{ Title = "SEGA Rally 3 (the game's own)" }
+    'src' = @{ Title = 'SEGA Rally Championship (1995)'; Hint = 'Make its tunes from your ROM set: scripts\rom_tools\src_music.py' } }
+$script:TuneCourses = @(@{ Key = 'desert'; Match = 'desert' }, @{ Key = 'forest'; Match = 'forest' }, @{ Key = 'mountain'; Match = 'mountain' }, @{ Key = 'lakeside'; Match = 'lake' })
+$script:ClassicMusicStream = 'hyper conditioned reflex_fullqualityversion'      # the stream the Classic mode's music event plays
+function Get-MusicDir([string]$source) { return (Join-Path $PSScriptRoot "music\$source") }
+function Get-MusicFile([string]$game) { return (Join-Path $game 'Main_release\tracks\_SR3Extras\music.json') }
+function Get-TuneFiles([string]$source) {                             # the tune files of a source that are there
+    $dir = Get-MusicDir $source
+    return @($script:TuneCourses | ForEach-Object { Join-Path $dir "$($_.Key).wav" } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })
+}
+# what music.json says was appended to the stream file: @{ source; dataLength; appended; stream; tunes }, or $null
+function Read-MusicFile([string]$game) {
+    $f = Get-MusicFile $game
+    if (-not (Test-Path -LiteralPath $f)) { return $null }
+    try { $j = [IO.File]::ReadAllText($f) | ConvertFrom-Json } catch { return $null }
+    if ("$($j.dataLength)" -notmatch '^\d+$' -or "$($j.appended)" -notmatch '^\d+$' -or "$($j.stream)" -notmatch '^\d+$') { return $null }
+    return @{ source = "$($j.source)"; dataLength = [long]"$($j.dataLength)"; appended = [long]"$($j.appended)"; stream = [int]"$($j.stream)"; tunes = @($j.tunes | ForEach-Object { $_ }) }
+}
+# ... and only when the stream file really ends with it: what is in the game
+function Get-MusicInstall([string]$game) {
+    $m = Read-MusicFile $game; $df = Join-Path $game 'Audio\EnglishStreamData.stm'
+    if (-not $m -or -not (Test-Path -LiteralPath $df) -or (Get-Item -LiteralPath $df).Length -ne $m.dataLength + $m.appended) { return $null }
+    return $m
+}
+# The music: '' = nothing but the game's own, 'src' ($script:MusicSources). Returns notes for the user.
+function Set-MusicSource([string]$tracks, [string]$source) {
+    if (-not $script:MusicSources.Contains($source)) { throw "There is no music called '$source'." }
+    Assert-GameClosed
+    $game = Get-GameDir $tracks; $df = Join-Path $game 'Audio\EnglishStreamData.stm'; $mf = Get-MusicFile $game
+    $layout = Read-StreamLayout $game 2
+    if (-not $layout -or -not (Test-Path -LiteralPath $df)) { throw "The game's sound files aren't laid out the way SR3Ultimate expects; nothing was changed." }
+    $notes = @(); $tunes = @(); $total = [long]0
+    if ($source) {                                                  # the tunes are read and checked before anything changes
+        $title = $script:MusicSources[$source].Title; $dir = Get-MusicDir $source
+        $own = $layout.Streams[$script:ClassicMusicStream]
+        if (-not $own -or $own.Channels -ne 2 -or $own.Rate -ne 32000) { throw "The Classic mode's music isn't the stream SR3Ultimate expects; nothing was changed." }
+        $loops = @{}; $lf = Join-Path $dir 'tunes.json'
+        if (Test-Path -LiteralPath $lf) { try { foreach ($p in ([IO.File]::ReadAllText($lf) | ConvertFrom-Json).PSObject.Properties) { $loops[$p.Name] = $p.Value } } catch { } }
+        foreach ($w in Get-TuneFiles $source) {
+            $fi = Get-Item -LiteralPath $w; $key = [IO.Path]::GetFileNameWithoutExtension($fi.Name).ToLower()
+            $pcm = Read-WavSamples $w 32000 2
+            if ($null -eq $pcm -or $pcm.Length -lt 128000) { $notes += "$($fi.Name) was not used (not 16-bit stereo 32000 Hz, or shorter than a second)."; continue }
+            $n = $pcm.Length - ($pcm.Length % 4); $start = [long]0; $l = $loops[$key]      # the loop start counts only for the very file it was written for
+            if ($l -and "$($l.frames)" -eq "$($n / 4)" -and "$($l.loop_start)" -match '^\d+$' -and 4 * [long]"$($l.loop_start)" -lt $n) { $start = 4 * [long]"$($l.loop_start)" }
+            $tunes += @{ course = $key; file = $fi.Name; fileBytes = $fi.Length; fileTime = "$($fi.LastWriteTimeUtc.Ticks)"; bytes = $n; loopstart = $start; pcm = $pcm }
+            $total += 192 + $n
+        }
+        if (-not $tunes.Count) { throw "There are no tunes of $title to put in: $dir holds none (desert.wav, forest.wav, mountain.wav, lakeside.wav; 16-bit stereo 32000 Hz). $($script:MusicSources[$source].Hint)" }
+        if ($layout.End + $total -gt 0x7FFFFFFF) { throw "The game's sound file would grow past 2 GB; nothing was changed." }
+    }
+    # first what was appended before goes: the file ends with SEGA's last stream again
+    $old = Read-MusicFile $game; $len = (Get-Item -LiteralPath $df).Length; $back = 0
+    if ($old) {
+        if ($old.dataLength -ne $layout.End -or $len -lt $layout.End) { throw "music.json doesn't fit the game's sound file; nothing was changed." }
+        if ($len -gt $layout.End) { $fs = [IO.File]::Open($df, 'Open', 'ReadWrite', 'Read'); try { $fs.SetLength($layout.End) } finally { $fs.Dispose() } }
+        [IO.File]::Delete($mf); $back = @($old.tunes).Count
+    } elseif ($len -ne $layout.End) { throw "The game's sound file isn't laid out the way SR3Ultimate expects; nothing was changed." }
+    if ($source) {
+        $at = [long]$layout.End; $list = @()
+        foreach ($t in $tunes) { $list += @{ course = $t.course; file = $t.file; fileBytes = $t.fileBytes; fileTime = $t.fileTime; offset = $at; bytes = $t.bytes; loopstart = $t.loopstart }; $at += 192 + $t.bytes }
+        [void][IO.Directory]::CreateDirectory((Split-Path -Parent $mf))                # written first: a half-done append can still be cut off
+        [IO.File]::WriteAllText($mf, (@{ source = $source; dataLength = [long]$layout.End; appended = $total; stream = [int]$own.Index; tunes = $list } | ConvertTo-Json -Depth 4))
+        $fs = [IO.File]::Open($df, 'Open', 'ReadWrite', 'Read')
+        try {
+            $fs.Position = $layout.End
+            foreach ($t in $tunes) {
+                $block = New-Object byte[] 192; $name = [Text.Encoding]::ASCII.GetBytes("M:\Audio\Arcade Source\Music 2\Stereo\${source}_$($t.course).wav")
+                [Array]::Copy($name, 0, $block, 0, [Math]::Min($name.Length, 191))
+                $fs.Write($block, 0, 192); $fs.Write($t.pcm, 0, $t.bytes)
+            }
+            $fs.Flush()
+        } finally { $fs.Dispose() }
+        $notes = @("Music: $($tunes.Count) tunes of $title are in the game's sound file, after SEGA's own ($((@($tunes | ForEach-Object { $_.course }) -join ', '))). Only their own courses in the Classic mode play them, when the game is started with PLAY.bat; SEGA Rally 3's stages and menus keep their music.") + $notes
+    } else { $notes += "Music: nothing but the game's own again ($back tunes taken out; the sound file has its own length back)." }
+    $st = Read-ExtrasState $tracks; Write-ExtrasState $tracks $st     # state.json says what the files say
+    Write-SwitchFile $tracks $st                                     # the Classic courses' tunes come and go with it
     return ,$notes
 }
 
@@ -922,7 +1105,7 @@ try { Add-Type -Namespace SR3CamLab -Name Dpi -MemberDefinition '[DllImport("use
 try { [void][SR3CamLab.Dpi]::SetProcessDPIAware() } catch { }
 [Windows.Forms.Application]::EnableVisualStyles()
 
-function Show-ExtrasWindow([string]$tracks, [switch]$Render, [string]$Png) {
+function Show-ExtrasWindow([string]$tracks, [switch]$Render, [string]$Png, [int]$Tab = 0, [switch]$Offscreen) {
     $x = @{ Tracks = $tracks; St = (Read-ExtrasState $tracks) }
     $x.Opening = @()
     if (-not $Render -and -not (Get-Process -Name Rally -ErrorAction SilentlyContinue)) {      # your announcer recordings may be new
@@ -1098,31 +1281,72 @@ function Show-ExtrasWindow([string]$tracks, [switch]$Render, [string]$Png) {
         & $u.Run { Remove-Track $script:Extras.Tracks $script:Extras.St $p.Slot }.GetNewClosure() "$($p.Slot.Name) is back to its own track; the imported one is removed."
     })
 
-    # ---- Options: things that are simply on or off ----
+    # ---- Options: whose co-driver, whose music, and things that are simply on or off ----
     $opt = New-Object Windows.Forms.TabPage; $opt.Text = 'Options'; $opt.Padding = New-Object Windows.Forms.Padding(12); $opt.UseVisualStyleBackColor = $true
     $tabs.TabPages.Add($opt)
     $olist = New-Object Windows.Forms.TableLayoutPanel; $olist.Dock = 'Top'; $olist.AutoSize = $true; $olist.ColumnCount = 2
-    [void]$olist.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle([Windows.Forms.SizeType]::Absolute, 250)))
+    # The left column is as wide as the longest text its controls can show (text grows with the display's scaling,
+    # the window does not); the explanations get the rest of the page.
+    $artTexts = 'Stage pictures: back to the game''s own', 'Stage pictures for the added tracks'
+    $wide = 236
+    foreach ($t in @($artTexts) + @($script:VoiceSources.Values + $script:MusicSources.Values | ForEach-Object { $_.Title + '   (not made yet)' })) {
+        $wide = [Math]::Max($wide, [Windows.Forms.TextRenderer]::MeasureText($t, $form.Font).Width + 34)
+    }
+    $wide = [Math]::Min($wide, 440); $rest = $tabs.Width - 44 - $wide - 16
+    [void]$olist.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle([Windows.Forms.SizeType]::Absolute, ($wide + 16))))
     [void]$olist.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle([Windows.Forms.SizeType]::AutoSize)))
     $opt.Controls.Add($olist)
-    $bVoice = New-Object Windows.Forms.Button; $bVoice.Width = 236; $bVoice.Height = 30; $bVoice.Margin = New-Object Windows.Forms.Padding(0, 6, 0, 14)
-    $lVoice = & $mk ''; $lVoice.MaximumSize = New-Object Drawing.Size(640, 0)
-    $bArt = New-Object Windows.Forms.Button; $bArt.Width = 236; $bArt.Height = 30; $bArt.Margin = New-Object Windows.Forms.Padding(0, 6, 0, 14)
-    $lArt = & $mk ''; $lArt.MaximumSize = New-Object Drawing.Size(640, 0)
-    $olist.Controls.Add($bVoice, 0, 0); $olist.Controls.Add($lVoice, 1, 0); $olist.Controls.Add($bArt, 0, 1); $olist.Controls.Add($lArt, 1, 1)
+    # a choice: its name over a drop-down list
+    $mkPick = { param($caption)
+        $p = New-Object Windows.Forms.FlowLayoutPanel; $p.FlowDirection = 'TopDown'; $p.WrapContents = $false; $p.AutoSize = $true; $p.Margin = New-Object Windows.Forms.Padding(0, 2, 0, 14)
+        $l = New-Object Windows.Forms.Label; $l.Text = $caption; $l.AutoSize = $true; $l.Margin = New-Object Windows.Forms.Padding(0, 0, 0, 3)
+        $c = New-Object Windows.Forms.ComboBox; $c.DropDownStyle = 'DropDownList'; $c.Width = $wide; $c.Margin = New-Object Windows.Forms.Padding(0)
+        $p.Controls.AddRange(@($l, $c)); @{ Panel = $p; Box = $c } }
+    $pVoice = & $mkPick 'Co-driver'; $pMusic = & $mkPick 'Music'
+    $lVoice = & $mk ''; $lVoice.MaximumSize = New-Object Drawing.Size($rest, 0); $lVoice.Margin = New-Object Windows.Forms.Padding(0, 6, 0, 4)
+    $lMusic = & $mk ''; $lMusic.MaximumSize = New-Object Drawing.Size($rest, 0); $lMusic.Margin = New-Object Windows.Forms.Padding(0, 6, 0, 4)
+    $bArt = New-Object Windows.Forms.Button; $bArt.Width = $wide; $bArt.Height = 30; $bArt.Margin = New-Object Windows.Forms.Padding(0, 6, 0, 14)
+    $lArt = & $mk ''; $lArt.MaximumSize = New-Object Drawing.Size($rest, 0)
+    $olist.Controls.Add($pVoice.Panel, 0, 0); $olist.Controls.Add($lVoice, 1, 0); $olist.Controls.Add($pMusic.Panel, 0, 1); $olist.Controls.Add($lMusic, 1, 1)
+    $olist.Controls.Add($bArt, 0, 2); $olist.Controls.Add($lArt, 1, 2)
     $oStatus = & $mk ''; $oStatus.MaximumSize = New-Object Drawing.Size(890, 0); $oStatus.Dock = 'Bottom'
     $opt.Controls.Add($oStatus)
-    $x.Voice = $bVoice; $x.VoiceText = $lVoice; $x.Art = $bArt; $x.ArtText = $lArt; $x.OptStatus = $oStatus
+    $x.Voice = $pVoice.Box; $x.VoiceText = $lVoice; $x.Music = $pMusic.Box; $x.MusicText = $lMusic; $x.Art = $bArt; $x.ArtText = $lArt; $x.ArtTexts = $artTexts; $x.OptStatus = $oStatus
+    # fills a drop-down list with the sources (the ones without files say so) and shows the one that is in the game
+    $x.Fill = { param($box, $sources, $now, $ready)
+        $box.BeginUpdate(); $box.Items.Clear()
+        foreach ($k in $sources.Keys) { [void]$box.Items.Add($sources[$k].Title + $(if ($k -and -not $ready[$k]) { '   (not made yet)' } else { '' })) }
+        $box.SelectedIndex = [Math]::Max(0, [Array]::IndexOf(@($sources.Keys), "$now")); $box.EndUpdate()
+    }
     $x.Options = {
         $u = $script:Extras
-        $on = Test-Path -LiteralPath (Join-Path (Get-StoreDir $u.Tracks) 'original\codriver')
-        $have = (Test-Path -LiteralPath (Get-CoDriverDir)) -and @(Get-ChildItem -LiteralPath (Get-CoDriverDir) -Filter '*.wav').Count -gt 0
-        $u.Voice.Text = if ($on) { "Back to the game's own co-driver" } else { 'Use the other co-driver' }
-        $u.Voice.Enabled = $on -or $have
-        $u.VoiceText.Text = if ($on) { 'Co-driver: the clips in the codriver folder (SEGA Rally 2''s voice) are in the game. Calls without a clip keep the game''s voice.' }
-                            elseif ($have) { "Co-driver: the game's own. The codriver folder holds another voice, ready to put in." }
-                            else { "Co-driver: the game's own. There is no other voice yet (the codriver folder is empty)." }
-        $u.Art.Text = if ($u.St.art) { 'Stage pictures: back to the game''s own' } else { 'Stage pictures for the added tracks' }
+        $ready = @{}; foreach ($k in $script:VoiceSources.Keys) { if ($k) { $ready[$k] = Test-HasWavs (Get-CoDriverDir $k) } }
+        & $u.Fill $u.Voice $script:VoiceSources $u.St.codriver $ready
+        $u.VoiceText.Text = switch ("$($u.St.codriver)") {
+            'sr2'   { "Co-driver: SEGA Rally 2's voice is in the game. Calls it has no clip for keep the game's voice." }
+            'src'   { "Co-driver: the voice of the 1995 SEGA Rally Championship is in the game. It knows fewer calls than SEGA Rally 3: " +
+                      "'opens', 'tightens' and some 'long' and 'maybe' are left out of what it says, and the calls it never had (bridge, water, road narrows, stay wide...) keep the game's voice." }
+            default { "Co-driver: the game's own voice. Pick another one to put its clips into the game's sound file; the game's own clips are kept and come back when you pick it again." }
+        }
+        $miss = @($script:VoiceSources.Keys | Where-Object { $_ -and -not $ready[$_] } | ForEach-Object { "$($script:VoiceSources[$_].Title): $($script:VoiceSources[$_].Hint)" })
+        if ($miss.Count) { $u.VoiceText.Text += "`n" + ($miss -join "`n") }
+        $ready = @{}; foreach ($k in $script:MusicSources.Keys) { if ($k) { $ready[$k] = [bool]@(Get-TuneFiles $k).Count } }
+        & $u.Fill $u.Music $script:MusicSources $u.St.music $ready
+        $u.MusicText.Text = switch ("$($u.St.music)") {
+            'src'   { "Music: the tunes of the 1995 SEGA Rally Championship are in the game's sound file, after SEGA's own. Only a 1995 course in the Classic mode plays one " +
+                      "(its own), when the game is started with PLAY.bat; a course without a tune, every SEGA Rally 3 stage and the menus play the game's music as always." }
+            default { "Music: the game's own. Pick the 1995 game to give its courses in the Classic mode their own tunes: they are added at the end of the game's sound file " +
+                      "and taken off again when you pick the game's own. SEGA Rally 3's stages and menus keep their music either way." }
+        }
+        $miss = @($script:MusicSources.Keys | Where-Object { $_ -and -not $ready[$_] } | ForEach-Object { "$($script:MusicSources[$_].Title): $($script:MusicSources[$_].Hint)" })
+        if ($miss.Count) { $u.MusicText.Text += "`n" + ($miss -join "`n") }
+        $m = Get-MusicInstall (Get-GameDir $u.Tracks)                # the tune files changed since they were put in?
+        if ($m) {
+            $now = @(Get-TuneFiles $m.source | ForEach-Object { $fi = Get-Item -LiteralPath $_; "$($fi.Name)|$($fi.Length)|$($fi.LastWriteTimeUtc.Ticks)" } | Sort-Object)
+            $was = @($m.tunes | ForEach-Object { "$($_.file)|$($_.fileBytes)|$($_.fileTime)" } | Sort-Object)
+            if (($now -join ';') -ne ($was -join ';')) { $u.MusicText.Text += "`nThe tune files in the music folder are not the ones in the game any more: pick the game's own and then the 1995 game again to renew them." }
+        }
+        $u.Art.Text = $u.ArtTexts[$(if ($u.St.art) { 0 } else { 1 })]
         $u.ArtText.Text = if ($u.St.art) { 'The tracks you added to a stage card have their own background and banner. This rewrites the game''s menu pictures file (the original is kept). If the game stops starting, switch this off.' }
                           else { "The tracks you added to a stage card show the card's own background and banner. Switching this on rewrites the game's menu pictures file (the original is kept)." }
     }
@@ -1132,9 +1356,24 @@ function Show-ExtrasWindow([string]$tracks, [switch]$Render, [string]$Png) {
         catch { $u.OptStatus.ForeColor = [Drawing.Color]::FromArgb(190, 30, 30); $u.OptStatus.Text = $_.Exception.Message }
         finally { $u.Form.Cursor = [Windows.Forms.Cursors]::Default; $u.St = Read-ExtrasState $u.Tracks; & $u.Options }
     }
-    $bVoice.Add_Click({
-        $u = $script:Extras; $on = Test-Path -LiteralPath (Join-Path (Get-StoreDir $u.Tracks) 'original\codriver')
-        & $u.Option { Set-CoDriver $script:Extras.Tracks (-not $on) }.GetNewClosure() ''
+    # Picking another source asks first, then puts it in; with "Cancel", or when it fails, the list goes back to what is in
+    # the game. Nothing here acts by itself: the lists are only filled when the window opens (SelectionChangeCommitted is
+    # raised by the user's own pick, never by the filling).
+    $pVoice.Box.Add_SelectionChangeCommitted({
+        $u = $script:Extras; $key = @($script:VoiceSources.Keys)[$u.Voice.SelectedIndex]
+        if ("$key" -eq "$($u.St.codriver)") { return }
+        $q = if ($key) { "Put the co-driver of $($script:VoiceSources[$key].Title) into the game's sound file?`n`nThe game's own clips are kept and come back when you pick SEGA Rally 3 again." }
+             else { "Put the game's own co-driver back?" }
+        if ([Windows.Forms.MessageBox]::Show($u.Form, $q, 'SR3Ultimate', 'OKCancel', 'Question') -ne 'OK') { & $u.Options; return }
+        & $u.Option { Set-CoDriverSource $script:Extras.Tracks $key }.GetNewClosure() ''
+    })
+    $pMusic.Box.Add_SelectionChangeCommitted({
+        $u = $script:Extras; $key = @($script:MusicSources.Keys)[$u.Music.SelectedIndex]
+        if ("$key" -eq "$($u.St.music)") { return }
+        $q = if ($key) { "Add the tunes of $($script:MusicSources[$key].Title) to the game's sound file?`n`nThey go after SEGA's own music, for the 1995 courses in the Classic mode only. Picking SEGA Rally 3 again takes them off and the file is as it was." }
+             else { "Take the added tunes off the game's sound file?" }
+        if ([Windows.Forms.MessageBox]::Show($u.Form, $q, 'SR3Ultimate', 'OKCancel', 'Question') -ne 'OK') { & $u.Options; return }
+        & $u.Option { Set-MusicSource $script:Extras.Tracks $key }.GetNewClosure() ''
     })
     $bArt.Add_Click({
         $u = $script:Extras; $on = [bool]$u.St.art
@@ -1162,10 +1401,23 @@ function Show-ExtrasWindow([string]$tracks, [switch]$Render, [string]$Png) {
 
     & $x.Reload
     if ($x.Opening.Count) { & $x.Say ($x.Opening -join '  ') $false } else { & $x.Say $x.Note $false }
-    if ($Render) {
-        $form.Show(); [Windows.Forms.Application]::DoEvents()
+    if ($Render) {                                                # a picture of the window (-Tab: which page), for the documentation and for checks
+        $tabs.SelectedIndex = [Math]::Max(0, [Math]::Min($Tab, $tabs.TabPages.Count - 1))
+        if ($Offscreen) {                                         # the window is never on screen: its controls are made unshown and print themselves
+            [void][Windows.Forms.Control].GetMethod('CreateControl', [Reflection.BindingFlags]'NonPublic, Instance', $null, [Type[]]@([bool]), $null).Invoke($form, @($true))
+            $form.PerformLayout()
+        } else { $form.Show(); [Windows.Forms.Application]::DoEvents() }
         $bmp = New-Object Drawing.Bitmap $form.Width, $form.Height
-        $form.DrawToBitmap($bmp, (New-Object Drawing.Rectangle 0, 0, $form.Width, $form.Height)); $bmp.Save($Png); $bmp.Dispose(); $form.Close(); return
+        $form.DrawToBitmap($bmp, (New-Object Drawing.Rectangle 0, 0, $form.Width, $form.Height))
+        if ($Offscreen -and $tabs.SelectedTab -eq $opt) {         # an unshown drop-down list prints its frame but not its text
+            $g = [Drawing.Graphics]::FromImage($bmp)
+            foreach ($c in $x.Voice, $x.Music) {
+                $at = $c.PointToScreen((New-Object Drawing.Point 0, 0))
+                [Windows.Forms.TextRenderer]::DrawText($g, $c.Text, $c.Font, (New-Object Drawing.Rectangle ($at.X - $form.Left + 4), ($at.Y - $form.Top), ($c.Width - 24), $c.Height), [Drawing.SystemColors]::ControlText, [Windows.Forms.TextFormatFlags]'Left, VerticalCenter, EndEllipsis')
+            }
+            $g.Dispose()
+        }
+        $bmp.Save($Png); $bmp.Dispose(); $form.Close(); return
     }
     [void]$form.ShowDialog()
     $form.Dispose()
@@ -1184,9 +1436,16 @@ if ($AltArt) {                                                    # SR3Ultimate.
     } catch { "Nothing was changed: $($_.Exception.Message)" }
     return
 }
-if ($CoDriver) {                                                  # SR3Ultimate.bat -CoDriver on / off
+if ($CoDriver -or $Music) {                                       # SR3Ultimate.bat -CoDriver sr3 / sr2 / src (on = sr2, off = sr3)   -Music sr3 / src (off = sr3)
     if (-not $tracksDir) { "SR3Ultimate can't find SEGA Rally 3's tracks folder. Run PLAY.bat -Setup first."; return }
-    try { (Set-CoDriver $tracksDir ($CoDriver -eq 'on')) -join ' ' } catch { "Nothing was changed: $($_.Exception.Message)" }
+    if ($CoDriver) {
+        $source = switch ($CoDriver) { 'on' { 'sr2' } 'off' { '' } 'sr3' { '' } default { $CoDriver } }
+        try { (Set-CoDriverSource $tracksDir $source) -join ' ' } catch { "Co-driver: nothing was changed: $($_.Exception.Message)" }
+    }
+    if ($Music) {
+        $source = switch ($Music) { 'off' { '' } 'sr3' { '' } default { $Music } }
+        try { (Set-MusicSource $tracksDir $source) -join ' ' } catch { "Music: nothing was changed: $($_.Exception.Message)" }
+    }
     return
 }
 if (-not $tracksDir) {

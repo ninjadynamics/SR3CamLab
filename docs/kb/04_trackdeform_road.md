@@ -147,6 +147,12 @@ with the mean colour of SEGA's pages (205, 49, 0) = all shadow, and the cars wer
 now writes (0, 255, 0) = all sun, and the owner reported "car lighting fine". VERIFIED in game for the effect on the cars;
 the exact layout of the map beyond the two colours is not decoded (UNKNOWN; 16_lighting_shadows_lightmaps.md).
 
+### texA decoded (2026-10-13, from the shader and SEGA's own pages; the importer's use of it is NOT yet seen in game)
+- VERIFIED (shader): the pixel shader that reads it (sampler `TexStaticShadow`, s5) computes `ambient x (1 - red) + saturate(green + gfShadowParamsPs.x)`, times the material colour. So green = how much of the SUN reaches the spot (1 = open sun), red = how much of the SKY light is shut out (0 = open, 1 = none). Blue is 0 in every page of Canyon4.
+- VERIFIED (code): 0x62FC50 returns the page record nearest to the car; its caller (0x63C5F8) hands the two pictures and u0 / v0 / su / sv to the shader, so the picture is laid over the car from above with u = x*su + u0, v = z*sv + v0 - real shadow shapes on the car, not one value per page.
+- SEGA's pages (count, Canyon4, 39 pages): one picture per page, DXT1 with all levels, 1024 x 1024 / 1024 x 512 / 512 x 1024 / 1024 x 256 for 40 .. 120 m, about 10 cm a texel; the second picture is one shared 32 x 32 grey. On the road 63% of the texels are (0, 255, 0); green is 0 or 255 almost everywhere (soft only at edges); red runs 0 .. 255 in both: tunnels are (255, 0, 0), a cliff's shadow under open sky is nearly black, tree shadows are small red blobs.
+- The importer (2026-10-13, course settings `car_shade_dump` in the collect build and `car_shade` in the final one; `build_classic.build_road_track`): the pages are laid out as before, listed for the bake, and each gets its own 512 x 512 picture made by `rt_bake_game4.py` - for every texel within 14 m of the road's middle, 7 sun rays and 24 sky rays from 0.6 m above the road there; everything else and a border of four texels is open sun, so a car handed a page it does not stand on reads what every car read before. Mountain: 33 pages. Read back from the built file: 33 different pictures, mean difference to the bake under 2 of 255.
+
 ## Surface ids in game
 The texture id of a layer selects the physics surface AND what the wheels throw up: Desert4's own tarmac pair is
 Terrain_Safari_Tarmac, which raises dust clouds on asphalt ("lifts a lot of dirt into the air on asphalt", owner,

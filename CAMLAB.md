@@ -111,6 +111,22 @@ Settings for the game, not the camera. Both save straight away:
   cockpit and its driver's-seat version, wheel, car rotate, free cams). YAML:
   `hiddenCameras`.
 
+Two more settings of the game have no control in the panel. Edit them in `profiles.yaml`
+(CamLab keeps them when it saves) or pass them to `PLAY.bat` for one run:
+
+- **`mouseSmoothing`** (seconds, default 0.08, at most 1; `PLAY.bat -MouseSmoothing 0.15`):
+  how softly the cameras you steer (car rotate cam, free cams) follow the mouse. It is the
+  time in which the camera makes up 63% of a mouse movement; it always ends exactly where
+  the raw mouse would have put it, and behaves the same at any frame rate. Their keys (WASD,
+  Space / Ctrl) start and stop a movement over twice that time. 0 = raw mouse and keys.
+- **`cameraBlend`** (seconds, default 0.5, at most 3; `PLAY.bat -CameraBlend 1`): on View
+  Change the view travels from the old camera to the new one (position, direction and field
+  of view, easing in and out) instead of jumping. 0 = cut.
+
+Between a camera inside the car and one outside it the view travels in a straight line, so it
+passes through the car's body. Only View Change blends: the game's own camera changes (race
+intro, time over) stay cuts.
+
 ## The profile file
 
 `profiles.yaml` holds your profiles. CamLab and `patch.ps1` both read it, and it is plain
@@ -121,6 +137,8 @@ default: Daytona            # the profile PLAY.bat starts on (SR3 Chase / SR3 Ch
 overlay: 48                 # camera name size on View Change, px at 1080p (0 = off)
 hiddenCameras: true         # also offer the debug cameras the game hides
 speedUnits: km/h            # CamLab's speedometer: km/h or mph
+mouseSmoothing: 0.08        # steerable cameras: seconds the mouse look is smoothed over (0 = raw)
+cameraBlend: 0.5            # View Change: seconds the view travels to the next camera (0 = cut)
 
 profiles:
   Daytona:
@@ -142,6 +160,8 @@ profiles:
 - Framing is all or nothing: give `distance`, `height` and `fov` together, or leave all
   three out to keep SR3's own framing.
 - Use a dot as the decimal separator.
+- `mouseSmoothing` and `cameraBlend` are optional: without them the game gets 0.08 and 0.5.
+  `off` is the same as 0.
 - The patch accepts a slightly wider range than the sliders: stiffness up to 500, damping up
   to 100, distance 1 – 30 m, height 0 – 15 m, fov 20 – 120°.
 

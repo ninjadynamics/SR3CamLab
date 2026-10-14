@@ -134,7 +134,8 @@ Outputs in `classic\music\` (sr2_music = exact cuts as .mp2 + index.csv, sr3_wav
 | SR2 block record "4 x {VROM model address in words, u32}" | the u32 is LIKELY a culling / LOD distance, not a count: 19, section 9 |
 | SR2 "roadside object placement not found" | still not found; the editor's 20-byte record format is known: 19, section 9 |
 | "handedness (compare a plot with a course map; if mirrored negate X instead of Z)" | settled in game for SRC: SR3 takes the game's own axes (11_importer_prototype.md, corrections) |
-| SR2 voice rate "22050 Hz is right; the request's note must add the octave (rule not yet read from the data)" | confirmed by ear in SR3 (audio.md, "Co-driver"); the rule in the data is still not read |
+| SR2 voice rate "22050 Hz is right; the request's note must add the octave (rule not yet read from the data)" | confirmed by ear in SR3 (audio.md, "Co-driver"). The rule was read in the 1995 sound program: the pitch word's high nibble is the SCSP octave, so 0xF000 = 22050 Hz and no note adds anything (audio.md, "SEGA Rally Championship (1995)"); SR2's own routine is still not read |
+| SRC music "would have to be recorded from an emulator"; "five sample tables ... 20-byte entries"; speech "rate assumed 22050 Hz" | one table of 306 entries at 0x609C24; the tunes, their exact lengths and the tune of each course are read from the ROM; rate 22050 Hz from the sound program; recording tool `src_music.py`: audio.md, same section |
 
 ## SEGA Rally Championship: is scenery missing from the course exports? (checked 2026-10-07)
 - The polygon ROM is covered completely by the 1507 objects of the object table (0x864B48): no polygon data outside

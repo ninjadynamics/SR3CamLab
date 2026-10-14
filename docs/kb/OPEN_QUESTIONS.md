@@ -82,7 +82,7 @@ corrected.
 |---|---|---|---|
 | D1 | `ProjectData.sfx` (not fully decoded), `Reverb.bin`, `RowData.bin` (not analysed) | audio | - |
 | D2 | Zone value v selects sub-slot v + 1 (INFERRED from value ranges) | audio | - |
-| D3 | Not yet heard in game: the announcer recordings after normalising; Arctic ambience on the arcade; music / events switching by ear; the SR2 co-driver at 22050 Hz (second listen pending) | audio | **[S]** listen in game |
+| D3 | Not yet heard in game: the announcer recordings after normalising; Arctic ambience on the arcade; music / events switching by ear; the SR2 co-driver at 22050 Hz (second listen pending); the 1995 co-driver | audio | **[S]** listen in game |
 | D4 | The rebuilt stream bank was never booted (three prepared sets: minimal_test, codriver_natural, arctic_full; two music sets) | audio, classic-sources | **[S]** boot them in the order given in audio.md |
 
 ## E. SEGA Rally Revo in the arcade engine
@@ -116,7 +116,7 @@ corrected.
 | F10 | Why the decoded tiles are brighter in the mid tones than the emulator picture (a gamma of 1.7 matches by eye) | 12, 23 | - |
 | F11 | Object table: 1,508 rows against 1507 objects | classic-sources | - |
 | F12 | Other tiles of courses 2 and 4 that decode to black | 14 | - |
-| F13 | Music is sequenced: nothing extracted; speech sample rate assumed 22050 Hz | classic-sources | **[S]** record from an emulator |
+| F13 | Music is sequenced. The recording tool is built (`src_music.py`: MAME, no window, no sound) but the recording was NOT RUN. The tunes are appended to the stream file and only a 1995 course in the Classic mode plays its own (in-memory stream record, `Set-CourseTune`): proven on a copy and against fake memory, NOT RUN in the game. The 1995 co-driver clips were not heard either. (The speech rate is settled: 22050 Hz, read from the sound program.) | audio, section "SEGA Rally Championship (1995)" | **[S]** run `src_music.py all`, then listen in game |
 | F14 | Desert, Lake Side, Forest in SR3: rebuilt but never installed or driven; Desert reaches outside the +-750 m scenery square | 09, 14 | install and drive |
 | F15 | Gap-fill rule that skips rock-top anchors (250 skipped lap-wide) was checked in one place only | 22 | look round the lap |
 | F16 | Which pace-note scheme the current Mountain build writes (full code table or the earlier three grades) | 14 | read the built spline with pacenotes.py |
@@ -132,7 +132,7 @@ corrected.
 | G5 | Does the sky dome follow the camera (LIKELY); is stage +16 the goal banner (LIKELY) | 19 | - |
 | G6 | Roadside object placement tables (record format known, tables not located) | 19 | - |
 | G7 | Block record value after each LOD address (LIKELY a culling / LOD distance); the car reflection zone table (LIKELY) | 19 | - |
-| G8 | Voice clips: the octave rule in the request data; abbreviations K and D; which of the 12 music tracks is which (classic-sources says unknown; the tune table names 14 tunes) | classic-sources | - |
+| G8 | Voice clips: the octave rule (read in the 1995 sound program: the high nibble of the pitch word is the octave, audio.md; SR2's own routine was not read, same word, LIKELY the same); abbreviations K and D; which of the 12 music tracks is which (classic-sources says unknown; the tune table names 14 tunes) | classic-sources, audio | - |
 | G9 | The SR2 -> SR3 builds were never run and predate every in-game fix; a batch record with 5 or 7 layers and a damp-mud top over a dry-mud base are untested | 19 | rebuild with the current importer; in game |
 | G10 | Pace-note icon graphics (numbers only) | 19 | - |
 

@@ -71,7 +71,10 @@ The local player's camera manager is at **`[0x9EB4EC] + 0x18`** (call it `mgr`).
 | Offset | Type | Meaning |
 |---|---|---|
 | `+0x000` | float | frame time (dt, seconds) |
-| `+0x190` | ptr | the camera in use (a pointer to one of the camera objects below) |
+| `+0x184` / `+0x188` | ptr | the camera the frame is drawn from, and the one the next frame will be drawn from *(static)* |
+| `+0x18C` | ptr | the camera being updated *(static)* |
+| `+0x190` | ptr | the camera asked for (a pointer to one of the camera objects below). Equal to the three above except for a few frames after a change, see [From camera to screen](#from-camera-to-screen) |
+| `+0x198` | int | which camera list View Change steps: `0x5C` bytes per list from `+0x1D0` (count, index, pointers); the race list at `+0x22C` is list 1 *(static)* |
 | `+0x1A8`–`+0x1C4` | 8 × float | **developer camera inputs** (see [section 6](#6-the-developer-cameras-and-their-inputs)); the arcade game never writes them and clears them every frame |
 | `+0x1C8` | ptr | the player's car object (see [section 7](#7-the-car)) |
 | `+0x22C` | int | race camera list: count |
@@ -125,6 +128,34 @@ Change then switches to it, and its update runs normally. *(verified)*
 **Common fields:** `+0x08` heading history (the chase cam reads the car's heading here),
 `+0x48` eye position (world), `+0x174` vertical FOV in radians, `+0x184` FOV in degrees
 (60).
+
+### From camera to screen
+
+*(static: read in the disassembly and run on an emulated CPU with the game's own code
+(`tools/cycle_real.py`), not yet looked at in the running game.)*
+
+The game updates its cameras in steps of its own and draws frames in between. Every camera
+therefore holds a **state object** that is interpolated for each drawn frame; vtable slot 23
+(`+0x5C`) returns it (`cam+0x54` chase and far chase, `cam+0x64` car rotate, `cam+8` bumper,
+bonnet, cockpit, wheel and the free cams). It holds six records of `0x3C` bytes (eye, look-at
+point, eye and look-at of a look-behind view, up vector, one more), each five vec3: the value
+before the update, the value after it, the two values the drawn frame lies between, and the
+interpolated one at record `+0x30`. The field of view (radians) is kept the same way at
+`+0x168` … `+0x178`.
+
+| | |
+|---|---|
+| `0x413CA0` | "after" becomes "before": the first thing an update does |
+| `0x413850` | latch both for drawing (vtable slot 2) |
+| `0x413990` | interpolate, alpha in `xmm0` (vtable slot 4) |
+| `0x5F17A0` | the manager's update (the same code inline at `0x5CAE45`): `0x5EE250`, then slot 3 of `[mgr+0x18C]` |
+| `0x5EE250` | camera changes. View Change (with `mgr+0x1A0` set) steps the list and stores the entry at `mgr+0x190`; a camera that is another object is then updated twice alongside the old one before `mgr+0x18C` moves to it (counter `mgr+0x1CC`) |
+| `0x5F1690` | `esi` = manager, one float (alpha), `ret 4`; called for every player once per drawn frame from `0x5C948C`. `[mgr+0x184] = [mgr+0x188]`, then slot 4 of the cameras. Does nothing unless the game is in state `0x27` / `0x1C` (`[0x7ECE10]` = `[0x7ECE14]`) or `[0x9DB800]` is set |
+| `0x5A1A70` | builds the view: `D3DXMatrixLookAtLH` of the interpolated eye (state `+0x30`), look-at (`+0x6C`) and up (`+0x120`) of `[mgr+0x184]`, field of view `+0x178`. With `mgr+0x1A4` (look behind) eye `+0xA8`, look-at `+0xE4` |
+| `0x5EE1E0`, `0x5EE030`, `0x5EE000`, `0x5EDFD0` | accessors of that eye, look-at, up and field of view (the manager's own state at `mgr+4` when there is no camera) |
+
+So the chase camera's `+0x90` "car point" is the look-at record's value before the update,
+and what is on screen is `cam+0x54+0x30` (eye) looking at `cam+0x54+0x6C`.
 
 ### The in-car cameras
 
@@ -361,6 +392,24 @@ the graph lifetime itself is possible but unnecessary.
 - The arcade operator (test) menu isn't present as text. TeknoParrot's SR3 profile has no
   Test button.
 
+### Leaving a race: the main state machine *(static)*
+
+The game runs as one state machine, and a race is left through a flag its race update polls.
+Read in the disassembly (2026-10-14); SR3CamLab's long START press uses it (`patch.ps1`,
+`Request-RaceExit`), not yet seen in the running game.
+
+| | |
+|---|---|
+| `0x7ECE10` | the main state machine: `+0` state, `+4` next state, `+8` frames in the state, `+0xC` the table of 43 handlers (`0x70CAA8`). `0x594BD0`, once a frame from the main loop `0x558A50`, moves to the next state and runs its handler; what the handler returns is the next state |
+| `[0x728598]` | the game mode: 1 Practice, 2 Demo (the attract race), 3 Press START, 4 Replay, 5 Quick Race, 6 Championship, 7 Classic, 8 Credits (names at `0x62F8A0`) |
+| states | `0x1F` a stage loads (`0x5C6DA0` → the loading loop `0x5C6C60`; the attract race loads from state `6`, `0x64D500`), `0x21` start → `0x27` racing (`0x638530` ticks the task lists `0x728600`, `0x7285EC` and keeps the next state), `0x28` paused, `0x1C` the Quick Race scoreboard and name entry, `0x1B` `CSR_GameMode::Finish` (`0x642120`), `0x2A` the race teardown (`0x6473F0`), `0x1D` after the race (`0x6357B0`: a Championship's next stage `0x1A`, else `2`), `2` → the front end |
+| `0x5C89D0` | the race update (vtable `0x6E839C`, slot 13), every frame in `0x27`, `0x28` and `0x1C`. It polls the request flags `0x9DB4E0`–`0x9DB4F8` (all cleared by `0x5C7460` / `0x62F810`): `[0x9DB4E4]` restart (→ `0x26`), `[0x9DB4E8]` pause (→ `0x28` and `ID_PAGE_PAUSE_MAIN`; car 0's input bit `0x40000000` sets it, `0x5CA2B9`), `[0x9DB4EC]` resume, `[0x9DB4F0]` "Freeze switch" |
+| **`[0x9DB4F4]`** | **leave the race:** the race update clears it and makes the next state `0x1B` (`0x5C90C2`). Finish ends the mode (Quick Race and Classic `0x63BD50`, which also sends the arcade shell its game-end message; Championship `0x63BF00`, which moves the stage on), the teardown waits for the fade to black, then the front end |
+| who sets it | the pause menu's Quit (`0x635970`, from the confirm callback `0x5FC1B0`, `LANG_ID_CONFIRM_QUIT_RACE`: in a Championship it first sets the stage `[0x9DB820]` to the number of stages `[[[0xB2A850]+0x10]+4]`, then the flag, `[0x9DB4EC]`, the fade and next state `0x1B`), the Classic result page (`0x60DFA0`, `ID_PAGE_C_RALLYRESULT`: fade, then the flag), the result table (`0x5FBA50`) |
+| the fade | `0x5FBB10` (duration, factor, flag; `eax` = direction) at `0x9DB490`: `+0` start (ms, the clock `[0x9C4A08]` in µs / 1000), `+8` direction (0 out to black, 1 in), `+0xC` flag, `+0x14` alpha (worked out by `0x5CA880`), `+0x18` duration (500.0 ms for these) |
+| bonus stage | at the end of a Championship (`0x6358A2`), a player in race position 1 (`[0x9DD61C]`, car 0 `+0x1B54`) goes on to Stadium4 instead of the menus. Positions only move while state = next state is `0x27` or `0x1C` (`0x5CA2E2`); the pause menu's Quit does not care, SR3CamLab's exit sets a leader to 2 once the race has stopped |
+| loading | the main thread waits for the loader threads (`[0x9C495C]`, `[0x9C4964]`, started at `0x5C2360` and `0x5C2290`) in `0x5877E0` (`WaitForSingleObject`, no window messages). "Loading Abort requested. Thread will block." (`0x5C6D60`) is the abort path. *(observed, 2026-10-14: START pressed while the attract race loaded left the game in that wait for good; cause unknown)* |
+
 ## 11. Game data
 
 - **Stage routes:** `Main_release\tracks\<Stage>4\<stage>4_master_xdata.sbf`. SBZ1 files are
@@ -387,6 +436,13 @@ All of it is done by `patch.ps1` on the running process.
    TeknoParrot's checks.
 4. Suspend the process (`NtSuspendProcess`), verify every original byte, write, verify the
    written bytes, resume.
+5. Attach the watchdog (`watchdog.cs`) as a debugger that only watches: every exception goes
+   back to the game as without a debugger (the two break-ins of the attach itself excepted),
+   and its end detaches it (`DebugSetProcessKillOnExit(FALSE)`). A crash (second chance), a
+   window that does not answer `WM_NULL` for 10 s, or a message box of the game's is written
+   to `crash\` with every thread's registers and stack and a minidump. While it is attached,
+   Windows skips the game's own crash handler (`0x558730`, which writes a minidump itself).
+   No data breakpoints: debug registers set on the game's threads made it quit by itself.
 
 ### The chase camera cave (`0x673C80`, signature `"SR3C"`)
 
@@ -439,11 +495,17 @@ Position-independent (code finds its own base with `call`/`pop`).
 | `0x2000` | game camera names (12 × 32) |
 | `0x2180` | the game's list entries, camera offsets, hidden-camera list, colours (12 each) |
 | `0x2240` | driver's-seat cockpit eye/look copy (24 bytes), then the game's original pointer |
+| `0x2280` | smoothing and blend: three settings (seconds), then their state (zero in a new block) |
+| `0x2400` | scratch strings of the track switcher |
+| `0x2800` | second code area: constants (`0x70` bytes), then the smoothing and the blend |
 
 Hooks:
 
 - `0x591C4D` (5 bytes, `mov eax,[0x7ED10C]` → `call block`): every frame, before Present.
 - `0x591B01` (`call 0x591220` → `call block`): release the fonts before a device reset.
+- `0x5C948C` (`call 0x5F1690` → `call block`): the block calls `0x5F1690` itself, then blends
+  what it left ([From camera to screen](#from-camera-to-screen)). Left out, with a line in
+  the log, when the site holds other bytes.
 - Vtable slot 3 of the car rotate cam (`0x6EBB3C`, orig `0x5F1E00`) and the free cams
   (`0x6ECBA4`, `0x6ECC94`, orig `0x5F3FE0`): wrappers that write the mouse/keyboard input,
   then jump to the original update.
@@ -456,13 +518,27 @@ What the per-frame entry does:
 - **On an index change:** if it isn't `previous + 1` (wrapping), it's the game resetting the
   camera, so the previous index is put back. Otherwise it loads the slot's settings into the
   cave, sets PVS off (`[0xA65794]`) for CamLab and debug cameras (on for the game's own),
-  swaps the cockpit eye pointer, and starts the name popup.
+  swaps the cockpit eye pointer, starts the name popup and arms the blend (below).
 - **Draws the popup:** `D3DXCreateFontA` (Arial bold), an 8-direction dark outline plus the
   text, 14% down the screen; a half-size hint for steerable cameras.
 
 **Input:** cursor delta from the screen centre (the cursor is re-centred each frame) and
 `GetAsyncKeyState`, only while the game's window is in front (compared by process id).
 Inputs are scaled so the game's own `× dt × rate` gives the intended motion.
+
+**Smoothing** (`mouseSmoothing`, 0 = off): the wrappers hand the camera only a share of the
+mouse movement that is outstanding, `1 − e^(−dt/τ)` of it per update (`dt` = `[mgr]`), and
+keep the rest for the next updates. The camera turns towards where the raw mouse would have
+put it at a rate that does not depend on the frame rate, and ends exactly there. The keys'
+−1 / 0 / +1 go the same share of the way to their value (with 2 τ).
+
+**Blend** (`cameraBlend`, 0 = off): after `0x5F1690` the block keeps the view of every frame
+in the car's frame (eye, direction, look distance, up, field of view). After a View Change it
+rewrites the interpolated eye, look-at, up and field of view of the camera the frame is drawn
+from: the view the change left from, carried along by the car, towards the camera's own by
+`t²(3 − 2t)` of the way, `t` = real time since the start / duration
+(`QueryPerformanceCounter`). At `t = 1` it stops writing. A camera change of the game's own
+stays a cut. *(Run against the game's own code on an emulated CPU; not yet seen in the game.)*
 
 **Updating a running game:** a block whose code differs is never rewritten in place. A new
 block is allocated, the state is copied over, and the hooks are redirected to it. The old

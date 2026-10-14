@@ -1,0 +1,91 @@
+# 27. How long the route from a Blender scene to a game build takes (2026-10-13 / 14)
+
+The owner asked for the route to be made fast ("turbo optimize everything in C. Multi threaded."), and chose R4 as the level every build
+is made at (25_verbatim_road_and_milestones.md). All times are wall-clock seconds on the owner's PC (i9-13900K, 8 + 16 cores, 64 GB),
+measured with nothing else running unless said. Scripts: `scripts/importer/rtbake/` (copies of the working files; they carry the
+working folder's paths).
+
+## The route
+`fast_all.sh <scene.blend> <tag> ["4"]`:
+1. scene -> patch, once: Blender dump (`blendpatch/bl_dump.py`), `scene_diff_local.py` against the base build, `tree_moves.py`.
+2. the collecting importer pass of every level asked for, side by side (each is one thread of Python with bursts of C on every core).
+3. per level, one after the other: the bake (`rt_bake_game5.py`, every core) and the compose (`rt_compose_game.py`); the level's game
+   build starts when its bake ends and runs beside the next level's bake.
+
+`build_variant.sh <tag> <level> <suffix> key=value ...` makes one more game build from the light already baked (a setting changed, no
+new bake). `guard.sh <command>` runs a job only while the game is closed (see the last section).
+
+## Measured (R4, scene v11: 406 166 polygons to light, 51.1 million texels, 16 pages)
+| Stage | 2026-10-13 evening | now, run 1 | now, run 2 |
+|---|---|---|---|
+| scene -> patch | 16 | 12.2 | 11.0 |
+| collecting pass | 104 | 77.3 | 75.3 |
+| bake + compose | 216 | 175.1 | 148.8 |
+| of which rays | 133 .. 143 | 162 | 137 |
+| game build | 147 | 56.6 | 53.5 |
+| whole route | 483 | 321.9 | 289.3 |
+
+After those two runs the mesh writer's texture coordinates were put on arrays (`build_classic.faces_to_mesh`: two loops over the polygons, 427 000
+a pass at R4): the two importer passes run again on run 1's inputs took 69.8 s and 48.1 s and wrote the same bytes as run 1.
+What is left in the passes (profiler, R4): the seen-side rays 25 s of the collecting pass (2 144 million rays), then `load_visual` 11.5 s,
+the patch stage 8 s and the rounding 5 s in EACH pass (the same work twice), the textures and meshes 12 .. 20 s, compression of the files 3 .. 4.5 s.
+
+The evening's figures were taken while a comparison agent was rendering in the background, so they are somewhat high; the two "now"
+runs had the machine to themselves. Building R1, R2 and R4 one after the other took 19 minutes that evening.
+The two runs gave the same bytes in every file: both patch files, the collected polygons, the seen-side file, the raw light (470 MB),
+the packing, the cars' pages, the composed pages and all eleven files of the build. VERIFIED (`cmp`).
+
+## What made it faster, and how each was checked
+Every item below gives the bytes the code before it gave, unless said. "Checked" names the comparison.
+- **Levels side by side** (`fast_all.sh`). Checked: the builds found every polygon on a page ("not found 0").
+- **Texture compression in C** (`fastdxt.c`, OpenMP): a 2048 x 2048 page 0.42 s -> 0.005 s. Checked: `SR3_FASTDXT_CHECK=1` compresses every
+  picture of a build both ways - 4 124, 4 622 and 4 673 pictures (R1 collect, R1 build, R4 build), 0 different.
+- **Patch stage** (`coursepatch.py`, 17.5 s of each pass under the profiler): triangle areas on plain floats (the same bits as np.cross /
+  np.linalg.norm on 200 000 random triangles), the pool of mapped faces made once, `edge_uv` looking only at neighbours that share two
+  corners, the build's tile-repeat cut asked only for polygons whose mapping does not fit. Checked: R1 collect and R1 build byte for byte.
+- **Sealing** (`seal1995.py`): the corners that may lie on an edge are found in C (`fastseal.c`), the near places on arrays. Under the
+  profiler the walk over every edge in Python was 46.6 s of a 195 s R4 build. Checked: R1 build byte for byte; the cluster labels on random
+  sets and on the places of an R1 and an R4 build.
+- **Seen sides taken over** (course setting `seen_sides_file`): the collecting pass writes its counts per judged polygon with a fingerprint
+  of the polygons, of what stands in the way and of the viewpoints; the final pass takes them over when the fingerprint is the same.
+  R4: 28 s -> 1 s. If the polygons differ it judges again and says so (then the light-map table may not fit either).
+- **Bake set-up on arrays** (`rt_bake_game5.py`): the scene's triangles, the free lower edges for the skirts, and the distance of every
+  polygon to the road's middle (`rtg5.c: lm5_mind`). To the first ray: R4 49 s -> 8 s, R1 13 s -> 4 s (measured on the efficiency
+  cores). Checked: a dump of everything handed to the light, 41 arrays, identical for R1 and R4; cars' pages file identical.
+- **Cars' pages in C** (`lm5_cars`): 20 s -> 2 s. Checked: the 33 pictures and their mapping identical.
+- **One bake script for every level** (the fifth): on a whole R1 bake its sun, sky, colour and facing bytes are the fourth version's in all
+  47 million texels; the rule's byte differs by 1 or 2 of 255 in 2.3 % of the texels (the fifth takes one value a polygon).
+- **Compose**: the distance to the road only for lying polygons, the pages side by side in threads. R4 13.8 s -> 4.7 s. Checked: pages
+  byte for byte.
+- **scene_diff**: walks its keys sorted. It walked a Python set of names, whose order changes with every process, so the same scene gave
+  patch files with the faces in another order each time (and builds that were not the same bytes). Faster keys and areas as well.
+
+## Tried, measured, not adopted (the rays)
+A ray costs on average 13.4 four-box nodes, 4.2 leaves, 12.5 triangle tests and 0.8 look-ups in a see-through mask (counted on a forest
+batch of R1). Two changes that give the same answers were measured on every core, on samples of 2.9 million texel sides:
+| | R1 sample | R4 sample |
+|---|---|---|
+| as it is | 4.80 s | 5.71 s |
+| sun questions asked as "is anything hit" first (mode 2) | 5.07 s | 5.98 s |
+| the four triangles of a leaf looked at in one go before the exact test | 4.83 s | 5.81 s |
+| both | 5.13 s | 6.06 s |
+The hashes of every number returned were equal in all four. Neither helps; the ray code is as it was.
+The R4 bake casts 9 933 million rays; its time went from 137 s to 162 s between two otherwise identical runs (not explained).
+
+## An option that changes the result: REFUSED by the owner (2026-10-14: "Don't sacrifice the bake quality for speed")
+Kept here as a measurement only. The bake's quality settings are not a place to look for speed.
+`RTG_TURNS=1` asks 32 sky rays a texel instead of 96 (the sun's 19 stay, so shadow edges are the same). R4: 3 991 million rays, bake
+63 s instead of 149 .. 175 s. Against the full bake, over 55.4 million texels of the composed pages: mean difference 0.48 of 255, 99.9 %
+under 4; 8 027 texels off by more than 8, 172 by more than 64 (LIKELY polygons the road never sees, where "the brighter of two sides"
+falls the other way). For scale, the game's own texture compression changes the full bake's pages by 2.07 on average, 14 % of the texels
+by more than 4. `opt/turns_compare.py` makes the figures and a picture.
+
+## Not while the game runs
+Jobs "out of the way" on the efficiency cores at low priority still made the game stutter (owner: "Are you using the CPU? The game is
+choking"). `guard.sh <command>` does not start while Rally.exe runs (`WAIT=1`: waits until it has been closed for 20 s) and stops the
+job with its whole process tree within 2 s when the game starts. Checked with a stand-in process.
+
+## One run that differed
+An R4 build made on 16 threads of the efficiency cores judged one polygon of 371 580 differently from its collecting pass (made on every
+core) and 23 polygons came out without a light map. UNKNOWN why; not seen between passes run the same way. The fingerprint in the
+seen-side file now reports such a build; "not found 0" in the build log remains the thing to read.

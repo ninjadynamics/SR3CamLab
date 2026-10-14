@@ -131,7 +131,7 @@ def stage_build(cfg, variant, name):
             if key_ == 'tarmac': BC.TARMAC = ids_
             else: BC.GRAVEL = ids_
     ROAD_T_, ROAD_G_ = tuple(BC.TARMAC), tuple(BC.GRAVEL)
-    BC.ROAD_VERBATIM = variant == 'classic' and bool(cfg.get('road_verbatim', False)); BC.ROAD_UNDER = float(cfg.get('road_under', -0.02)); BC.SURF_DEFAULT = cfg.get('surface_default', 'gravel'); BC.ROAD_CUT = bool(cfg.get('road_cut', False)); BC.ROAD_RECIPE = cfg.get('road_recipe', False)
+    BC.STITCH = bool(cfg.get('stitch', False)); BC.LM_CUTOUTS = set(cfg.get('lm_cutouts', ())); BC.CAR_SHADE = cfg.get('car_shade'); BC.CAR_SHADE_DUMP = cfg.get('car_shade_dump'); BC.ROAD_VERBATIM = variant == 'classic' and bool(cfg.get('road_verbatim', False)); BC.ROAD_UNDER = float(cfg.get('road_under', -0.02)); BC.SURF_DEFAULT = cfg.get('surface_default', 'gravel'); BC.ROAD_CUT = bool(cfg.get('road_cut', False)); BC.ROAD_RECIPE = cfg.get('road_recipe', False)
     BC.VARIABLE = variant == 'classic' and cfg.get('variable_width', True)        # mixed / allsr3 (frozen lane) keep the constant 14 m road
     log('importing road'); rd = BC.import_road(); log(name)
     cen = rd['V'][:, rd['hw']]; start, grid = classic_grid(cfg, rd); BC.START = (start, 1)
@@ -179,7 +179,115 @@ def stage_build(cfg, variant, name):
         pd_ = os.path.join(WORK, 'courses'); num_ = lambda p_: int(p_.split('.')[-2])
         have_ = sorted(_gl.glob(os.path.join(pd_, '%s.%s.patch.*.json' % (cfg['game'], cfg['name']))), key=num_); want_ = cfg['patch']
         if want_ is not True: want_ = [int(w_) for w_ in (want_ if isinstance(want_, list) else [want_])]; miss_ = [w_ for w_ in want_ if w_ not in [num_(p_) for p_ in have_]]; assert not miss_, 'no patch file number %s for this course in %s' % (miss_, pd_); have_ = [p_ for p_ in have_ if num_(p_) in want_]
-        for p_ in have_: faces = coursepatch.apply(faces, p_, rd['ox'], rd['oz'], BC.HI, log, fill_uv=bool(cfg.get('patch_uv', True)))
+        done_ = []; pset_ = {}
+        for p_ in have_: faces = coursepatch.apply(faces, p_, rd['ox'], rd['oz'], BC.HI, log, fill_uv=bool(cfg.get('patch_uv', True)), applied=done_, settings=pset_, pixels=BC.tile_pixels, save=BC.save_baked, origin=__import__('overlay_bake').ORIGIN, split=BC.uv_split, keep=BC.PAIRS); done_.append(num_(p_))
+        for k_, v_ in pset_.items(): cfg[k_] = {**cfg[k_], **v_} if (isinstance(v_, dict) and isinstance(cfg.get(k_), dict)) else v_
+        if pset_: log('       settings brought by the patches: %s' % pset_)
+    if variant == 'classic' and cfg.get('board_moves'):                 # OPT-IN (2026-10-13): cut-out boards moved in Blender (trees lifted onto new ground) - the ORIGINAL polygons are moved whole, so they keep
+        import json as _jb                                              # their corner count, their front / back marks and their mapping (owner: "reimport the trees ... at the right positions"). File: [[x, y, z, dx, dy, dz], ...]
+        BMv_ = np.array(_jb.load(open(cfg['board_moves'])), float); ob_ = np.argsort(BMv_[:, 0], kind='stable'); bx_ = BMv_[ob_, 0]; nb_ = 0      # per corner, in the decoded scene's coordinates
+        def shift_(p_):                                                 # the listed corner within 3 mm of p_ (decoded coordinates) -> its shift, or None
+            q_ = np.array([p_[0] - rd['ox'], p_[1], -(p_[2] - rd['oz'])]); lo_, hi_ = np.searchsorted(bx_, [q_[0] - 0.003, q_[0] + 0.003]); c_ = BMv_[ob_[lo_:hi_]]
+            if not len(c_): return None
+            d_ = np.linalg.norm(c_[:, :3] - q_, axis=1); k_ = int(np.argmin(d_)); return c_[k_, 3:6] if d_[k_] < 0.003 else None
+        for fc in faces:                                                # a polygon moves when at least three of its corners are listed with the same shift (its other corners go along)
+            if not str(fc[0]).split('|')[0].endswith('_t') or len(fc[2]) < 3: continue
+            sh_ = [s_ for s_ in (shift_(p_) for p_ in fc[2]) if s_ is not None]
+            if len(sh_) < 3 or any(float(np.abs(s_ - sh_[0]).max()) > 0.004 for s_ in sh_): continue
+            d_ = sh_[0]; fc[2][:] = [(p_[0] + float(d_[0]), p_[1] + float(d_[1]), p_[2] - float(d_[2])) for p_ in fc[2]]; nb_ += 1
+        log('       boards moved whole (board_moves): %d cut-out polygons' % nb_)
+    if variant == 'classic' and cfg.get('patch_files'):                # OPT-IN (genpatch1995.py): patch files given by PATH, applied after the numbered ones in the order given. A generated patch is kept outside courses\ so that "patch": true never picks it up beside the hand patches
+        import coursepatch; pset_ = {}
+        for p_ in ([cfg['patch_files']] if isinstance(cfg['patch_files'], str) else cfg['patch_files']):
+            faces = coursepatch.apply(faces, p_, rd['ox'], rd['oz'], BC.HI, log, fill_uv=bool(cfg.get('patch_uv', True)), applied=tuple(locals().get('done_', ())), settings=pset_, pixels=BC.tile_pixels, save=BC.save_baked, origin=__import__('overlay_bake').ORIGIN, split=BC.uv_split, keep=BC.PAIRS)
+        for k_, v_ in pset_.items(): cfg[k_] = {**cfg[k_], **v_} if (isinstance(v_, dict) and isinstance(cfg.get(k_), dict)) else v_
+        if pset_: log('       settings brought by the patch files: %s' % pset_)
+    if variant == 'classic' and (cfg.get('patch') or cfg.get('patch_files')):      # cut-out boards a patch ADDS (trees moved or copied in Blender, 2026-10-13): a board is two faces on the same corners, one per side,
+        import collections as _cp                                      # each with its half of the picture. As plain 'patch' faces both were drawn two-sided and lay in each other (4,500 coplanar pairs at the gate):
+        by_ = _cp.defaultdict(list)                                     # they get the single-sided mark the 1995 pairs carry (section suffix BC.SINGLE). Blender may cut the front and the back of a
+        rk_ = lambda p_: (round(p_[0], 2), round(p_[1], 2), round(p_[2], 2))  # board along different diagonals, so a pair = two cut-out faces in one plane, facing opposite ways, that share an EDGE
+        cand_ = [k_ for k_, fc in enumerate(faces) if str(fc[1]) == 'patch' and str(fc[0]).split('|')[0].endswith('_t') and len(fc[2]) >= 3]
+        def nrm_(P_):
+            n_ = np.cross(np.asarray(P_[1], float) - np.asarray(P_[0], float), np.asarray(P_[2], float) - np.asarray(P_[0], float)); l_ = float(np.linalg.norm(n_)); return n_ / l_ if l_ > 1e-12 else None
+        nn_ = {k_: nrm_(faces[k_][2]) for k_ in cand_}
+        for k_ in cand_:
+            q_ = [rk_(p_) for p_ in faces[k_][2]]
+            for a_ in range(len(q_)): by_[frozenset((q_[a_], q_[(a_ + 1) % len(q_)]))].append(k_)
+        mark_ = set()
+        for ks_ in by_.values():
+            for x_ in range(len(ks_)):
+                for y_ in range(x_ + 1, len(ks_)):
+                    a_, b_ = ks_[x_], ks_[y_]
+                    if nn_[a_] is not None and nn_[b_] is not None and float(nn_[a_] @ nn_[b_]) < -0.999: mark_.update((a_, b_))
+        np_ = len(mark_)
+        for k_ in mark_: fc = faces[k_]; faces[k_] = (fc[0], 'patch' + BC.SINGLE) + tuple(fc[2:])
+        if np_: log('       patch boards: %d cut-out faces added by the patches are front / back pairs on the same corners: single-sided, as the 1995 pairs' % np_)
+    if variant == 'classic' and cfg.get('patch_clean'):                 # OPT-IN (2026-10-13, owner: zero z-fighting): what a Blender scene's patch leaves lying IN another face is settled here, pair by pair
+        import overlay_bake as _OBc
+        rxz_ = np.asarray(rd['V'][:, rd['hw']], float)[:, [0, 2]]; cutq_ = lambda fc: str(fc[0]).split('|')[0].endswith('_t'); pq_ = lambda fc: str(fc[1]).startswith('patch')
+        def nrm2_(P_):
+            n_ = np.cross(np.asarray(P_[1], float) - np.asarray(P_[0], float), np.asarray(P_[2], float) - np.asarray(P_[0], float)); l_ = float(np.linalg.norm(n_)); return n_ / l_ if l_ > 1e-12 else np.zeros(3)
+        def area2_(P_):
+            P_ = np.asarray(P_, float); return sum(0.5 * float(np.linalg.norm(np.cross(P_[k_] - P_[0], P_[k_ + 1] - P_[0]))) for k_ in range(1, len(P_) - 1))
+        def inside_(P_, Q_):                                            # every corner of Q_ on the polygon P_ (1 cm)
+            P_ = np.asarray(P_, float); n_ = nrm2_(P_)
+            for q_ in np.asarray(Q_, float):
+                if not all(float(np.cross(P_[(k_ + 1) % len(P_)] - P_[k_], q_ - P_[k_]) @ n_) > -0.01 * float(np.linalg.norm(P_[(k_ + 1) % len(P_)] - P_[k_])) for k_ in range(len(P_))): return False
+            return True
+        cnt_ = {'boards paired': 0, 'decals made opaque over the ground under them': 0, 'ground faces under a decal left out': 0, 'faces lying inside a bigger one left out': 0, 'small patch faces half in another left out': 0, '1995 decals over patch ground left out': 0, 'patch faces doubling an original left out': 0}; hard_ = False
+        for round_ in range(8):
+            prs_ = _OBc.find_pairs(faces, rxz_, BC.PAIRS); drop_ = set(); ch_ = 0
+            for pr_ in prs_:
+                i_, j_ = int(pr_[0]), int(pr_[1])
+                if i_ in drop_ or j_ in drop_: continue
+                fi_, fj_ = faces[i_], faces[j_]
+                if cutq_(fi_) and cutq_(fj_):                             # two boards in one plane facing opposite ways: a front and a back
+                    if float(nrm2_(fi_[2]) @ nrm2_(fj_[2])) < -0.99:
+                        for k_ in (i_, j_):
+                            fc = faces[k_]
+                            if pq_(fc) and not str(fc[1]).endswith(BC.SINGLE): faces[k_] = (fc[0], str(fc[1]) + BC.SINGLE) + tuple(fc[2:]); cnt_['boards paired'] += 1; ch_ += 1
+                    elif hard_ and pq_(fi_) != pq_(fj_): drop_.add(i_ if pq_(fi_) else j_); cnt_['patch faces doubling an original left out'] += 1; ch_ += 1      # a board the patch adds again on top of the original, facing the same way
+                    elif hard_ and pq_(fi_) and pq_(fj_): drop_.add(i_ if area2_(fi_[2]) <= area2_(fj_[2]) else j_); cnt_['patch faces doubling an original left out'] += 1; ch_ += 1
+                    continue
+                if cutq_(fi_) != cutq_(fj_):                              # a 1995 cut-out lying on ground the patch put under it: the cut-out becomes an opaque picture (its holes take the ground's mean colour), the ground face under it goes
+                    d_, g_ = (i_, j_) if cutq_(fi_) else (j_, i_); fd_, fg_ = faces[d_], faces[g_]
+                    if pq_(fg_) and not pq_(fd_) and inside_(fd_[2], fg_[2]):
+                        t_ = str(fd_[0]).split('|')[0]
+                        if not t_.startswith('bake_dcl_'):
+                            px_ = BC.tile_pixels(t_); gp_ = BC.tile_pixels(str(fg_[0]).split('|')[0]); nm_ = 'bake_dcl_%s_%s' % (t_[-6:], str(fg_[0]).split('|')[0][-4:])
+                            if px_ is None or gp_ is None: continue
+                            if nm_ not in BC.BAKED:
+                                rgb_ = np.array(px_[0]).copy(); col_ = np.asarray(gp_[0], float).reshape(-1, np.asarray(gp_[0]).shape[-1])[:, :3].mean(0)
+                                if px_[1] is not None: rgb_[np.asarray(px_[1], bool)] = col_.astype(rgb_.dtype)
+                                BC.save_baked(nm_, rgb_, None); _OBc.ORIGIN[nm_] = _OBc.ORIGIN.get(str(fg_[0]).split('|')[0], str(fg_[0]).split('|')[0])
+                            for k_, fc in enumerate(faces):
+                                if fc is fd_: faces[k_] = (nm_,) + tuple(fc[1:])
+                            cnt_['decals made opaque over the ground under them'] += 1
+                        drop_.add(g_); cnt_['ground faces under a decal left out'] += 1; ch_ += 1
+                    elif hard_ and pq_(fg_) and not pq_(fd_) and abs(float(nrm2_(fd_[2])[1])) > 0.7: drop_.add(d_); cnt_['1995 decals over patch ground left out'] += 1; ch_ += 1      # second stage: the decal only partly on the new ground - the ground stays whole, the decal goes
+                    elif hard_ and pq_(fd_) and not pq_(fg_): drop_.add(d_); cnt_['patch faces doubling an original left out'] += 1; ch_ += 1                              # a board of the patch lying in an original solid face
+                    elif hard_ and pq_(fd_) and pq_(fg_) and area2_(fd_[2]) < 20.0: drop_.add(d_); cnt_['patch faces doubling an original left out'] += 1; ch_ += 1
+                    continue
+                if pq_(fi_) or pq_(fj_):                                  # solid on solid: the smaller one goes when it lies wholly inside the bigger and is the patch's
+                    s_, b_ = (i_, j_) if area2_(fi_[2]) <= area2_(fj_[2]) else (j_, i_)
+                    if pq_(faces[s_]) and inside_(faces[b_][2], faces[s_][2]): drop_.add(s_); cnt_['faces lying inside a bigger one left out'] += 1; ch_ += 1
+                    elif hard_ and pq_(faces[s_]) and area2_(faces[s_][2]) < 20.0: drop_.add(s_); cnt_['small patch faces half in another left out'] += 1; ch_ += 1
+                    elif hard_ and pq_(faces[b_]) and not pq_(faces[s_]) and area2_(faces[b_][2]) < 40.0: drop_.add(b_); cnt_['small patch faces half in another left out'] += 1; ch_ += 1
+            faces = [fc for k_, fc in enumerate(faces) if k_ not in drop_]
+            if not ch_:
+                if hard_: break
+                hard_ = True
+        log('       patch clean-up: %s ; pairs still lying in each other: %d' % (cnt_, len(_OBc.find_pairs(faces, rxz_, BC.PAIRS))))
+    if variant == 'classic' and cfg.get('patch_rules'):                # OPT-IN: GENERATE the rule-made patch (genpatch1995.py: what Mountain's hand patches 1 and 2 did, by rule, for any course) from the faces as they are now, and stop. The value is the file to write (true = work\tmp\genpatch\<game>.<name>.rules.json)
+        import genpatch1995
+        genpatch1995.write(faces, rd, BC, cfg, log); raise SystemExit(0)
+    if variant == 'classic' and cfg.get('patch_gen'):                  # GENERATE a patch file from the faces as they are now (the patches before it applied) and stop: 2 = the roadside fill (roadfill1995.py)
+        if int(cfg['patch_gen']) == 3:                                 # patch 3 = our own authored geometry on the course as patches 1 and 2 leave it (patch3_1995.py)
+            import patch3_1995
+            patch3_1995.write(faces, rd, BC, cfg, 3, [1, 2], log); raise SystemExit(0)
+        assert int(cfg['patch_gen']) == 2, 'only patch 2 (roadside fill) is generated'
+        import roadfill1995
+        roadfill1995.write(faces, rd, BC, cfg, 2, [1], log); raise SystemExit(0)
     if variant == 'classic' and cfg.get('unsmear', True):
         import fill1995 as _Fu
         faces, nu_ = _Fu.unsmear(faces, skip=BC.PAIRS); sky, ns_ = _Fu.unsmear(sky, skip=BC.PAIRS); log('       smeared tiles on natural ground given an even density: %d course polygons, %d backdrop polygons' % (nu_, ns_))
@@ -187,15 +295,7 @@ def stage_build(cfg, variant, name):
         log('       backdrop objects: %d faces within the +-740 m scenery square added as scenery, %d far faces (sky dome, ground plane, distant hills) left out: the slot keeps its own sky' % (len(sky), far))
         if sky and not bake: sky = BC.stack_layers(BC.dedupe_overlays(sky))
         extra = []                                                     # what the 1995 game never needed behind its walls and low camera (fill1995.py): verge ground, longer trunks, a lid on the castle island, the CHECK POINT banners
-        if cfg.get('fill', True):
-            import fill1995
-            lvl_ = (cfg.get('sea') or {}).get('level', -0.5)
-            sky = sky + fill1995.island_cap(sky)
-            lift_ = cfg.get('banner_lift', 3.0)                        # the CHECK POINT banners hang 2.8 m over the road: inside SR3's chase camera (first own run). Lifted
-            fill1995.TEXDIRS[:] = []; fill1995._ALPHA.clear(); fill1995._RGB.clear()
-            hf_ = fill1995.handfill(cfg, rd) if cfg.get('handfill', True) else []      # classic/courses/<game>/<course>/src_course<N>_handfill.obj (gapfill_gen.py): natural banks where the 1995 data has nothing
-            # ROM object 172 (fill1995.props) is NOT the trackside banner: it is a white hand-written text overlay standing 65 m off the
-            # road (user: "the white checkpoint banners are fake"). Gantries built by checkpoints1995 stand at the 1995 time checkpoints.
+        def gates_():                                                  # the checkpoint / finish gates. They stood inside the fill block, so every build with "fill": false (RAW and all that followed) had none (user, 2026-10-13: "the checkpoint/finish gates were missing from the track")
             import checkpoints1995
             ban_ = []
             if cfg.get('gates', '1995') == '1995':                     # the REAL 1995 gates (gates1995.py: ROM objects 783 .. 792 placed by the trackside table); letters composed into their panel (no stack)
@@ -217,6 +317,18 @@ def stage_build(cfg, variant, name):
             if not ban_ and cfg.get('gantries', True):                # stand-in gantries (no gate file for the course)
                 ban_ = checkpoints1995.gantries(cfg, rd)
                 if bake: BC.PAIRS.update(id(fc) for fc in ban_)            # front / back boards 4 cm apart: single-sided, or the two-sided copies fight in the distance
+            return ban_
+        if not cfg.get('fill', True): extra = gates_()
+        if cfg.get('fill', True):
+            import fill1995
+            lvl_ = (cfg.get('sea') or {}).get('level', -0.5)
+            sky = sky + fill1995.island_cap(sky)
+            lift_ = cfg.get('banner_lift', 3.0)                        # the CHECK POINT banners hang 2.8 m over the road: inside SR3's chase camera (first own run). Lifted
+            fill1995.TEXDIRS[:] = []; fill1995._ALPHA.clear(); fill1995._RGB.clear()
+            hf_ = fill1995.handfill(cfg, rd) if cfg.get('handfill', True) else []      # classic/courses/<game>/<course>/src_course<N>_handfill.obj (gapfill_gen.py): natural banks where the 1995 data has nothing
+            # ROM object 172 (fill1995.props) is NOT the trackside banner: it is a white hand-written text overlay standing 65 m off the
+            # road (user: "the white checkpoint banners are fake"). Gantries built by checkpoints1995 stand at the 1995 time checkpoints.
+            ban_ = gates_()
             if bake and hf_:                                           # a weld / lid / cliff of the hand fill that would lie in the plane of a polygon it joins (after the file's rounding) is left out
                 import overlay_bake as _OB
                 all_ = faces + sky + hf_; n0_ = len(faces) + len(sky); act_ = {n0_ + k_ for k_, fc in enumerate(hf_) if str(fc[1]).startswith(('hf_weld', 'hf_lid', 'hf_cliff', 'hf_body'))}
@@ -272,6 +384,9 @@ def stage_build(cfg, variant, name):
         if cfg.get('gate', 'report'):                                  # "gate": "report" (default) | "fail" | false : coplanar / near-coplanar overlapping faces = what can z-fight (overlay_bake.gate)
             import overlay_bake
             g_ = overlay_bake.gate(faces + sky + extra, np.asarray(rd['V'][:, rd['hw']], float)[:, [0, 2]], BC.PAIRS); GATE[name] = g_
+            if cfg.get('gate_dump'):                                    # OPT-IN: the pairs themselves, in the decoded scene's coordinates, for marking them in Blender
+                import json as _jg; all_g = faces + sky + extra; sc_ = lambda P_: [[float(p_[0]) - rd['ox'], float(p_[1]), -(float(p_[2]) - rd['oz'])] for p_ in P_]
+                _jg.dump([dict(a=dict(tile=str(all_g[i_][0]), sec=str(all_g[i_][1]), p=sc_(all_g[i_][2])), b=dict(tile=str(all_g[j_][0]), sec=str(all_g[j_][1]), p=sc_(all_g[j_][2]))) for i_, j_ in g_['pairs']], open(cfg['gate_dump'], 'w'))
             log('       z-fight gate: %d coplanar + %d near-coplanar overlapping pairs (%d of them within 30 m of the road) ; by section %s ; worst (gap, needed, tile, section, tile, section, where): %s' % (g_['exact'], g_['near'], g_['within_30m_of_road'], g_['by_section'], g_['worst']))
             if cfg.get('gate') == 'fail' and g_['exact'] + g_['near']: raise SystemExit('z-fight gate: %d pairs, see the build log' % (g_['exact'] + g_['near']))
         if cfg.get('fill', True) and cfg.get('roofs', True):           # houses the 1995 game never showed from behind or above: gable triangles and walls under open eaves (roofs1995.py)
@@ -296,7 +411,11 @@ def stage_build(cfg, variant, name):
         if cfg.get('round'):                                           # EXPERIMENT 'Z1R2' (round1995.py): natural 1995 surfaces cut finer and smoothed; default off
             import round1995
             n0_, n1_ = len(faces), len(sky); lv_ = max(1, int(round(np.log2(float(cfg['round'])))))        # 'round' 2 = every edge halved once, 4 = twice. Each step is also ROUNDER (user, 2026-10-08: "I'd like each R to increment roundness as well"): the passes go 2, 16, 128, 1024 = the reach of the smoothing grows by 1.41 a step (4 x the passes would only keep R2's reach): a pass reaches one edge, and the edges are half as long each time - with 2 passes at every level the finer mesh came out LESS rounded (first Z4R4: mean move 0.13 m against 0.50 m for R2)
-            all_, ri_ = round1995.round_natural(faces + sky + extra, level=lv_, passes=int(cfg.get('round_passes', 2 * 8 ** (lv_ - 1))), log=log, exclude=cfg.get('round_exclude', ()), road=np.asarray(rd['V'], float))      # (the limits that keep a strong rounding whole: round1995.py)
+            keep_ = None                                              # where the 1995 spectators stand the ground is not rounded away from under them (round1995, rule 6)
+            if cfg['game'] == 'src' and cfg.get('crowd', True):
+                import crowd as _cw
+                if str(cfg['course']) in _cw.SRC_TABLES: keep_ = [s_[:3] for s_ in _cw.classic_spots(str(cfg['course']), np.asarray(rd['V'][:, rd['hw']], float), rd['ox'], rd['oz'], zs=BC.ZS)]
+            all_, ri_ = round1995.round_natural(faces + sky + extra, level=lv_, passes=int(cfg.get('round_passes', 2 * 8 ** (lv_ - 1))), log=log, exclude=cfg.get('round_exclude', ()), road=np.asarray(rd['V'], float), slide=bool(cfg.get('round_slide', True)), keep_at=keep_)      # (the limits that keep a strong rounding whole: round1995.py)
             faces, sky, extra = all_, [], []
             if cfg.get('seal_after_round', False) and cfg.get('fill', True) and cfg.get('seal', True):       # (OFF by default: it took 3 minutes of a 10 minute build and closed 3 places; what holds the road's edge is round1995's apron) ... and sealed again: rounded ground shrinks away from the road and sinks (looking straight down beside the road, the ground had dropped more than 0.3 m
                 import gapfill_weld as _GW2, overlay_bake as _OB2     # in 5 000 places of build BASE), which opened holes along the tarmac where it meets rock and walls (user, 2026-10-08, who had asked for this after Z15R8: "a second poly-fill pass after rounding")
@@ -309,6 +428,9 @@ def stage_build(cfg, variant, name):
         _ae.register(lambda: _tf.save_map(os.path.join(WORK, 'out', name, 'Desert4'), BC, _OBt, print))
         if cfg.get('bake_refine'):                                    # baked light is per vertex: big polygons near the road are cut so that a shadow has corners to land on (bake1995.py)
             import bake1995; n0_ = len(faces); faces = bake1995.refine(faces + sky + extra, float(cfg['bake_refine']), np.asarray(rd['V'][:, rd['hw']], float)[:, [0, 2]], log=log); sky, extra = [], []
+        if cfg.get('seen_sides', False):                              # baked light: a polygon shows the light of the side the ROAD sees (seenside.py); nothing is moved, a polygon seen from both sides is written once per side
+            import seenside; faces, sky, extra = seenside.orient((faces, sky, extra), rd, also=BC.LM_CUTOUTS, single=BC.SINGLE, log=log, keep=(cfg.get('seen_sides_file') if cfg.get('lm_collect') else None), read=(cfg.get('seen_sides_file') if cfg.get('lm_table') else None))
+            if cfg.get('lm_collect'): import json as _jc; _jc.dump(sorted(BC.LM_CUTOUTS), open(cfg['lm_collect'] + '.cutouts.json', 'w'))      # (the bake closes these buildings for the rays)      # (BC.PAIRS is not handed over as a skip list: it holds id() numbers of polygons long replaced, and by chance a few live polygons matched them - a different handful in every run)
         if cfg.get('bake_collect'):
             import bake1995, atexit; BC.BAKE_COLLECT = []; sd_ = cfg.get('light_dir'); bake1995.save_scene(cfg['bake_collect'], faces + sky + extra, rd, BC.tile_pixels, [-float(q) for q in sd_] if sd_ else [0.0, 0.94, -0.34], log)
             atexit.register(lambda: bake1995.save_points(cfg['bake_collect'], BC.BAKE_COLLECT, print))
@@ -326,7 +448,9 @@ def stage_build(cfg, variant, name):
             import pickle
             import overlay_bake as _OBd
             pickle.dump(dict(faces=faces, sky=sky, extra=extra, rd=rd, baked=dict(BC.BAKED), origin=dict(_OBd.ORIGIN), **DUMP_EXTRA, pairs=[k for k, fc in enumerate(faces + sky + extra) if id(fc) in BC.PAIRS]), open(os.environ['GAPFILL_DUMP'], 'wb'))
-        if float(cfg.get('light_contrast', 0.0)) > 0:               # lighting by the sun: every opaque polygon wound towards the side it is seen from (lightside.py)
+        if float(cfg.get('light_contrast', 0.0)) > 0 and cfg.get('lit_sides', True):      # lighting by the sun: every opaque polygon wound towards the side it is seen from (lightside.py). "lit_sides": false (2026-10-13) leaves every polygon as it is:
+            # turning a polygon round reverses its corners, and a four-corner polygon is drawn as two triangles along corners 0 - 2 - reversed, it is cut along the OTHER diagonal. On a twisted polygon (37% of Mountain's are, some by metres) that is another surface:
+            # it no longer met its neighbours and no longer was where the light had been baked. With light maps as the only lighting nothing needs a seen side.
             import lightside
             n0_, n1_ = len(faces), len(sky); all_, li_ = lightside.orient(faces + sky + extra, log, tag=name); faces, sky, extra = all_[:n0_], all_[n0_:n0_ + n1_], all_[n0_ + n1_:]
             if cfg.get('roadsight', True):                              # ... then the proper question: which side is seen FROM THE ROAD (roadsight.py) - it overrules the sky test wherever the road sees the polygon
@@ -382,10 +506,16 @@ def stage_build(cfg, variant, name):
                 if cfg.get('light_dir'): fl[1:4] = cfg['light_dir']      # the direction the sun shines IN (both sets: the cast shadows and the shading must agree). Mountain: Desert4's own -4 -6 4 = sun ahead and to the right on the start grid, 47 degrees up, which is where the 1995 game has it (left houses lit, church front and right houses in shade, SRC.png)
                 for k0, key in ((4, 'ambient'), (7, 'sun'), (23, 'scale'), (44, 'tint'), (14, 'fog')):
                     if key in lg_: fl[k0:k0 + 3] = lg_[key]
+                if cfg.get('light_split'):                          # course setting light_split a: the ambient light x a, and the sun raised by what the ambient lost on a lying surface
+                    a_ = float(cfg['light_split']); d_ = np.asarray(fl[1:4], float); nl_ = max(float(-d_[1] / max(np.linalg.norm(d_), 1e-9)), 0.05)      # (channel by channel, so sunlit ground keeps its brightness AND its colour).
+                    A_ = fl[4:7].astype(float); sc_ = np.where(np.abs(fl[23:26]) > 1e-6, fl[23:26], 1.0).astype(float); fl[7:10] = (fl[7:10] * sc_ + (1.0 - a_) * A_ / nl_) / sc_; fl[4:7] = a_ * A_
+                    # Why: the track's light is a SEGA track's (lighting_from), 0.64 ambient against 1.14 sun. A car's shadow leaves the road at 37 % of its sunlit
+                    # brightness and a car in a baked shadow hardly darkens on its sides (owner, 2026-10-13: "too tame compared to the baked shadows"). The flat-lit
+                    # scenery and road are lit as lying surfaces, so they stay exactly as they were; only what the sun leaves in shadow gets darker.
                 fr_ = cfg.get('fog_range', [20000.0, 40000.0, 20000.0, 40000.0])      # floats 10..13 of each set: the 1995 game has no fog (the fogged far edge of the sea sheet stood as blue bars on the horizon)
                 if fr_: fl[10:14] = fr_
                 s_.data = fl.tobytes()
-            log('       lighting sets overridden: %s ; fog range %s' % (lg_, cfg.get('fog_range', [20000.0, 40000.0, 20000.0, 40000.0])))
+            log('       lighting sets overridden: %s ; fog range %s%s' % (lg_, cfg.get('fog_range', [20000.0, 40000.0, 20000.0, 40000.0]), (' ; light_split %.2f: ambient %.3f, sun %.3f ; a lying surface in a cast shadow keeps %.0f %% of its sunlit brightness' % (float(cfg['light_split']), float(np.mean(fl[4:7])), float(np.mean(fl[7:10] * fl[23:26])), 100.0 * float(np.mean(fl[4:7])) / max(float(np.mean(fl[4:7])) + float(np.mean(fl[7:10] * fl[23:26])) * max(float(-fl[2] / max(np.linalg.norm(fl[1:4]), 1e-9)), 0.05), 1e-9))) if cfg.get('light_split') else ''))
         if BC.ROAD_MAIN:                                               # the 1995 asphalt tile, tiled, replaces the COLOUR of the two SR3 tarmac layer textures (ids, alpha blocks, size and mip chain stay SEGA's)
             tile_ = BC.ROAD_MAIN[0]; rep_ = int(cfg.get('road_tile_repeat', 4)); by0 = f.byid()
             BC.VIVID = tuple(BC.VIVID_CFG) if BC.VIVID_CFG else None; tile_ = BC.vivid(tile_); BC.VIVID = None

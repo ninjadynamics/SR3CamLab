@@ -67,7 +67,8 @@ setup per node, 0x500EA0 visibility refresh, 0x4FFC30 stream decoder, 0x5003C0 l
 | 0x9EB970, 0x9F0680 | final view matrix | 20 |
 | 0xA65650, [0x9F05F4], [0xA65790], [0x9F0FAC] | PVS contexts and flags | 20 |
 | 0x577F00 | CreateVertexBuffer wrapper ("Out of memory for VB") | 20 |
-| 18 menu timer sites (0x63D900 ...) | 15000 ms constants | 20 |
+| 24 menu timer sites (0x63D900 ...) and the countdown draw (0x61827A) | 15000 / 10000 / 30000 ms constants | 20 |
+| car select fill routines 0x600790 / 0x6006F0 / 0x600740 | which cars of the library each mode lists | 20 |
 
 Note on "not packed" in the title of this file: 16_lighting_shadows_lightmaps.md (2026-10-08) calls the exe on disk
 "packed (3.3 MB file, data addresses beyond the raw size)". The two statements conflict; see OPEN_QUESTIONS.md.

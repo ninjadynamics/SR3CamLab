@@ -57,6 +57,7 @@ SR3CamLab\
 ├── PLAY.bat          start the game with the mod
 ├── patch.ps1         the live patcher
 ├── setup.ps1         finds TeknoParrot and the game (the setup window)
+├── watchdog.cs       records crashes and freezes while you play (patch.ps1 loads it)
 ├── profiles.yaml     your camera profiles (the game and CamLab share them)
 ├── defaults.yaml     factory profiles (don't edit)
 └── camlab.exe        the tuning app (from the release, or build it: see CAMLAB.md)
@@ -78,11 +79,15 @@ PLAY.bat                    the default profile
 PLAY.bat Drone              a profile by name
 PLAY.bat "SR3 Chase"        SEGA Rally 3's own chase camera ("SR3 Chase Far": its far one)
 PLAY.bat Drone -Overlay 64  bigger camera names (0 = none)
+PLAY.bat -CameraBlend 0     View Change cuts to the next camera instead of travelling to it
+PLAY.bat -MouseSmoothing 0  raw mouse and keys on the cameras you steer
 PLAY.bat -Cores 0           don't limit the game's CPU threads (see below)
+PLAY.bat -NoWatchdog        don't record crashes and freezes (see below)
 PLAY.bat -Setup             open the setup window (where TeknoParrot and the game are)
 ```
 
-**In a race, View Change cycles through every camera.** Its name shows for 2 seconds:
+**In a race, View Change cycles through every camera.** The view travels to the new camera
+in half a second (`cameraBlend`), and its name shows for 2 seconds:
 
 | Group | Cameras | Name |
 |---|---|---|
@@ -95,6 +100,7 @@ PLAY.bat -Setup             open the setup window (where TeknoParrot and the gam
 - **Car rotate cam:** mouse left/right orbits the car, forward/back tilts, W/S zoom.
 - **Free cam, Car free cam:** mouse looks around, WASD moves, Space/Ctrl up and down.
 - **`~`** (the key below Esc) resets them.
+- Mouse and keys are smoothed (`mouseSmoothing`), so the camera glides instead of jerking.
 
 **Turning it off:** start the game normally from TeknoParrot.
 
@@ -110,6 +116,15 @@ powershell -ExecutionPolicy Bypass -File patch.ps1 -Off -NoLaunch
 starts one thread per CPU core for each. On a 32-thread CPU that fills the 32-bit game's 4 GB
 and it crashes. `PLAY.bat` lets the game use 4 CPU threads, which halves the cost (the game
 itself only needs one).
+
+**Crashes and freezes are recorded as they happen.** Once the camera mod is on, `PLAY.bat`
+watches the game the way a debugger does, without changing anything in it. When the game
+crashes, stops responding for 10 seconds, or shows an error box ("Out of memory for VB"), the
+details go to the `crash` folder in `SR3CamLab` (a log per session plus a minidump) and the
+PLAY.bat window says so. Nothing needs reproducing: the next crash is already on file.
+Closing the window never closes the game. `-NoWatchdog` turns it off, for instance to attach
+another debugger (only one can be attached at a time). The folder can be emptied whenever you
+like.
 
 ## Troubleshooting
 
@@ -130,6 +145,8 @@ default: Daytona     # the profile PLAY.bat starts on
 overlay: 48          # camera name size in px at 1080p (0 = off)
 hiddenCameras: true  # include the debug cameras in View Change
 speedUnits: km/h     # CamLab's speedometer
+mouseSmoothing: 0.08 # seconds the steerable cameras' mouse look is smoothed over (0 = raw)
+cameraBlend: 0.5     # seconds the view travels to the next camera on View Change (0 = cut)
 ```
 
 Each profile sets `strength`, `fadeInStartKmh`, `fadeInFullKmh`, `stiffnessMin`,

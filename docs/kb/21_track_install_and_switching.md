@@ -38,7 +38,8 @@ alternatives must stay below 10").
 
 ## 3. `switch.json`, `classic.json`, `classic_mode.txt`
 - `tracks\_SR3Extras\switch.json` lists, per slot, the tracks the switcher may choose (entry 0 = the game's own track): a
-  title, the folder digit, the card video, the announcer clip name and the sound ids (ambience, music, events file).
+  title, the folder digit, the card video, the announcer clip name and the sound ids (ambience, music, events file);
+  a 1995 course whose tune was added to the stream file also has "tune" {stream, offset, bytes, loopstart}.
   Written by `extras.ps1` (`Write-SwitchFile`).
 - `tracks\_SR3Extras\classic.json` (`[{ title, dir }]`) lists the Classic alternatives, whose files sit in
   `Main_release\track<dir>\Desert4`; `Write-SwitchFile` adds them to `switch.json` as slot Desert4.
@@ -65,6 +66,7 @@ alternatives must stay below 10").
   | race sounds | the pointers to the name patterns: ambience 0x644EA5 (own pattern 0x6D5EF0), music 0x6451C5 (0x6D5E7C), events file 0x63382B (0x6D5EA0), turned to whole names kept in the patch block (audio.md) |
   | scenery visibility | [0xA65794] held at 1 while an added track is raced |
   | checkpoint times | `arcade_times.bin` of the track folder (20, section 6) |
+  | a 1995 course's own tune | the loaded stream header: the record of the Classic mode's music (stream 20) is turned to a tune appended to the stream file - data offset, bytes, loop start, loop flag - and back for every other track (audio.md, "Music: only for the 1995 courses") |
   | shadow edge | `shadow.txt` of the track folder (20, section 7) |
   | menu art (only when "art" is on) | the 'D' of `BKGD_NAME_%s` at 0x6BCF0F and the last 'R' of `MENU_BANNER_%s` at 0x6BD79E, 0x6D96E6, 0x6E2AB2, 0x6E336E, 0x6E5A36, rewritten to the digit |
 

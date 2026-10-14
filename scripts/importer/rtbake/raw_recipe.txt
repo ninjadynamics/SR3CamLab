@@ -1,0 +1,15 @@
+light_contrast=0
+light_dir=[0.0,-9.4,3.4]
+scene_gain=[0.7065,0.7135,0.7425]
+fill=false
+handfill=false
+handmodel=false
+roofs=false
+seal=false
+verge=false
+lower_trees=false
+unsmear=false
+mirror_groups=[]
+road_verbatim=true
+road_under=0.0
+surface_default="tarmac"

@@ -228,6 +228,22 @@ def build_road_track(des, rd, with_spline=True):
         a = sbfw.Ch(4, 0xa07e0001, BT.tex_fill(small[0], (0, 255, 0)), [], []); b = sbfw.Ch(4, 0xa07e0002, BT.tex_fill(small[0], (128, 128, 128)), [], [])
         f.chunks.insert(0, a); f.chunks.insert(1, b); pg_a, pg_b = a.id, b.id
     model = road_model(rd, t, BT.page_for(cen, texa=pg_a, texb=pg_b))
+    if (CAR_SHADE or CAR_SHADE_DUMP) and small:
+        # THE CARS IN BAKED SHADOW. The game lays the page's first picture over every car from above (the nearest page: 0x62FC50) and lights the car by
+        # ambient x (1 - red) + sun x green (pixel shader, sampler TexStaticShadow): green = how much of the sun reaches the spot, red = how much of the sky is
+        # hidden. SEGA's tracks have one picture per page, about 10 cm a texel; the importer gave every page one all-green picture, so no shadow of the baked
+        # light ever fell on a car (owner, 2026-10-13). The pages are laid out here as set_td would (two_pages), listed for the bake, and take its pictures.
+        import json; BT.two_pages(model)
+        if CAR_SHADE_DUMP: json.dump(dict(pages=[[float(q_) for q_ in p_[2:6]] for p_ in model['pages']]), open(CAR_SHADE_DUMP, 'w'))
+        if CAR_SHADE:
+            cs_ = np.load(CAR_SHADE); im_ = cs_['pages']; mp_ = cs_['map']; keep_ = VIVID, _NO_GAIN[0]
+            assert len(im_) == len(model['pages']) and np.allclose(mp_, [p_[2:6] for p_ in model['pages']], rtol=1e-6, atol=1e-6), 'car_shade: the pictures are not for this road (%d pages in the file, %d on the road)' % (len(im_), len(model['pages']))
+            globals()['VIVID'] = None; _NO_GAIN[0] = True; seen_ = {}
+            for k_, p_ in enumerate(model['pages']):
+                key_ = tuple(float(q_) for q_ in p_[2:6])                # (a road short enough for one page has it twice)
+                if key_ not in seen_: c_ = make_texture(small[0], 0xa07e0100 + k_, np.ascontiguousarray(im_[k_]), None); f.chunks.insert(0, c_); seen_[key_] = c_.id
+                model['pages'][k_] = (seen_[key_],) + tuple(p_[1:])
+            globals()['VIVID'], _NO_GAIN[0] = keep_; log('       cars in baked shadow: %d road pages, each with its own sun / sky picture of %d x %d' % (len(model['pages']), im_.shape[2], im_.shape[1]))
     BT.set_td(f, model)
     lv = BM.leaves_for(cen)
     BT.set_scene(f, lv, []); BT.drop_boundary(f)
@@ -586,7 +602,10 @@ OWN_SHADER = set()                                                    # tiles wh
 BUMP = {}; BUMP_GREEN = False; BUMP_GAIN = 1.0; BUMP_TRUE = False; KEEP_T = None          # facade relief test (bump1995.py): tile -> strength ; the vertices of the mesh just made that keep their own tangent
 LM_TEST = False                                                        # EXPERIMENT (course setting 'lm_test'): what does the game do with the LIGHT MAP of the imported materials? see add_scenery
 SHARE = True                                                           # corners shared between the polygons of a mesh (share_corners)
+STITCH = False                                                         # course setting "stitch": seal1995.py closes the hairline gaps between polygons (pixels the game never drew: 4K screenshots of 2026-10-13)
 FLAT_LIT = set()                                                       # material names lit as flat ground whatever they face (signs)
+LM_CUTOUTS = set()                                                     # cut-out tiles that take baked light all the same (course setting lm_cutouts). Cut-outs are flat-lit by the owner's rule for sprites; a BUILDING drawn with a cut-out picture (the village church tower) stayed bright whichever way it faced (2026-10-13: "make an exception for the church tower")
+CAR_SHADE = None; CAR_SHADE_DUMP = None                                # the cars' sun / shadow pages (build_road_track): car_shade = file of pictures from the bake ; car_shade_dump = where the page list is written for the bake
 SMOOTH_N = {}                                                          # corner (x, y, z rounded to cm) -> unit normal, natural ground only (import_classic fills it when LIGHT_K > 0)
 def oriented_normals(quads):
     """unit normal per polygon, turned to the side that is SEEN: lying faces look up, upright ones face the nearest road point
@@ -674,23 +693,23 @@ def relief_tangent(nf, nt, tt, sv):
 
 def faces_to_mesh(faces, uv_mode, up_normals=False):
     """-> (verts array, nquads). uv_mode 'tile' = classic uv (shifted into 0..2 per face), 'box' = 0..1 per face"""
-    quads = []; uvs = []; clamp = 0
+    quads = []; uvl = []; clamp = 0
     for mat, sec, P, UV in faces:
         if len(P) == 3: P = P + [P[2]]; UV = UV + [UV[2]]
-        quads.append(P[:4]); u = np.array(UV[:4], float)
-        if uv_mode == 'given': pass                                   # already in repeats, 0..2
-        elif uv_mode == 'tile':
-            u[:, 1] = 1.0 - u[:, 1]                                   # OBJ v up -> texture rows down
-            u -= np.floor(u.min(0) + 1e-6)
-            if u.max() > 1.999: clamp += 1; u = np.clip(u, 0, 1.999)
-        else: u = np.array([(0, 0), (1, 0), (1, 1), (0, 1)], float)
+        quads.append(P[:4]); uvl.append(UV[:4])
+    uvs = np.array(uvl, float).reshape(-1, 4, 2)                      # (all polygons at once: this was a loop with five numpy calls a polygon, 427 000 polygons a pass at R4)
+    if uv_mode == 'given': pass                                       # already in repeats, 0..2
+    elif uv_mode == 'tile':
+        uvs[:, :, 1] = 1.0 - uvs[:, :, 1]                             # OBJ v up -> texture rows down
+        uvs -= np.floor(uvs.min(1) + 1e-6)[:, None, :]
+        over_ = uvs.reshape(len(uvs), -1).max(1) > 1.999 if len(uvs) else np.zeros(0, bool); clamp += int(over_.sum()); uvs[over_] = np.clip(uvs[over_], 0, 1.999)
+    else: uvs[:] = np.array([(0, 0), (1, 0), (1, 1), (0, 1)], float)
         # The mesh stores uv as SIGNED 16-bit, -1..+1 (SEGA's own meshes: 95% of the values are 0..0x7FFF, the rest small
         # negatives). Written as 0..2 unsigned, every face that crossed 1.0 had some corners read as negative: the tile ran
         # backwards between them (boards mirrored / upside-down, walls smeared - first in-game runs). A face keeps its
         # corners together: an axis that reaches 1.0 is moved down by one repeat (textures wrap, the picture is the same).
-        for ax in (0, 1):
-            if u[:, ax].max() > 1.00002: u[:, ax] -= 1.0              # exactly 1.0 stays (stored as 0x7FFF)
-        uvs.append(u)
+    for ax in (0, 1):
+        if len(uvs): m_ = uvs[:, :, ax].max(1) > 1.00002; uvs[m_, :, ax] -= 1.0      # exactly 1.0 stays (stored as 0x7FFF)
     v = meshgen.make_verts_safe(quads)
     globals()['KEEP_T'] = None; bm_ = np.array([bump_of(fc[0]) > 0 for fc in faces], bool) if (BUMP and up_normals) else None; gn_ = v['n'].copy() if (bm_ is not None and bm_.any()) else None
     if up_normals and LIGHT_K > 0:
@@ -715,9 +734,11 @@ def faces_to_mesh(faces, uv_mode, up_normals=False):
         sd_ = (sh_ / lh_ * 0.7071 + np.array([0.0, 0.7071, 0.0])) if lh_ > 1e-6 else np.array([0.0, 1.0, 0.0]); floor_ = 1.0 - 0.6 * LIGHT_K
         bright = lambda n_: floor_ + (1.0 - floor_) * np.clip((n_ @ sd_ + 0.2) / 0.907, 0.0, 1.0)
         I_ = bright(nv_); unsure = np.repeat(np.array([str(fc[0]).endswith('|4') for fc in faces], bool), 4); I_ = np.where(unsure, np.maximum(I_, bright(-nv_)), I_)
-        flat = np.repeat(np.array([str(fc[0]).split('|')[0].endswith('_t') or str(fc[0]).split('|')[0] in FLAT_LIT for fc in faces], bool), 4); I_ = np.where(flat, 1.0, I_)      # cut-out boards and signs: as flat ground
+        flat = np.repeat(np.array([(lambda b_: (b_.endswith('_t') and b_ not in LM_CUTOUTS) or b_ in FLAT_LIT)(str(fc[0]).split('|')[0]) for fc in faces], bool), 4); I_ = np.where(flat, 1.0, I_)      # cut-out boards and signs: as flat ground
         if BAKE_COLLECT is not None or BAKE_TABLE is not None: I_ = bake_light(v, nv_, I_, flat, unsure)
-        if LM_COLLECT is not None: LM_COLLECT.append((v['p'][:, :3].reshape(-1, 4, 3).astype(np.float64), nv_.reshape(-1, 4, 3).mean(1), I_.reshape(-1, 4).astype(np.float32), np.asarray(flat, bool).reshape(-1, 4)[:, 0].copy(), np.asarray(unsure, bool).reshape(-1, 4)[:, 0].copy()))
+        if LM_COLLECT is not None:
+            import round1995 as _r95; pid_, pab_ = _r95.patch_lookup(v['p'][:, :3].reshape(-1, 4, 3), back=np.array([str(fc[0]).endswith('|3') for fc in faces], bool))      # pieces of a rounded polygon lie in ITS rectangle (round1995.PATCH)
+            LM_COLLECT.append((v['p'][:, :3].reshape(-1, 4, 3).astype(np.float64), nv_.reshape(-1, 4, 3).mean(1), I_.reshape(-1, 4).astype(np.float32), np.asarray(flat, bool).reshape(-1, 4)[:, 0].copy(), np.asarray(unsure, bool).reshape(-1, 4)[:, 0].copy(), pid_, pab_))
         if LM_TABLE is not None:
             import lightmap1995; fl_ = np.asarray(flat, bool).reshape(-1, 4)[:, 0]; m0_ = LM_TABLE['miss'][0]; pg_, uv1_ = lightmap1995.lookup(LM_TABLE, v['p'][:, :3].reshape(-1, 4, 3).astype(np.float64)); LM_TABLE['miss'][0] = m0_ + int((~fl_ & (pg_ == 0)).sum()); pg_ = np.where(fl_, 0, pg_)
             v['uv1'] = np.where(np.repeat(fl_, 4)[:, None], v['uv1'], uv1_); globals()['LM_LAST'] = pg_
@@ -744,7 +765,7 @@ def faces_to_mesh(faces, uv_mode, up_normals=False):
         if BUMP_TRUE or LIGHT_K <= 0: v['n'] = np.where(m4_[:, None], gn_, v['n']); v['t'] = np.where(m4_[:, None], tg_.astype(np.float32), v['t'])      # (the first test: true normal, tangent along u)
         else: v['t'] = np.where(m4_[:, None], relief_tangent(v['n'].astype(np.float64), gn_.astype(np.float64), tg_, LIGHT_ENV[2]), v['t'])               # the rule's brightness stays; see relief_tangent
         globals()['KEEP_T'] = m4_
-    for k, u in enumerate(uvs): v['uv0'][4 * k:4 * k + 4] = np.clip(np.round(u * 32768), -32768, 32767).astype(np.int16).view(np.uint16)
+    if len(uvs): v['uv0'] = np.clip(np.round(uvs.reshape(-1, 2) * 32768), -32768, 32767).astype(np.int16).view(np.uint16)
     return v, len(quads), clamp
 
 def dxt1_grey(img, hole=None):
@@ -774,6 +795,10 @@ def dxt1_grey(img, hole=None):
     return out.tobytes()
 
 def dxt1_rgb(img, hole=None):
+    """RGB uint8 image (h, w multiple of 4, 3) -> DXT1 blocks: _dxt1_rgb_np below, computed in C on every core (fastdxt.py: the same bytes, checked on
+    every picture of a build with SR3_FASTDXT_CHECK=1 ; SR3_FASTDXT=0 = the numpy code). A light-map page took 0.42 s in numpy, 0.005 s there."""
+    import fastdxt; return fastdxt.dxt1_rgb(img, hole, _dxt1_rgb_np)
+def _dxt1_rgb_np(img, hole=None):
     """RGB uint8 image (h, w multiple of 4, 3) -> DXT1 blocks; endpoints = brightest/darkest texel of the block.
     hole: transparent texels -> 3-colour + transparent mode."""
     h, w, _ = img.shape; b = img.reshape(h // 4, 4, w // 4, 4, 3).transpose(0, 2, 1, 3, 4).reshape(-1, 16, 3).astype(np.int32)
@@ -966,7 +991,7 @@ def add_scenery(f, sta_gfx, faces, mode, lv, trees=False, rd=None):
                 k_ = max(q_ for q_, c_ in enumerate(new) if c_.kind == 2 and c_.id == mat_id); m_ = UNLIT_TPL.copy(); m_.id = mat_id; m_.gap = None; d_ = bytearray(m_.data); struct.pack_into('<I', d_, 0x1bc, 0xc1a50000 + gi); m_.data = bytes(d_); new[k_] = m_
         _NO_GAIN[0] = False
         if uvmode == 'tile' and mode == 'classic': fl, ns = uv_split(fl); nsplit[0] += ns
-        if mode == 'classic' and LIGHT_K > 0 and locals().get('dbl_'): fl = fl + [(m_, s_, list(P_)[::-1], list(U_)[::-1]) for m_, s_, P_, U_ in fl]; ndbl[0] += len(fl) // 2
+        if mode == 'classic' and LIGHT_K > 0 and locals().get('dbl_'): import seenside; fl = fl + [(m_, s_) + tuple(seenside.rewind(P_, U_)) for m_, s_, P_, U_ in fl]; ndbl[0] += len(fl) // 2      # (the other winding of the SAME two triangles: a reversed corner list is cut along the other diagonal)
         for part in range(0, len(fl), 10000):
             globals()['LM_LAST'] = None; v, nq, cl = faces_to_mesh(fl[part:part + 10000], uvmode, up_normals=(mode == 'classic')); clamp += cl
             pgs_ = LM_LAST if (LM_LAST is not None and len(LM_LAST) == nq) else np.zeros(nq, np.int32)          # LIGHT MAPS: a material shows ONE light map, so the polygons of each page become a mesh of their own, with a copy of the material that points at that page
@@ -1095,6 +1120,10 @@ def add_scenery(f, sta_gfx, faces, mode, lv, trees=False, rd=None):
                         c_.data = bytes(d_)
                     k_ += 1
             log('       verbatim road: %d road materials changed (road_recipe %s)' % (k_, ROAD_RECIPE))
+    if STITCH and mode == 'classic' and LM_COLLECT is None:           # hairline gaps between polygons (seal1995.py): corners meant to be one become one, edges are cut where a neighbour has a corner
+        import seal1995
+        for pass_ in range(3):
+            if not seal1995.seal(new, log, ids=ids)[1]: break
     f.chunks[len(f.chunks) - 1:len(f.chunks) - 1] = new
     if ndbl[0]: log('       lit by the sun (light_contrast %.2f): %d opaque faces written once per side, single-sided' % (LIGHT_K, ndbl[0]))
     if nsplit[0]: log('       %d classic faces repeat their tile more than twice: cut into pieces (u16 uv holds 0..2 repeats)' % nsplit[0])
