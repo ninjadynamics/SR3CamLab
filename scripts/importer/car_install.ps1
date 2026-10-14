@@ -1,10 +1,11 @@
-# Installs a car staging folder made by car_clone.py into the game (copied into the staging folder as install.ps1).
+# Installs a car staging folder (car_clone.py / daytona_car.py) into the game; copied into the staging folder as install.ps1.
 #   powershell -ExecutionPolicy Bypass -File "<staging>\install.ps1" [-Game "<...\Rally>"] [-Force]
-# - refuses while Rally.exe runs (-Force overrides);
-# - car files: copied in; a file already there with other content is first kept as <file>.before_install;
-# - ArcadeDatabase: only replaced when the game's file is exactly the one the staging was built from (SHA-256 in
-#   manifest.json); the game's file is kept first as Main_release\tracks\_SR3Extras\original\arcadedatabase_xdata.before_<car>.sbf
-#   (never over an existing backup, and never over _SR3Extras\original\arcadedatabase_xdata.sbf).
+# - refuses while Rally.exe runs (-Force overrides; -Proc names another process, for tests);
+# - SEGA files the car changes (manifest "replace": ArcadeDatabase, system\system_data.sbf; old manifests: "db"):
+#   only replaced when the game's file is exactly the one the staging was built from (SHA-256), checked for ALL of them
+#   before anything is copied; each is kept first as Main_release\tracks\_SR3Extras\original\<backup> (never over an
+#   existing backup, never over the files already in that folder);
+# - car files (manifest "files"): copied in; a file already there with other content is first kept as <file>.before_install.
 param([string]$Game = "F:\Jogos\SEGA Rally 3\GAME\Sega Rally 3\Rally", [switch]$Force, [string]$Proc = "Rally")
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -12,13 +13,26 @@ $m = Get-Content -LiteralPath (Join-Path $here "manifest.json") -Raw | ConvertFr
 function Sha($p) { (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash }
 if ((Get-Process -Name $Proc -ErrorAction SilentlyContinue) -and -not $Force) { throw "Rally.exe is running - close the game first (or -Force)" }
 if (-not (Test-Path -LiteralPath (Join-Path $Game "Rally.exe"))) { throw "no Rally.exe in $Game" }
+$car = if ($m.car) { $m.car } else { $m.new }
+$rep = @()
+if ($m.replace) { $rep = @($m.replace) }
+elseif ($m.db) { $rep = @([pscustomobject]@{ path = $m.db.path; source_sha256 = $m.db.source_sha256; sha256 = $m.db.sha256; backup = "arcadedatabase_xdata.before_" + $car.ToLower() + ".sbf" }) }
+$bakDir = Join-Path $Game "Main_release\tracks\_SR3Extras\original"
 
-# 1. ArcadeDatabase check before anything is copied
-$db = Join-Path $Game $m.db.path
-$cur = Sha $db
-$dbDone = $false
-if ($cur -eq $m.db.sha256) { Write-Host "ArcadeDatabase already lists the car"; $dbDone = $true }
-elseif ($cur -ne $m.db.source_sha256) { throw "ArcadeDatabase ($cur) is not the file this staging was built from ($($m.db.source_sha256)); rebuild the staging with car_clone.py" }
+# 1. every replaced SEGA file must be the expected one (or already ours) before anything is copied
+$todo = @()
+foreach ($r in $rep) {
+    $dst = Join-Path $Game $r.path; $cur = Sha $dst
+    if ($cur -eq $r.sha256) { Write-Host "already installed: $($r.path)" }
+    elseif ($cur -ne $r.source_sha256) { throw "$($r.path) ($cur) is not the file this staging was built from ($($r.source_sha256)): uninstall the earlier car build first, or rebuild the staging" }
+    else { $todo += $r }
+}
+# car files of another build (an earlier staging of the same car): uninstall that build first (-Force overwrites them,
+# keeping each as <file>.before_install)
+foreach ($f in $m.files) {
+    $dst = Join-Path $Game $f.path
+    if ((Test-Path -LiteralPath $dst) -and ((Sha $dst) -ne $f.sha256) -and -not $Force) { throw "$($f.path) is from another build: uninstall that build first (or -Force)" }
+}
 
 # 2. car files
 foreach ($f in $m.files) {
@@ -35,15 +49,14 @@ foreach ($f in $m.files) {
     Write-Host "installed $($f.path)"
 }
 
-# 3. ArcadeDatabase
-if (-not $dbDone) {
-    $bakDir = Join-Path $Game "Main_release\tracks\_SR3Extras\original"
-    New-Item -ItemType Directory -Force -Path $bakDir | Out-Null
-    $bak = Join-Path $bakDir ("arcadedatabase_xdata.before_" + $m.new.ToLower() + ".sbf")
-    if (-not (Test-Path -LiteralPath $bak)) { Copy-Item -LiteralPath $db -Destination $bak; Write-Host "kept $bak" }
-    elseif ((Sha $bak) -ne $m.db.source_sha256) { throw "$bak exists and is not the original ArcadeDatabase; look at it before installing" }
-    Copy-Item -LiteralPath (Join-Path $here $m.db.path) -Destination $db -Force
-    if ((Sha $db) -ne $m.db.sha256) { throw "copy check failed: $db" }
-    Write-Host "installed $($m.db.path): car $($m.db.record.id) '$($m.db.record.folder)'"
+# 3. replaced SEGA files, each kept first
+New-Item -ItemType Directory -Force -Path $bakDir | Out-Null
+foreach ($r in $todo) {
+    $dst = Join-Path $Game $r.path; $bak = Join-Path $bakDir $r.backup
+    if (-not (Test-Path -LiteralPath $bak)) { Copy-Item -LiteralPath $dst -Destination $bak; Write-Host "kept $bak" }
+    elseif ((Sha $bak) -ne $r.source_sha256) { throw "$bak exists and is not the original of $($r.path); look at it before installing" }
+    Copy-Item -LiteralPath (Join-Path $here $r.path) -Destination $dst -Force
+    if ((Sha $dst) -ne $r.sha256) { throw "copy check failed: $dst" }
+    Write-Host "installed $($r.path)"
 }
-Write-Host "done: '$($m.new)' (clone of $($m.donor)) installed"
+Write-Host "done: '$car' installed"
