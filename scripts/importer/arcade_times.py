@@ -60,6 +60,21 @@ def classic(game, crs):
     print('%s: %d checkpoint markers in %s; Desert4 arcade records (mode 0) now: lap 1 %s, later laps %s (easy / normal / hard) -> %s' %
           (cfg['name'], nmark, name, [t[0] for t in times], [t[1] for t in times], out))
 
+def track_bin(times, path, log=print, slot='Desert4'):
+    """arcade_times.bin of a track folder (patch.ps1 Set-ArcadeTimes): the slot's 0xC60 bytes of the database ([mode 0..2]
+    [laps setting 0..2] x 0x160), taken from the game's own file, with the mode 0 records replaced by
+    times = {"lap1": [[s1, s2, ..] easy, normal, hard], "later": [[..], [..], [..]]}: seconds at checkpoint marker 1, 2, ..
+    (lap 1's first value = the time at the start). Laps settings 0..2 = 2, 3, 4 laps."""
+    d0 = sbfw.read_sbf(DB).byid()[CID].data; k = NAMES.index(slot); d = bytearray(d0[4 + 0xC60 * k: 4 + 0xC60 * (k + 1)])
+    assert len(d0) == 19012 and len(d) == 0xC60
+    for laps in range(3):
+        for diff in range(3):
+            lap1, later = list(times['lap1'][diff]), list(times['later'][diff]); o = 0x160 * laps + 0x74 * diff
+            recs = [[1] + lap1] + [[j + 2] + later for j in range(laps + 1)]; struct.pack_into('<I', d, o, len(recs))
+            for j in range(4): struct.pack_into('<7I', d, o + 4 + 0x1c * j, *((list(recs[j]) + [0] * 7)[:7] if j < len(recs) else [0] * 7))
+    open(path, 'wb').write(bytes(d))
+    log('       arcade_times.bin: %s, mode 0: lap 1 %s, later laps %s (easy / normal / hard)' % (slot, times['lap1'], times['later']))
+
 if __name__ == '__main__':
     if sys.argv[1:2] == ['classic']: classic(*sys.argv[2:4])
     else: dump()

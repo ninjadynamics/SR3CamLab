@@ -14,6 +14,9 @@ from common import *
 import course, sbfw
 
 def stage_export(cfg, force):
+    if cfg['game'] != 'src':                                          # a course another tool exported (Daytona USA): its files made into the importer's input files (export_adapter.py)
+        import export_adapter, build_testtrack as BT
+        return export_adapter.prepare(cfg, force, log=BT.log)
     import classic_tex, classic_export
     if force or not os.path.exists(os.path.join(classic_tex.OUT, 'materials.json')) or not os.path.isdir(os.path.join(classic_tex.OUT, 'textures')):
         classic_tex.main()
@@ -21,6 +24,12 @@ def stage_export(cfg, force):
 
 def stage_labels(cfg, faces):
     import retex, retex_contact
+    if cfg['game'] != 'src':                                          # no ROM tile set to guess classes from: every tile 'unlabelled' (labels only steer the fill, rounding and retexture lanes)
+        ip = os.path.join(retex.RT, 'classic_tiles_index.json'); names = sorted({str(fc[0]).split('|')[0] for fc in faces})
+        if not os.path.exists(ip) or json.load(open(ip)) != names:
+            json.dump(names, open(ip, 'w'))
+            if os.path.exists(retex.CSVP): os.remove(retex.CSVP)
+        retex.AUTO.clear(); return retex.labels()
     ip = os.path.join(retex.RT, 'classic_tiles_index.json'); import classic_tex
     if not os.path.exists(ip): json.dump(sorted(n for n, m in classic_tex.materials().items() if m), open(ip, 'w'))
     if not os.path.exists(retex.CSVP): retex.AUTO.clear(); retex.AUTO.update(course.auto_labels(faces))
@@ -133,10 +142,16 @@ def stage_build(cfg, variant, name):
     ROAD_T_, ROAD_G_ = tuple(BC.TARMAC), tuple(BC.GRAVEL)
     BC.STITCH = bool(cfg.get('stitch', False)); BC.LM_CUTOUTS = set(cfg.get('lm_cutouts', ())); BC.CAR_SHADE = cfg.get('car_shade'); BC.CAR_SHADE_DUMP = cfg.get('car_shade_dump'); BC.ROAD_VERBATIM = variant == 'classic' and bool(cfg.get('road_verbatim', False)); BC.ROAD_UNDER = float(cfg.get('road_under', -0.02)); BC.SURF_DEFAULT = cfg.get('surface_default', 'gravel'); BC.ROAD_CUT = bool(cfg.get('road_cut', False)); BC.ROAD_RECIPE = cfg.get('road_recipe', False)
     BC.VARIABLE = variant == 'classic' and cfg.get('variable_width', True)        # mixed / allsr3 (frozen lane) keep the constant 14 m road
+    BC.Y_SLOPE = float(cfg.get('road_height_slope', 0.35)); BC.EDGE_VISUAL = cfg.get('edge_visual'); BC.SURF_TILES = dict(cfg.get('surface_tiles', {})); BC.MAX_HALF_WIDTH = int(cfg.get('max_half_width', 16)); BC.CHECKER_ALPHA = int(cfg.get('checker_alpha', 128)); BC.MAX_SIDE[:] = [cfg.get('max_left'), cfg.get('max_right')]; BC.RESOLVE_ROUNDS = int(cfg.get('resolve_rounds', 10)); BC.Y_VISIBLE = (None if cfg.get('road_height_visible') is None else float(cfg['road_height_visible']))
+    if 'coplanar' in cfg: __import__('overlay_bake').COPLANAR = float(cfg['coplanar'])     # course setting coplanar (m): faces this close to each other's plane are resolved IN the plane (composed tiles) instead of being moved apart. Daytona: its tyre marks lie 5 cm over the asphalt      # (build_classic, next to the defaults)
+    __import__('overlay_bake').ON_SURFACE = bool(cfg.get('resolve_on_surface', False))      # course setting resolve_on_surface: the resolver's pieces of a twisted face stay on its drawn surface (overlay_bake._on_surface)
     log('importing road'); rd = BC.import_road(); log(name)
     cen = rd['V'][:, rd['hw']]; start, grid = classic_grid(cfg, rd); BC.START = (start, 1)
     import pacenotes as PN
     notes, splits = classic_notes(cfg, rd, PN.corners(cen)); shift = lambda fr: fr                      # lap fractions of the spline start at slice 1 like the slices
+    if cfg.get('pace_notes', True) is False: notes = []                 # course setting pace_notes false: no co-driver calls (the original game had none; Stadium4 has no spline at all)
+    if not splits and cfg.get('splits'):                              # course setting splits [lap fractions after the start line]: the checkpoint markers of a course without a 1995 table (marker 1 = the gate just after the line, see classic_notes)
+        splits = [((start + int(round(float(fr_) * len(cen)))) % len(cen)) / len(cen) for fr_ in cfg['splits']]; CHECKPOINTS[cfg['name']] = dict(mode='course setting splits', lap_fractions_after_start=[float(fr_) for fr_ in cfg['splits']])
     BT.SPLINE_EXTRA.clear(); BT.SPLINE_EXTRA.update(splits=splits or [((start + k * len(cen) // 3) % len(cen)) / len(cen) for k in (1, 2)], notes=[(fr, c) for fr, c, tr, rad in notes])
     log('       left/right check (1995 call vs sign of the turn over the next 120 m; positive = the 1995 lefts turn the way SR3 left-coded markers do): %s ; 1995 notes not written or shortened: %s' % (VOTE.get(cfg['name']), NOTE_SKIP.get(cfg['name'])))
     log('       checkpoints (split + time-extension markers): %s' % CHECKPOINTS.get(cfg['name']))
@@ -161,7 +176,7 @@ def stage_build(cfg, variant, name):
     BC.OVERLAY_MODE = 'bake' if bake else 'lift'; BC.FAR_MODE = 'view' if bake else 'near'; BC.BAKED.clear(); BC._TILES.clear(); BC.TEX_OF.clear()
     BC.BAKE_DIR = os.path.join(WORK, 'tmp', 'bake_%s_%s' % (cfg['game'], cfg['name']) + ('_' + PRIVATE[0] if PRIVATE[0] else ''))
     sky = []; far = 0
-    if variant == 'classic': BC.EXTRA_TEX = os.path.join(os.path.dirname(WORK), 'classic', 'courses', cfg['game'], cfg.get('gameplay', ''), 'textures'); sky, far = backdrop(cfg, rd)
+    if variant == 'classic': BC.EXTRA_TEX = os.path.join(os.path.dirname(WORK), 'classic', 'courses', cfg['game'], cfg.get('gameplay', ''), 'textures') if cfg['game'] == 'src' else os.path.join(__import__('export_adapter').folder(cfg), 'textures'); sky, far = backdrop(cfg, rd)
     if bake:                                                           # ONE overlap pass over course + backdrop (overlay_bake.py); the backdrop faces are told apart again by their object names
         bsec = {fc[1] for fc in sky}; allf = BC.load_visual(rd, extra=sky)
         sky = [fc for fc in allf if str(fc[1]).split('#')[0] in bsec]; faces = [fc for fc in allf if str(fc[1]).split('#')[0] not in bsec]
@@ -486,6 +501,7 @@ def stage_build(cfg, variant, name):
             BC.MISSING_TEX[:] = keep_[0]; BC.TEX_OF.clear(); BC.TEX_OF.update(keep_[1]); BC.TEXMAP.clear(); BC.TEXMAP.update(keep_[2]); BC.ROAD_MAIN[:] = keep_[3]; BC.SCENE_GAIN = keep_[4]
             lightmap1995.bake(cfg['lm_bake'], cfg.get('lm_mode', 'rt'), float(cfg.get('lm_strength', 1.0)), float(cfg.get('lm_shade', 0.33)), log=log); BC.LM_TABLE = lightmap1995.load_table(cfg['lm_bake'])
         BC.add_scenery(f, sta_gfx, faces + sky + extra, 'classic', lv, rd=rd)
+        if BC.Y_VISIBLE is not None: BC.road_on_scenery(f, model, BC.Y_VISIBLE, log)      # (course setting road_height_visible: the wheels on the drawn road)
         BC.SCENE_GAIN = None                                          # only the lit scenery: the sky and the unlit gates keep their own colours (the gain reached the sky textures in build Z6: sky at 0.68 of its brightness)
         if BC.MISSING_TEX: raise SystemExit('BUILD STOPPED: materials without a picture (they would render flat grey): %s' % sorted(set(BC.MISSING_TEX))[:12])
         if cfg.get('sky', '1995') == '1995':                           # 1995 sky colours in the slot's own dome textures (sky1995.py); 'slot' keeps Desert4's sky
@@ -578,7 +594,9 @@ def stage_build(cfg, variant, name):
     if cfg.get('cameras') == 'default':                                # the slot's camera lists stand where Desert4's road is: without them the game builds its own (intro, post-race, replay)
         k2, dr = BC.no_cameras(t); log('       cameras: slot camera lists and helicopter removed (%d chunks): the game builds default cameras' % dr)
     if cfg.get('props') == 'noobjects':                               # the slot's animals, props and breakables go; pobj files, grass cache and cameras stay (the game needs them)
-        k, nch = BC.minimal_objects(t); log('       props: authored empty object list (was %d objects in %d chunks); pobj files, grass cache and cameras kept' % (k, nch))
+        keep_ = {s_: t.files[s_] for s_ in ('pobj_master_gfx_xdata', 'pobj_plac_gfx_xdata') if s_ in t.files}      # (minimal_objects also drops the pobj files: without them the game dies at 0x5DE16C, 21_track_install_and_switching.md section 6)
+        k, nch = BC.minimal_objects(t); t.files.update(keep_)
+        log('       props: authored empty object list (was %d objects in %d chunks), no object display file (as the minimal form, which loads); pobj files %s, grass cache and cameras kept' % (k, nch, sorted(keep_)))
     if variant == 'classic' and cfg.get('crowd', True) and cfg['game'] == 'src' and cfg.get('props', 'minimal') != 'minimal':
         import crowd, trackdeform as TDM                               # the 1995 spectators as SR3's own animated crowd (15_spectators.md); course JSON "crowd": false keeps the object files as "props" left them
         if str(cfg['course']) in crowd.SRC_TABLES:
@@ -611,6 +629,10 @@ def stage_build(cfg, variant, name):
                 finishgate.install(t.files[crowd.GO], fg_['states'], fg_['centre'], tpl5_, log, unlit=BC.UNLIT_TPL); log('       finish gate object re-read: LOD (vertices, indices, groups) %s' % finishgate.check(t.files[crowd.GO]))
             log("       crowd: %d spectators from the 1995 table (%d moved off the road strip), %d hidden animators; %d of the slot's %d objects removed" % (ci_['spectators'], crowd.classic_spots.moved, ci_['masters'], ci_['removed'], ci_['donor_objects']))
     d = BT.gc(f, t); BT.write_track(name, t, omit=omit, note='| %d unreferenced chunks dropped' % d); BT.check_authored(name, t)
+    sd_ = os.path.join(OUT, name, 'Desert4')                           # the launcher's side files of the track folder (21_track_install_and_switching.md), when the course settings name them
+    if cfg.get('road_txt'): open(os.path.join(sd_, 'road.txt'), 'w').write(str(cfg['road_txt'])); log('       road.txt: %r (launcher: the game does not draw its own road)' % cfg['road_txt'])
+    if cfg.get('arcade_times'):
+        import arcade_times; arcade_times.track_bin(cfg['arcade_times'], os.path.join(sd_, 'arcade_times.bin'), log)
     open(os.path.join(OUT, 'build_log.txt'), 'a').write('\n'.join(BT.LOG[mark:]) + '\n')
 
 def stage_render(cfg, variant, name):
@@ -725,6 +747,7 @@ def classic_ai_cells(cfg, rd):
     exe 0x5E949A, 0x5E8CFA): three alternative lane systems, not "a racing line"; all three get the same lanes here, as in
     Desert4. Braking zones (the 1995 speed_zone byte) have no counterpart in the AI map and are not written."""
     import math, build_classic as BC
+    if cfg.get('ai_lines') and cfg.get('ai', '1995') == '1995': return line_ai_cells(cfg, rd)
     p = os.path.join(os.path.dirname(WORK), 'classic', 'courses', cfg['game'], cfg.get('gameplay', ''), 'gameplay.json')
     if 'wl' not in rd or not cfg.get('gameplay') or not os.path.exists(p) or cfg.get('ai', '1995') != '1995': return None
     A = np.array([q['position'] for q in json.load(open(p)).get('ai_line', [])], float)
@@ -742,12 +765,39 @@ def classic_ai_cells(cfg, rd):
     AI_INFO[cfg['name']] = '1995 AI line: lateral offset from the centre line median %.1f m, max %.1f m (%d slices where it was more than 20 m away ignored); lane band %.1f..%.1f m wide; %d cells' % (float(np.median(np.abs(a))), float(np.abs(a).max()), int(far.sum()), band.min(), band.max(), len(cells))
     return [(x, z, fl) for (x, z), fl in cells.items()]
 
+def line_ai_cells(cfg, rd):
+    """AI map from the original game's OWN driving lines (course setting ai_lines: up to 8 CSV files, x, y, z per point; Daytona
+    USA keeps eight per course): line k becomes lane k, the lanes ordered as SEGA's (bit 0 = the highest column side), each
+    line's lateral place taken per slice from the points mapped to that slice, held 1.5 m inside the road edges. All three
+    lane systems get the same lanes (see classic_ai_cells)."""
+    import math, export_adapter as XA, build_classic as BC
+    cen = rd['V'][:, rd['hw']]; lat = rd['lat']; n = len(cen); near = BC.Near(cen[:, [0, 2]], 8.0)
+    wl = rd.get('wl', np.full(n, float(rd['hw']))); wr = rd.get('wr', np.full(n, float(rd['hw']))); offs = []
+    for A in XA.line_files(cfg)[:8]:
+        A = np.stack([A[:, 0] + rd['ox'], A[:, 1], -BC.ZS * A[:, 2] + rd['oz']], 1); B = np.vstack([A, A[:1]])
+        seg = np.linalg.norm(np.diff(B[:, [0, 2]], axis=0), axis=1); s_ = np.concatenate([[0], np.cumsum(seg)]); t = np.arange(0, s_[-1], 0.25)
+        L = np.stack([np.interp(t, s_, B[:, 0]), np.interp(t, s_, B[:, 2])], 1); idx = near(L); a = ((L - cen[idx][:, [0, 2]]) * lat[idx][:, [0, 2]]).sum(1)
+        sm = np.bincount(idx, a, n); cnt = np.bincount(idx, None, n); got = cnt > 0; o = np.zeros(n)
+        k_ = np.flatnonzero(got); o[got] = sm[got] / cnt[got]; o[~got] = np.interp(np.flatnonzero(~got), k_, o[got], period=n)
+        offs.append(np.clip(o, -wl + 1.5, wr - 1.5))
+    order = sorted(range(len(offs)), key=lambda j: -float(np.mean(offs[j]))); cells = {}
+    for lane, j in enumerate(order):
+        for i in range(n):
+            q = cen[i] + lat[i] * offs[j][i]; key = (math.floor(q[0] / 2.0) * 2.0 + 1.0, math.floor(q[2] / 2.0) * 2.0 + 1.0); cells[key] = cells.get(key, 0) | (0x010101 << lane)
+    AI_INFO[cfg['name']] = "the game's own %d driving lines (%s) as lanes 0..%d: mean lateral place %s m, range %.1f..%.1f m; %d cells" % (
+        len(offs), ', '.join(cfg['ai_lines'][j] for j in order), len(offs) - 1, [round(float(np.mean(offs[j])), 1) for j in order], min(float(o.min()) for o in offs), max(float(o.max()) for o in offs), len(cells))
+    return [(x, z, fl) for (x, z), fl in cells.items()]
+
 AI_INFO = {}
 def classic_grid(cfg, rd):
     """start slice and the 8 x (dist, col) SR3 grid from the classic start table (program ROM, 4 cars x {x, y, z} per course)"""
-    import i960, build_testtrack as BT
-    g = cfg.get('start_grid')
+    import build_testtrack as BT
+    g = cfg.get('start_grid'); st_ = cfg.get('start', {})
+    if not g and st_.get('at'):                                       # course setting start {"at": [x, z] in GAME axes = the start / finish line, "grid": 16 numbers (dist, col) x 8}: start slice = the slice nearest the line
+        cen = rd['V'][:, rd['hw']]; x_, z_ = map(float, st_['at']); p = (x_ + rd['ox'], -__import__('build_classic').ZS * z_ + rd['oz'])
+        return int(np.argmin(np.hypot(cen[:, 0] - p[0], cen[:, 2] - p[1]))), tuple(int(v) for v in st_.get('grid', BT.LAKESIDE_GRID))
     if not g: return int(cfg.get('start', {}).get('slice', 10)), BT.LAKESIDE_GRID
+    import i960
     prog = open(os.path.join(i960.M2, 'maincpu.bin'), 'rb').read(); cen = rd['V'][:, rd['hw']]; n = len(cen); cars = []
     for k in range(4):
         x, y, z = struct.unpack_from('<3f', prog, int(g['offset'], 16) + 12 * k); p = np.array([x + rd['ox'], y, -__import__('build_classic').ZS * z + rd['oz']])       # game axes -> SR3 (rd['V'] uses game z)

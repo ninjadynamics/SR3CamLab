@@ -11,6 +11,7 @@ CDIR = os.path.join(WORK, 'courses'); CFG = {}
 def use(game, course):
     import classic_export, classic_tex, build_classic as BC, retex, preview_obj, allsr3
     cfg = json.load(open(os.path.join(CDIR, '%s_%s.json' % (game, course)))); CFG.clear(); CFG.update(cfg); CFG['game'] = game; CFG['course'] = str(course); c = str(course)
+    if game != 'src': return use_export(game, c, cfg)
     out = os.path.join(WORK, 'classic_tex', 'course' + c)
     classic_export.OUT = out; classic_export.COURSE = c; classic_export.COURSES = {c: tuple(cfg['objects'])}
     classic_tex.BLOCK = int(cfg['texel_block'], 16) if 'texel_block' in cfg else None
@@ -25,6 +26,24 @@ def use(game, course):
     for k, v in cfg.get('textures', {}).items(): retex.SR3_FOR_CLASS[k] = (v[0], int(v[1], 16))
     allsr3.configure(cfg.get('art', {}))
     cfg['game'] = game; cfg['course'] = c
+    return cfg
+
+def use_export(game, c, cfg):
+    """a course exported by another tool (export_adapter.py: Daytona USA): its own folders for everything a build writes
+    (classic_tex/<game>_course<N>, retex/<game>_<N>, tmp/classic_xform_<game>_<N>.json), so that nothing of a SEGA Rally
+    Championship course with the same number is read or overwritten; no ROM tiles (build_classic.ROM_TILES)"""
+    import classic_export, classic_tex, build_classic as BC, retex, preview_obj, allsr3, export_adapter as XA
+    cfg['game'] = game; cfg['course'] = c; out = XA.folder(cfg)
+    classic_export.OUT = out; classic_export.COURSE = c; classic_export.COURSES = {}
+    classic_tex.BLOCK = None; classic_tex.OUT = out; classic_tex.PAGEFILE = os.path.join(out, 'pages.json')
+    BC.ROM_TILES = False
+    BC.CSV = os.path.join(out, cfg['centreline']); BC.COL = os.path.join(XA.source(cfg), cfg['collision']); BC.HI = os.path.join(out, cfg['visual'])
+    BC.XFORM = os.path.join(TMP, 'classic_xform_%s_%s.json' % (game, c)); preview_obj.XFORM = BC.XFORM
+    BC.SURF_OF_CODE = {int(k): v for k, v in cfg.get('surface_codes', {'0': 'tarmac'}).items()}
+    BC.HALF_WIDTH = int(cfg.get('half_width', 7)); BC.START = (int(cfg.get('start', {}).get('slice', 10)), int(cfg.get('start', {}).get('direction', 1)))
+    retex.RT = os.path.join(WORK, 'retex', '%s_%s' % (game, c)); os.makedirs(retex.RT, exist_ok=True); retex.CSVP = os.path.join(retex.RT, 'tile_labels.csv')
+    for k, v in cfg.get('textures', {}).items(): retex.SR3_FOR_CLASS[k] = (v[0], int(v[1], 16))
+    allsr3.configure(cfg.get('art', {}))
     return cfg
 
 def tile_stats(faces):

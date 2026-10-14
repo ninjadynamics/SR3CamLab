@@ -82,12 +82,30 @@ def _cut(A, B):
         rem = _tidy(_clip(rem, a, b, True))
         if not len(rem): break
     return pieces, (rem if len(rem) and _area(rem) > EPS_AREA else rem[:0])
-def _emit(mat, sec, Q, B, M, out):
-    """convex plan polygon -> faces of 3 or 4 corners in the plane B with uv from the affine M"""
+ON_SURFACE = False                                                    # course setting resolve_on_surface (build_classic / import_classic): cut pieces are laid on the DRAWN surface of the face they come from
+def _on_surface(Q, B, P):
+    """plan points Q (basis B) -> 3-D points. Plainly: in the plane B (the face's best plane). With ON_SURFACE: on the face as the
+    game draws it - a quad as the triangles (0, 1, 3) + (1, 3, 2) (meshgen.quads_to_strip) - so that the pieces of a TWISTED face
+    still meet its neighbours along its edges (Daytona's banking: pieces put in the best plane left cracks of a few cm the sky
+    showed through)."""
+    X = _to3(Q, B); P = np.asarray(P, float)
+    if not ON_SURFACE or len(P) not in (3, 4): return X
+    P2 = _to2(P, B); tris = [(0, 1, 2)] if len(P) == 3 else [(0, 1, 3), (1, 3, 2)]; out = X.copy()
+    for k, q in enumerate(np.asarray(Q, float)):
+        best = None
+        for t in tris:
+            a, b, c = P2[t[0]], P2[t[1]], P2[t[2]]; d = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
+            if abs(d) < 1e-12: continue
+            l1 = ((b[1] - c[1]) * (q[0] - c[0]) + (c[0] - b[0]) * (q[1] - c[1])) / d; l2 = ((c[1] - a[1]) * (q[0] - c[0]) + (a[0] - c[0]) * (q[1] - c[1])) / d; l3 = 1.0 - l1 - l2
+            if best is None or min(l1, l2, l3) > best[0]: best = (min(l1, l2, l3), l1, l2, l3, t)
+        if best is not None: _, l1, l2, l3, t = best; out[k] = l1 * P[t[0]] + l2 * P[t[1]] + l3 * P[t[2]]
+    return out
+def _emit(mat, sec, Q, B, M, out, P=None):
+    """convex plan polygon -> faces of 3 or 4 corners in the plane B (on the face P's drawn surface with ON_SURFACE) with uv from the affine M"""
     k = 1
     while k < len(Q) - 1:
         idx = [0, k, k + 1] + ([k + 2] if k + 2 < len(Q) else []); q = Q[idx]
-        if abs(_area(q)) > EPS_AREA: out.append((mat, sec, [tuple(map(float, p)) for p in _to3(q, B)], [tuple(map(float, t)) for t in np.c_[q, np.ones(len(q))] @ M]))
+        if abs(_area(q)) > EPS_AREA: out.append((mat, sec, [tuple(map(float, p)) for p in (_to3(q, B) if P is None else _on_surface(q, B, P))], [tuple(map(float, t)) for t in np.c_[q, np.ones(len(q))] @ M]))
         k += 2
 def _key(P): return frozenset((round(p[0], 2), round(p[1], 2), round(p[2], 2)) for p in P)
 
@@ -245,21 +263,21 @@ def resolve(faces, pixels, save, road_xz, log=print, rounds=10):
             if not len(inter): continue
             if not cut[up]:                                             # opaque on top / in front: the lower face loses what is covered
                 gone.add(lo)
-                for q in pieces: _emit(ml, sl, q, Bl, Ml, new)
+                for q in pieces: _emit(ml, sl, q, Bl, Ml, new, Pl if ON_SURFACE else None)
                 stat['face behind cut back (opaque face %s)' % ('in front, apart' if apart else 'on it')] += 1; continue
             if apart: push('cut-out in front of a face'); continue
             uvl = np.c_[inter, np.ones(len(inter))] @ Ml; uvu = np.c_[_to2(_to3(inter, Bl), Bu), np.ones(len(inter))] @ Mu
             r = bk.compose(ml, mu, uvl, uvu)
             if r is None: push('no composed tile'); continue
             nm, f = r; gone.update((lo, up))
-            for q in pieces: _emit(ml, sl, q, Bl, Ml, new)
-            k = 1; q3 = _to3(inter, Bl); uvn = f(uvl)
+            for q in pieces: _emit(ml, sl, q, Bl, Ml, new, Pl if ON_SURFACE else None)
+            k = 1; q3 = _on_surface(inter, Bl, Pl) if ON_SURFACE else _to3(inter, Bl); uvn = f(uvl)
             while k < len(inter) - 1:
                 idx = [0, k, k + 1] + ([k + 2] if k + 2 < len(inter) else [])
                 if abs(_area(inter[idx])) > EPS_AREA: new.append((nm, sl, [tuple(map(float, p)) for p in q3[idx]], [tuple(map(float, t)) for t in uvn[idx]]))
                 k += 2
             pu2, _ = _cut(_ccw(_to2(Pu, Bu)), _ccw(_to2(_to3(inter, Bl), Bu)))
-            for q in pu2: _emit(mu, su, q, Bu, Mu, new)
+            for q in pu2: _emit(mu, su, q, Bu, Mu, new, Pu if ON_SURFACE else None)
             stat['shared region baked (cut-out on top)'] += 1
         if not gone: break
         keep = [k for k in range(len(faces)) if k not in gone]; pos = {k: q for q, k in enumerate(keep)}; faces = [faces[k] for k in keep]

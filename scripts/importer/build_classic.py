@@ -41,6 +41,83 @@ class AttrField(BM.HeightField):
         return best
 
 HALF_WIDTH = 7; START = (10, 1)                                       # per course: course.use()
+# Courses exported by other tools (export_adapter.py, course.use_export; first: Daytona USA, 2026-10-14). Defaults = SEGA Rally Championship.
+ROM_TILES = True                                                      # False: the tiles are PNG files only (EXTRA_TEX); classic_tex's ROM pages are never opened
+Y_SLOPE = 0.35                                                        # course setting road_height_slope: a collision polygon counts for a road column c metres out when it lies within Y_SLOPE x c + 0.6 m
+                                                                      # of the centre's height (keeps bridges / ground above or below out). A banked oval needs more: Daytona's banking rises 0.6 m a metre
+EDGE_VISUAL = None                                                    # course setting edge_visual (metres): the drivable road also ends where the VISIBLE ground (lying opaque faces of the course
+                                                                      # model) no longer lies on the collision surface within this. Daytona's collision runs on under its walls and 1 m kerbs
+SURF_TILES = {}                                                       # course setting surface_tiles {tile: collision code}: a road column whose visible ground is one of these tiles takes that code
+                                                                      # (Daytona's collision has no surface field; its grass is told by the tile)
+Y_VISIBLE = None                                                      # course setting road_height_visible (m): the road heights from the drawn scenery within this of the collision (road_on_scenery)
+RESOLVE_ROUNDS = 10                                                   # course setting resolve_rounds: passes of the overlap resolver (overlay_bake.resolve) before it stops
+MAX_SIDE = [None, None]                                               # course settings max_left / max_right (metres): the variable road's left / right edge at most this far out
+CHECKER_ALPHA = 128                                                    # flat-colour materials ending in _ck (Model 2 checker = every other pixel drawn): alpha-blended at this opacity
+def visual_ground():
+    """lying opaque faces of the course model (HI) as an AttrField whose attribute is the index into the returned tile names,
+    in import_road's axes (x, y, ZS z); and its upright opaque faces as an Uprights index (what stands on the ground)"""
+    V = []; tris = []; names = []; ix_ = {}; mat = None; ups = []
+    for ln in open(HI):
+        if ln.startswith('v '): x, y, z = map(float, ln.split()[1:4]); V.append((x, y, ZS * z))
+        elif ln.startswith('usemtl'): mat = ln.split()[1]
+        elif ln.startswith('f ') and mat and not mat.endswith(('_t', '_ck')):
+            ix = [int(t.split('/')[0]) - 1 for t in ln.split()[1:]]; Pf = np.array([V[i] for i in ix])
+            for k in range(1, len(ix) - 1):
+                T = Pf[[0, k, k + 1]]; nrm = np.cross(T[1] - T[0], T[2] - T[0]); ln_ = float(np.linalg.norm(nrm))
+                if ln_ > 1e-9 and abs(nrm[1]) / ln_ > 0.3:
+                    if mat not in ix_: ix_[mat] = len(names); names.append(mat)
+                    tris.append((ix_[mat], T))
+                elif ln_ > 1e-9: ups.append(T)
+    return AttrField(tris), names, Uprights(ups)
+
+class Uprights:
+    """upright triangles (xz footprint = a segment) in an 8 m bucket grid: does anything stand between two points?"""
+    def __init__(self, tris, cell=8.0):
+        self.cell = cell; self.b = collections.defaultdict(list); self.s = []
+        for T in tris:
+            Q = T[:, [0, 2]]; d = ((Q[:, None] - Q[None]) ** 2).sum(-1); a, b = np.unravel_index(int(np.argmax(d)), d.shape)
+            if d[a, b] < 1e-6: continue
+            k = len(self.s); self.s.append((Q[a], Q[b], float(T[:, 1].min()), float(T[:, 1].max())))
+            lo = np.floor(Q.min(0) / cell).astype(int); hi = np.floor(Q.max(0) / cell).astype(int)
+            for x in range(lo[0], hi[0] + 1):
+                for z in range(lo[1], hi[1] + 1): self.b[(x, z)].append(k)
+    def blocked(self, p, q, y, above=0.3):
+        """True when an upright face rising more than `above` over height y crosses the segment p -> q (x, z)"""
+        p = np.asarray(p, float); q = np.asarray(q, float); d = q - p; seen = set()
+        for key in {(int(np.floor(p[0] / self.cell)), int(np.floor(p[1] / self.cell))), (int(np.floor(q[0] / self.cell)), int(np.floor(q[1] / self.cell)))}:
+            for k in self.b.get(key, ()):
+                if k in seen: continue
+                seen.add(k); a, b, y0, y1 = self.s[k]
+                if y1 < y + above or y0 > y + 1.5: continue                 # (below the road, or overhead)
+                e = b - a; den = d[0] * e[1] - d[1] * e[0]
+                if abs(den) < 1e-12: continue
+                t = ((a[0] - p[0]) * e[1] - (a[1] - p[1]) * e[0]) / den; u = ((a[0] - p[0]) * d[1] - (a[1] - p[1]) * d[0]) / den
+                if 0.0 <= t <= 1.0 and 0.0 <= u <= 1.0: return True
+        return False
+def road_on_scenery(f, model, tol, log=None):
+    """THE ROAD WHERE THE WHEELS SEE IT (course setting road_height_visible): every vertex of the built TrackDeform model takes
+    the height of the drawn scenery under / over it - the opaque lying triangles of the meshes just written, as the game
+    draws them (strips, shared corners, the uv cuts) - when that lies within tol of the collision height it has; then the
+    road is written again. Daytona's road polygons and its collision quads differ by up to 0.3 m on the banking."""
+    import scene11
+    log = log or globals()['log']; by = f.byid(); r = f.chunks[-1]; sc_ = scene11.parse11(by[r.u32(4)]); tris = []
+    for mid in sc_.nodes[0].meshes:
+        m = meshgen.parse_mesh(by[mid]); mat = by.get(m['groups'][0][4])
+        if mat is None or len(mat.data) != 1848 or struct.unpack_from('<I', mat.data, meshgen.ATEST_CELL)[0] or struct.unpack_from('<I', mat.data, meshgen.ABLEND_CELL)[0]: continue
+        Pm = m['verts']['p'][:, :3].astype(np.float64); I = m['idx'].astype(np.int64)
+        if len(I) < 3: continue
+        T = np.stack([Pm[I[:-2]], Pm[I[1:-1]], Pm[I[2:]]], 1); ok = (I[:-2] != I[1:-1]) & (I[1:-1] != I[2:]) & (I[:-2] != I[2:])
+        nr = np.cross(T[:, 1] - T[:, 0], T[:, 2] - T[:, 0]); ln_ = np.linalg.norm(nr, axis=1); ok &= ln_ > 1e-9; ok &= np.abs(nr[:, 1]) > 0.3 * np.maximum(ln_, 1e-12)
+        tris += [(0, t_) for t_ in T[ok]]
+    hf = AttrField(tris); moved = []; nv = 0
+    for s_ in model['slices'][1:]:
+        v = s_['verts']
+        for k in range(len(v)):
+            p = v['pos'][k]; h = hf.at2(float(p[0]), float(p[2]), float(p[1])); nv += 1
+            if h is not None and abs(float(h[0]) - float(p[1])) <= tol: moved.append(float(h[0]) - float(p[1])); v['pos'][k, 1] = h[0]
+    BT.set_td(f, model); a_ = np.abs(np.array(moved or [0.0]))
+    log('       road heights from the drawn scenery (road_height_visible %.2f): %d of %d road vertices on %d lying scenery triangles, moved %.3f (median) .. %.3f m, more than 5 cm: %d' % (tol, len(moved), nv, len(tris), float(np.median(a_)), float(a_.max()), int((a_ > 0.05).sum())))
+
 def flip_v(uv):
     """In the game (ZS = +1 world) the 1995 textures came out upside-down (in-game run 2026-10-07): v is flipped per face.
     Textures wrap, so 1 - v and 2 - v are the same picture; the one that keeps the face inside the mesh format's 0..2 is used."""
@@ -70,10 +147,10 @@ def import_road(half_width=None):
         for k in range(B):
             c = k - half_width; q = P[i] + lat[i] * c
             h = road.at2(q[0], q[2], yc[i])
-            if h and abs(h[0] - yc[i]) < 0.35 * abs(c) + 0.6: Y[i, k] = h[0]; code[i, k] = (h[1] >> 16) & 15; src['road poly'] += 1
+            if h and abs(h[0] - yc[i]) < Y_SLOPE * abs(c) + 0.6: Y[i, k] = h[0]; code[i, k] = (h[1] >> 16) & 15; src['road poly'] += 1
             else:
                 h = allf.at2(q[0], q[2], yc[i])
-                if h and abs(h[0] - yc[i]) < 0.5 * abs(c) + 0.6: Y[i, k] = h[0]; code[i, k] = 100; src['off-road poly'] += 1
+                if h and abs(h[0] - yc[i]) < max(0.5, Y_SLOPE) * abs(c) + 0.6: Y[i, k] = h[0]; code[i, k] = 100; src['off-road poly'] += 1
                 else: Y[i, k] = np.nan; src['none'] += 1
         row = Y[i]; bad = np.isnan(row)
         if bad.all(): row[:] = yc[i]
@@ -81,9 +158,20 @@ def import_road(half_width=None):
     for k in range(B): Y[:, k] = smooth(Y[:, k], 2)                                       # along-track smoothing of every column
     ox = -(P[:, 0].min() + P[:, 0].max()) / 2; oz = -(P[:, 2].min() + P[:, 2].max()) / 2
     json.dump(dict(ox=ox, oz=oz, note='SR3 = (x_obj + ox, y, -z_obj + oz)'), open(XFORM, 'w'))
+    vis = None
+    if EDGE_VISUAL is not None or SURF_TILES: vis = visual_ground()
+    if SURF_TILES:                                                    # the surface of a column from the tile of the visible ground on it
+        ns_ = collections.Counter()
+        for i in range(n):
+            for k in range(B):
+                q = P[i] + lat[i] * (k - half_width); hv = vis[0].at2(q[0], q[2], Y[i, k])
+                if hv and abs(hv[0] - Y[i, k]) < 0.5 and vis[1][hv[1]] in SURF_TILES: code[i, k] = int(SURF_TILES[vis[1][hv[1]]]); ns_[code[i, k]] += 1
+        log('       surface from the visible ground (surface_tiles): %s columns' % dict(ns_))
     wl = wr = None
     if VARIABLE:
-        wl, wr = classic_edges(road, P, lat, yc, half_width)
+        wl, wr = classic_edges(road, P, lat, yc, half_width, vis=vis if (vis and EDGE_VISUAL is not None) else None)
+        if MAX_SIDE[0]: wl = np.minimum(wl, float(MAX_SIDE[0]))     # course settings max_left / max_right: one side held narrower (the 0.5 m a slice rule still holds: the lower of two such edges)
+        if MAX_SIDE[1]: wr = np.minimum(wr, float(MAX_SIDE[1]))
     V = np.zeros((n, B, 3))
     for k in range(B): V[:, k] = P + lat * (k - half_width)
     V[:, :, 1] = Y + (ROAD_UNDER if ROAD_VERBATIM else 0.03); V[:, :, 0] += ox; V[:, :, 2] += oz      # (verbatim road: the SR3 road is not seen and lies 2 cm UNDER the 1995 polygons, so that nothing of it can cover them)                # 3 cm above the classic polygons left at the road edges
@@ -107,20 +195,31 @@ def import_road(half_width=None):
     return rd
 
 VARIABLE = False; MAX_HALF_WIDTH = 16; MIN_HALF_WIDTH = 3.5
-def classic_edges(road, P, lat, yc, cap):
+def classic_edges(road, P, lat, yc, cap, vis=None):
     """per slice: how far the 1995 DRIVABLE ground (collision polygons without the bank flag, bit 23) reaches to the left
     and to the right of the centre line, walking outwards in 25 cm steps until the ground ends or steps by more than 30 cm.
     Then: minimum over the neighbouring slices, at least MIN_HALF_WIDTH, at most cap, and no more than 0.5 m change per
-    slice (TrackDeform edges move at most one column per slice in SEGA's own tracks)."""
+    slice (TrackDeform edges move at most one column per slice in SEGA's own tracks).
+    vis (visual_ground, course setting edge_visual): the walk also ends where the visible ground stops lying on the collision
+    surface (within EDGE_VISUAL) or something upright stands across it (vis[2], Uprights): a wall or a kerb the collision runs
+    on under. Gaps in the visible ground (no face at all) up to 1 m are crossed."""
     n = len(P); W = np.zeros((2, n))
     for i in range(n):
         for s_, sg in enumerate((-1.0, 1.0)):
-            y = yc[i]; w = 0.0
+            y = yc[i]; w = 0.0; wv = 0.0; miss = 0
             for st in range(1, int(cap / 0.25) + 1):
                 c = st * 0.25; q = P[i] + lat[i] * (sg * c); h = road.at2(q[0], q[2], y)
                 if not h or abs(h[0] - y) > 0.30: break
                 y = h[0]; w = c
-            W[s_, i] = w
+                if vis is not None:                                       # (vis = visual_ground(): the ground, the tile names, what stands)
+                    qp = P[i] + lat[i] * (sg * (c - 0.25)); hv = vis[0].at2(q[0], q[2], y)
+                    if vis[2].blocked(qp[[0, 2]], q[[0, 2]], y): break       # a wall, a kerb, a post: the road ends at its foot
+                    if hv and abs(hv[0] - y) <= EDGE_VISUAL: wv = c; miss = 0
+                    elif hv: break                                         # visible ground off the collision surface (a raised verge)
+                    else:
+                        miss += 1                                          # no visible ground at all: a crack between polygons is crossed (1 m)
+                        if miss > 4: break
+            W[s_, i] = w if vis is None else min(w, wv)
     out = []
     for w in W:
         w = np.minimum(np.minimum(np.roll(w, 1), w), np.roll(w, -1)); w = np.clip(w, MIN_HALF_WIDTH, cap)
@@ -292,7 +391,8 @@ def tile_pixels(name):
     hd_ = hd_tile(name)
     if hd_ is not None: return hd_
     import classic_tex
-    if not _TILES: _TILES['pages'] = classic_tex.load_pages(); _TILES['tiles'] = classic_tex.usable(_TILES['pages'], classic_tex.materials())
+    if not _TILES: _TILES['pages'], _TILES['tiles'] = (classic_tex.load_pages(), None) if ROM_TILES else (None, {})
+    if _TILES['tiles'] is None: _TILES['tiles'] = classic_tex.usable(_TILES['pages'], classic_tex.materials())
     m = _TILES['tiles'].get(name)
     if m:
         t = classic_tex.tile(_TILES['pages'], m); return classic_tex.tile_rgb(t, m), ((t == 15) if m['alpha'] else None)
@@ -365,7 +465,7 @@ def load_visual(rd, extra=None):
             if str(fc[0]).endswith('_t') and k_ in seen_ and not str(fc[1]).endswith(SINGLE): continue
             seen_.add(k_); one.append(fc)
         log('       1995 double polygons: %d second sides of cut-out boards dropped' % (len(faces) - len(one)))
-        faces = overlay_bake.resolve(one, tile_pixels, save_baked, ROADPTS, log)
+        faces = overlay_bake.resolve(one, tile_pixels, save_baked, ROADPTS, log, rounds=RESOLVE_ROUNDS)
     else: faces = dedupe_overlays(faces)
     PAIRS.clear(); PAIRS.update(id(fc) for fc in pairs)
     if ROAD_VERBATIM:                                                 # the 1995 road stays where it is, joined to its walls and rock (see ROAD_VERBATIM)
@@ -901,13 +1001,14 @@ def add_scenery(f, sta_gfx, faces, mode, lv, trees=False, rd=None):
     existing Desert4 scenery material on everything)"""
     BM.import_closure(f, sta_gfx, [BM.TPL_MAT])
     sby = sta_gfx.byid(); tpl_mesh = sby[BM.TPL_MESH]; tpl_tex = sby[BM.TPL_TEX]; tpl_mat = f.get(BM.TPL_MAT)
-    ccw = meshgen.winding_sign(tpl_mesh)[0] > 0; new = []; ids = []; nv = 0; clamp = 0; ncut = [0]; nsplit = [0]; nsingle = [0]; ndbl = [0]; nbefore = [0]; nafter = [0]; lm_mats = {}; bump_tex = {}; own_mats = []; road_mats = []
+    ccw = meshgen.winding_sign(tpl_mesh)[0] > 0; new = []; ids = []; nv = 0; clamp = 0; ncut = [0]; nck = [0]; nsplit = [0]; nsingle = [0]; ndbl = [0]; nbefore = [0]; nafter = [0]; lm_mats = {}; bump_tex = {}; own_mats = []; road_mats = []
     tpl_tex5 = next(c for c in sta_gfx.kinds(4) if c.data[48 + 80:48 + 84] == b'DXT5' and struct.unpack_from('<I', c.data, 40)[0] == 1)   # small DXT5 header to clone
     groups = collections.defaultdict(list); treefaces = []
     global VIVID; VIVID = tuple(VIVID_CFG) if (mode == 'classic' and VIVID_CFG) else None
     if mode in ('classic', 'retex'):
         import classic_tex
-        pages = classic_tex.load_pages(); tiles = classic_tex.usable(pages, classic_tex.materials())
+        pages, tiles = (classic_tex.load_pages(), None) if ROM_TILES else (None, {})
+        if tiles is None: tiles = classic_tex.usable(pages, classic_tex.materials())
         for fc in faces: groups[(str(fc[0]) + '|1') if (mode == 'classic' and str(fc[0]).endswith('_t') and str(fc[1]).endswith(SINGLE)) else (two_sided(fc)[0] if (mode == 'classic' and id(fc) not in PAIRS) else fc[0])].append(fc)
     if mode == 'retex':
         import retex
@@ -985,6 +1086,11 @@ def add_scenery(f, sta_gfx, faces, mode, lv, trees=False, rd=None):
                 if one_:                                                  # a tree blade's front or back: alpha test, NOT two-sided (the other face of the pair shows the other half of the picture)
                     dm_ = bytearray(cm_.data); struct.pack_into('<I', dm_, meshgen.DSIDE_CELL, 0); cm_.data = bytes(dm_); nsingle[0] += 1
                 new += [tex, cm_]; ncut[0] += 1
+            elif str(key).endswith('_ck') and mode == 'classic':          # Model 2 checker (every other pixel drawn: Daytona's wire fences): the colour at CHECKER_ALPHA, alpha-blended
+                tex = make_texture_dxt5(tpl_tex5, 0xc1a50000 + gi, grey, np.zeros(np.asarray(grey).shape[:2], bool)); d_ = bytearray(tex.data)
+                for o_ in range(48 + 124, len(d_), 16): d_[o_] = d_[o_ + 1] = CHECKER_ALPHA      # every alpha block: both end values = the opacity
+                tex.data = bytes(d_); new += [tex, meshgen.clone_material(tpl_mat, mat_id, tex.id, blend=True, two_sided=both)]; nck[0] += 1
+                TEXMAP[0xc1a50000 + gi]['checker'] = CHECKER_ALPHA
             else:
                 tex = make_texture(tpl_tex, 0xc1a50000 + gi, grey, None); new += [tex, meshgen.clone_material(tpl_mat, mat_id, tex.id, two_sided=both)]
             if un_:
@@ -1128,6 +1234,7 @@ def add_scenery(f, sta_gfx, faces, mode, lv, trees=False, rd=None):
     if ndbl[0]: log('       lit by the sun (light_contrast %.2f): %d opaque faces written once per side, single-sided' % (LIGHT_K, ndbl[0]))
     if nsplit[0]: log('       %d classic faces repeat their tile more than twice: cut into pieces (u16 uv holds 0..2 repeats)' % nsplit[0])
     if ncut[0]: log('       cut-out materials (alpha test + two-sided, DXT5 alpha): %d' % ncut[0])
+    if nck[0]: log('       checker materials (Model 2 every-other-pixel transparency) alpha-blended at %d / 255: %d' % (CHECKER_ALPHA, nck[0]))
     if mode == 'retex': log('       retextured with SR3 textures (pieces per class): %s ; %d SR3 textures copied' % (dict(nrep), len(texmat)))
     allp = np.array([p for fc in faces for p in fc[2]])
     lv2 = lv | BM.leaves_for(allp[::7], pad=0)
