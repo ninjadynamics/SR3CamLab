@@ -67,13 +67,22 @@ table (sources, per-unit flags, the files that name each DLL); `python core\cbui
   GCC Runtime Library Exception): the toolchain zip names where the complete source is (winlibs.com, gcc.gnu.org,
   sourceware.org, mingw-w64.org) and carries the licence files. Whether that is enough for redistributing GCC binaries, or the
   source archives must be offered beside the zip, is the owner's call before a public release.
-- The target: `SR3_MARCH` / settings `march`, 'native' by default; the release check builds for x86-64-v3 (AVX2 + FMA), so that
-  every PC compiles the same code. winget's oldest WinLibs is gcc 14.2: the same bytes from it are not shown.
+- The target: x86-64-v3 by default (`SR3_MARCH` / settings `march`; 'native' still possible, with its own DLL names), so every
+  AVX2 + FMA PC compiles the same code. On the author's PC it gives the native build's bytes: the release check (every
+  helper built for x86-64-v3 by the toolchain zip's gcc) rebuilt v15 byte for byte. winget's oldest WinLibs is gcc 14.2:
+  the same bytes from it are not shown.
 - Found by the release check (`release.py --check`: the whole stack in the staged tree, on an empty data folder, PATH = System32,
   LOCALAPPDATA elsewhere): the `._pth` script-folder and user-site points above; rtbake scripts that imported core through the
   current folder; `cbuild` building in %TEMP% and moving the DLL across drives (os.replace cannot: the build now happens beside
   the DLL, and a failed move is an error).
 
-## 6. Not done yet
+## 6. Threads
 
-The C ports / threading pass, and making results independent of the thread count (27, "One run that differed").
+The whole chain on 8 OpenMP threads with numpy's OpenBLAS on 1 (as an 8-thread PC runs it, 637 s) gave the v15 game files
+byte for byte, as 32 threads do: the results do not depend on the thread count. So the settings' `threads` (all / all but one /
+a number) now sets OMP_NUM_THREADS and OPENBLAS_NUM_THREADS for every step of the stack, not only the bake. (27's "one run
+that differed" was not seen again; it was made on the efficiency cores alone, beside other work.)
+
+## 7. Not done yet
+
+The C ports / speed pass.

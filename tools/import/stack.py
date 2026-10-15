@@ -35,7 +35,8 @@ class Run:
         self.threads = threads or str(common.threads())
         self.G = os.path.join(common.TMP, 'stack', self.name); os.makedirs(self.G, exist_ok=True)       # the passes' hand-over files
         self.B = os.path.join(common.WORK, 'blend', self.name); self.side = []
-        self.env = dict(os.environ, PYTHONPATH=CORE + os.pathsep + os.environ.get('PYTHONPATH', ''), PYTHONIOENCODING='utf-8')
+        self.env = dict(os.environ, PYTHONPATH=CORE + os.pathsep + os.environ.get('PYTHONPATH', ''), PYTHONIOENCODING='utf-8',
+                        OMP_NUM_THREADS=self.threads, OPENBLAS_NUM_THREADS=self.threads)      # every step on the threads the settings give (the bytes do not depend on it: 8 and 32 threads, checked 2026-10-15)
 
     def sets(self, which):
         """the importer's --set arguments: the recipe's common values, then the step choices, then the pass's own"""
