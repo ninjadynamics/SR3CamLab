@@ -377,4 +377,28 @@ EXPORT i64 lm_albedo(i64 npx, const void *rgb, int kind, int ch, const unsigned 
     free(x); return k;
 }
 
+/* lightmap1995.lookup's arithmetic (2026-10-15, kb 31): idx[n] the table row of each polygon (-1: on no page) -> opage[n], ouv[4n][2]:
+     x0 = tab['x0'][j].astype(float) ... ; cu = np.stack([x0 + 0.5, x0 + nu - 0.5, x0 + nu - 0.5, x0 + 0.5], 1) / PAGE ; cv likewise with y0, nv
+     with ab: cu = (x0[:, None] + 0.5 + ab[:, :, 0] * (nu[:, None] - 1.0)) / PAGE ; cv = (y0[:, None] + 0.5 + ab[:, :, 1] * (nv[:, None] - 1.0)) / PAGE
+     uv = np.where(ok, uv, 0.5); page = np.where(ok, tab['page'][j], 0); np.clip(np.round(uv * 32768), 0, 32767).astype(np.uint16) */
+EXPORT void lm_lookup(i64 n, const i64 *idx, const int *pg, const int *x0, const int *y0, const int *nu, const int *nv, const double *ab, int PAGE,
+                      int *opage, unsigned short *ouv)
+{
+    #pragma omp parallel for schedule(static)
+    for (i64 i = 0; i < n; i++) {
+        i64 j = idx[i] < 0 ? 0 : idx[i]; int ok = idx[i] >= 0; double X = (double)x0[j], Y = (double)y0[j], U = (double)nu[j], V = (double)nv[j], cu[4], cv[4];
+        if (ab) for (int c = 0; c < 4; c++) { cu[c] = ((X + 0.5) + ab[8 * j + 2 * c] * (U - 1.0)) / PAGE; cv[c] = ((Y + 0.5) + ab[8 * j + 2 * c + 1] * (V - 1.0)) / PAGE; }
+        else {
+            cu[0] = (X + 0.5) / PAGE; cu[1] = ((X + U) - 0.5) / PAGE; cu[2] = cu[1]; cu[3] = cu[0];
+            cv[0] = (Y + 0.5) / PAGE; cv[1] = cv[0]; cv[2] = ((Y + V) - 0.5) / PAGE; cv[3] = cv[2];
+        }
+        opage[i] = ok ? pg[j] : 0;
+        for (int c = 0; c < 4; c++)
+            for (int a = 0; a < 2; a++) {
+                double v = rint((ok ? (a ? cv[c] : cu[c]) : 0.5) * 32768.0); v = v < 0.0 ? 0.0 : (v > 32767.0 ? 32767.0 : v);
+                ouv[8 * i + 2 * c + a] = (unsigned short)v;
+            }
+    }
+}
+
 EXPORT int lm_threads(void) { return omp_get_max_threads(); }

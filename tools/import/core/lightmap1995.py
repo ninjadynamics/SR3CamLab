@@ -185,6 +185,24 @@ def load_table(path):
     T = np.load(path + '.lm.table.npz'); d = {k.tobytes(): i for i, k in enumerate(T['K'])}
     return dict(idx=d, page=T['page'], x0=T['x0'], y0=T['y0'], nu=T['nu'], nv=T['nv'], ab=T['ab'] if 'ab' in T.files else None, pages=np.load(path + '.lm.pages.npy', mmap_mode='r'), miss=[0], hit=[0])
 
+def load_table_buf(path):
+    """load_table() without numpy: the same dict, its arrays npyio.Arr (pages memory-mapped)"""
+    import npyio
+    T = npyio.loadz(path + '.lm.table.npz'); K = bytes(T['K'].buf[:T['K'].nbytes]); d = {K[48 * i:48 * i + 48]: i for i in range(T['K'].shape[0])}
+    return dict(idx=d, page=T['page'], x0=T['x0'], y0=T['y0'], nu=T['nu'], nv=T['nv'], ab=T.get('ab'), pages=npyio.load(path + '.lm.pages.npy', mmap=True), miss=[0], hit=[0])
+
+def lookup_buf(tab, P4):
+    """lookup() without numpy (tab: load_table_buf; P4 any buffer) -> page npyio.Arr '<i4' (n,), uv1 '<u2' (4n, 2); the same numbers and
+    the same miss / hit counts (the arithmetic in fastlm.c: lm_lookup)"""
+    import fastlm, npyio
+    K = key_buf(P4); n = K.shape[0]; Kb = bytes(K.buf[:K.nbytes]); get = tab['idx'].get; idx = array('q', [get(Kb[48 * i:48 * i + 48], -1) for i in range(n)]); bad = idx.count(-1)
+    tab['miss'][0] += bad; tab['hit'][0] += n - bad
+    i32 = lambda a: a if a.dtype == '<i4' else npyio.Arr('<i4', a.shape, memoryview(array('i', a.view())).cast('B'))
+    pg, x0, y0, nu, nv = (i32(tab[k]) for k in ('page', 'x0', 'y0', 'nu', 'nv')); ab = tab.get('ab')
+    page = npyio.Arr('<i4', (n,)); uv = npyio.Arr('<u2', (4 * n, 2))
+    fastlm.lib().lm_lookup(n, idx.buffer_info()[0], pg.ptr(), x0.ptr(), y0.ptr(), nu.ptr(), nv.ptr(), ab.ptr() if ab is not None else None, PAGE, page.ptr(), uv.ptr())
+    return page, uv
+
 def lookup(tab, P4):
     """-> page per polygon (0 = not on any page: the white picture), uv1 (4 per polygon, u16)"""
     import numpy as np
