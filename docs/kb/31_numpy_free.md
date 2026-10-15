@@ -69,6 +69,21 @@ A full chain on an empty data folder, every Python process logging the modules i
   left over into accumulator 0, a single product into its low lane; each lane (a0 + a1) + (a2 + a3), then low + high, added to 0.
   `np.convolve(a, k, 'valid')` is that ddot per output (k copied, aligned): 4,982 of 4,982. `core\npexact.py` (ddot, pwsum) has it.
   On a PC whose CPU OpenBLAS knows, numpy itself gives other last bits; the ports keep this PC's numbers (v15 was made here).
+- **`np.linalg.lstsq` is LAPACK 3.10's dgelsd on those Prescott kernels; `core\nplapack.c` reproduces it bit for bit** (m <= 8
+  rows, n <= m, up to 8 right-hand sides). Each kernel was read off numpy's own DLL (`libopenblas64_` exports every BLAS and LAPACK
+  routine, `dgelsd_64_`, `dbdsqr_64_`, ...: called through ctypes with 64-bit integers): `dgemv 'T'` peels row 0 when A is 8
+  bytes off 16, then sums columns in groups of 4 (lda odd: also 2) with one 2-lane accumulator each and the rest one by one with
+  two; `dgemv 'N'`, small `dgemm` add in order from 0; `dger` adds (alpha y_j) x_i; `dnrm2` adds the squares in order on the
+  x87 unit. The addition trees were found with +2^60 / -2^60 / 1.0 probes (the sum counts the ones outside the subtree where the
+  two big values meet). The LAPACK routines are the reference ones (dlartg the 3.10 form: p = 1 / d, c = |f| p, s = g sign(p, f)),
+  each checked against the DLL's (0 mismatches in 70,000+ cases), the whole against `np.linalg.lstsq`: the 9,074 systems of a
+  Desert build and 110,000 random / 1995-like ones (`core\test_nplapack.py`). numpy's wrapper puts A and B in ONE malloc'ed
+  block, B right after A, and that layout matters (dgemv's peel), so nplapack.c builds the same block.
+- **The x87 precision is per thread.** Python's threads start with control word 0x27F (53 bits), gcc's OpenMP workers with 64
+  bits; nplapack's dnrm2 ran x87 code and gave other sums in 1,399 of 8,911 systems until it set 53 bits itself for those
+  instructions. Any C port of an x87 kernel has to do the same.
+- `np.linalg.matrix_rank(A, tol)` takes np.linalg.svd's singular values (dgesdd); overlay_bake now counts dgelsd's, which can
+  differ in the last bit: on the 3,060 rank tests of a build the decisions are all equal, the nearest value 3.7 decades from 1e-6.
 - **`np.dot` of two 3-vectors depends on where the second one sits in memory** (OpenBLAS's small kernel): 16-byte
   aligned gives `(p0 + p2) + p1`, 8 bytes off gives `(p0 + p1) + p2`, each 100% (6,000 pairs per alignment class).
   `np.linalg.norm(v)` is `sqrt(v.dot(v))`, so it follows `v`'s alignment. A fresh numpy array is 16-byte aligned; the rows
@@ -109,6 +124,10 @@ data roots, old against new (scratchpad tools lightrun.py / buildrun.py): every 
 | sky1995 | its own operations in fastlm.c sky_dirs / sky_tile / sky_fill; build_classic.vivid / dxt1_rgb through a numpy bridge | all 10 game files identical |
 | fastdxt | buffer protocol, dxt1_bytes | all 10 game files identical |
 | layers | plain floats in numpy's per-call orders | pairs and layers identical on 334,229 faces; 237 -> 30 s |
+| facadebake.compose | fastlm.c fb_paint / fb_fill on bytes; `compose` a numpy bridge | the facade pictures identical; 1.05 -> 0.22 s |
+| crowd.classic_spots / matrix / build_safe | plain floats; `fit_offset` keeps numpy | all 10 game files identical |
+| pacenotes.corners | unwrap / convolve (npexact.ddot) / gradient written out | the same notes on 4 centre lines, all 10 game files identical; 6-10 ms where numpy took 0-3 ms (once a build) |
+| overlay_bake.resolve / find_pairs / gate | plain floats in numpy's orders, nplapack for lstsq, geobuf.prep + fastgeo.c's pair search bound without numpy; `_recipe` (the pictures, from build_classic.tile_pixels) and the functions other modules call stay numpy | all 10 game files, the 492 composed-tile files and the 138 recipes identical; numpy blocked: resolve, find_pairs, gate run; resolve 3.61 -> 1.49 s, find_pairs 0.29 -> 0.25 s a build |
 | texfast, grid, fastlm, m2colour, ... | numpy imported only inside the functions that still use it | - |
 
 ROM stages: `course.use_tex()` sets only the export's folders (course.use() loaded the whole build, and numpy with it,
