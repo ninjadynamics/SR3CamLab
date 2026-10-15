@@ -962,7 +962,7 @@ static void watch_tracks(void) {
     StartSt st; ll base, text, tdcave = 0, shot_until = 0, label_until = 0; int cards_open, i, keys_down[8] = {0};
     char sound_now[120] = "//", tune_now[80] = "", name_was[32] = "", times_now[120] = "", shown[200] = "", shot_name[64] = "", l0[64] = "", l1[96] = "", dir_now = 's';
     char *shot_info_s = NULL; int shot_held = 0, pvs_held = 0, pvs_was = 0, mode_seen_on = 0, mode_seen = 0, mode_last_on = 0, mode_last = 0, classic_on = 0, classic_val = 0;
-    int was_down = 0, was_menu = 0, deep = 0, showing = 0;
+    int was_down = 0, was_menu = 0, deep = 0, showing = 0, watch_was = 0;
     char classic_file[1100];
     memset(&st, 0, sizeof st); RX.on = 0;
     read_track_switch();
@@ -1074,7 +1074,19 @@ static void watch_tracks(void) {
                 keys_down[i] = dn;
             }
         }
-        if (label_until > G->now(G)) {                                                       /* a handling key's label, over everything else for 2.5 s */
+        if ((ll)G->front(G) == gp(0x728CF4)) {                                               /* Ctrl+Scroll Lock: the watchdog now (Request-Watchdog), its label */
+            int dn = G->key(G, 0x11) && G->key(G, 0x91);
+            if (dn && !watch_was) {
+                char l2[96] = "";
+                if (!G->watch) { snprintf(l0, sizeof l0, "No watchdog here"); snprintf(l1, sizeof l1, "start the game with the watchdog"); }
+                else if (G->watch(G, l2, sizeof l2)) { snprintf(l0, sizeof l0, "Watchdog on"); snprintf(l1, sizeof l1, "%s", l2); }
+                else { snprintf(l0, sizeof l0, "Watchdog not started"); snprintf(l1, sizeof l1, "%s", l2); }
+                pc_logf("Watchdog key: %s, %s.", l0, l1);
+                label_until = G->now(G) + 25000000LL;
+            }
+            watch_was = dn;
+        }
+        if (label_until > G->now(G)) {                                                       /* a handling (or watchdog) key's label, over everything else for 2.5 s */
             char lt[200]; snprintf(lt, sizeof lt, "%s|%s", l0, l1);
             if (_stricmp(lt, shown)) { wstr(text, l0, 48); wstr(text + 0x80, l1, 64); snprintf(shown, sizeof shown, "%s", lt); }
             popup(base, text, LIME_, text + 0x80); showing = 1;

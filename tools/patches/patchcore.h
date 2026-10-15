@@ -21,6 +21,10 @@ struct GameMem {
     unsigned (*front)(GameMem *);                                                   /* the foreground window */
     int (*shot)(GameMem *, int act, const char *path, const char *info);            /* 1 grab the screen, 2 save it as PNG (+ tEXt "SR3Lab" info), 3 let it go; 1 = done */
     void (*news)(GameMem *);                                                        /* the watchdog's lines, if one runs (NULL = none) */
+    /* Ctrl+Scroll Lock with the game window in front (pc_live.c, once per press; Bruno, 2026-10-15): start the crash and
+       freeze watchdog for this game now. 1 = it runs (started, or already running), line2 = the popup's second line
+       (its log file, say); 0 = not started, line2 = why. Both under 64 characters. NULL = no watchdog on this front end. */
+    int (*watch)(GameMem *, char *line2, int cap);
     void *ctx;
 };
 

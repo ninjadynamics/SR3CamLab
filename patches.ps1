@@ -1053,6 +1053,13 @@ function Start-Watchdog($game) {
     for ($i = 0; $i -lt 30 -and -not [Sr3Watchdog]::Attached -and -not [Sr3Watchdog]::Finished; $i++) { Start-Sleep -Milliseconds 100 }
     Start-Sleep -Milliseconds 100; Show-WatchdogNews
 }
+# Ctrl+Scroll Lock in the game (Bruno, 2026-10-15): the watchdog now, without starting the game again (it records from then
+# on; one started with the game, the default, is already on). The popup's two lines. (pc_live.c asks its front end, GameMem.watch.)
+function Request-Watchdog($game) {
+    if (-not $script:WatchdogOn) { Start-Watchdog $game }
+    if ($script:WatchdogOn) { return @('Watchdog on', [IO.Path]::GetFileName([Sr3Watchdog]::LogPath)) }
+    return @('Watchdog not started', 'see play.log')
+}
 function Show-WatchdogNews { if ($script:WatchdogOn) { for ($m = [Sr3Watchdog]::NextMessage(); $null -ne $m; $m = [Sr3Watchdog]::NextMessage()) { Log "Watchdog: $m" } } }
 function Stop-Watchdog {
     if (-not $script:WatchdogOn) { return }
@@ -1133,7 +1140,7 @@ function Watch-Tracks($game, [string]$gameExe) {
         $classicFile = Join-Path (Split-Path -Parent $gameExe) 'Main_release\tracks\_SR3Extras\classic_mode.txt'
         if (Test-Path -LiteralPath $classicFile) { $t = ([IO.File]::ReadAllText($classicFile)).Trim(); if ($t -match '^-?\d+$') { $classicVal = [int]$t } }
         $dirNow = 's'; $wasDown = $false; $wasMenu = $false; $deep = $false; $showing = $false; $shown = ''; $timesNow = ''
-        $keysDown = @{}; $labelUntil = [datetime]::MinValue; $labelLines = @('', '')
+        $keysDown = @{}; $labelUntil = [datetime]::MinValue; $labelLines = @('', ''); $watchKeyWas = $false
         while (-not $game.HasExited) {
             $g = [Sr3Mem]::Read($h, 0x9D6E3C, 1)
             if ($null -eq $g) { break }
@@ -1262,7 +1269,12 @@ function Watch-Tracks($game, [string]$gameExe) {
                     $keysDown[$vk] = $dn
                 }
             }
-            if ($labelUntil -gt (Get-Now)) {                          # a handling key's label, over everything else for 2.5 s
+            if ((Get-FrontWindow) -eq (Read-GamePtr $h $GameWindowVA)) {   # Ctrl+Scroll Lock: the watchdog now (Request-Watchdog), its label
+                $dn = (Test-KeyDown 0x11) -and (Test-KeyDown 0x91)
+                if ($dn -and -not $watchKeyWas) { $labelLines = Request-Watchdog $game; Log "Watchdog key: $($labelLines -join ', ')."; $labelUntil = (Get-Now).AddSeconds(2.5) }
+                $watchKeyWas = $dn
+            }
+            if ($labelUntil -gt (Get-Now)) {                          # a handling (or watchdog) key's label, over everything else for 2.5 s
                 $lt = $labelLines -join '|'
                 if ($lt -ne $shown) { [Sr3Mem]::Write($h, $text, (Str $labelLines[0] 48), $true); [Sr3Mem]::Write($h, $text + 0x80, (Str $labelLines[1] 64), $true); $shown = $lt }
                 [Sr3Mem]::Write($h, $base + 0x50, ([BitConverter]::GetBytes([int]$text)), $true)

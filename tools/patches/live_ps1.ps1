@@ -74,6 +74,7 @@ function Get-FrontWindow { return [MockGame]::Front }
 function New-ScreenGrab { [MockGame]::Line('G grab'); return 'grab' }
 function Save-ScreenGrab($bmp, [string]$path, $info) { [MockGame]::Line('G save ' + (Split-Path -Leaf $path) + ' ' + $(if ($info) { $info } else { '-' })) }
 function Close-ScreenGrab($bmp) { if ($bmp) { [MockGame]::Line('G close') } }
+function Request-Watchdog($game) { [MockGame]::Line('G watch'); return @('Watchdog on', 'watchdog_test.log') }   # (livetest.c's t_watch answers the same)
 
 $sc = [IO.File]::ReadAllText($LiveScenario) | ConvertFrom-Json
 $h = [IntPtr]::Zero

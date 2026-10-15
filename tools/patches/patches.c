@@ -61,7 +61,7 @@ static void in_resume(GameMem *m) {
     nheld = 0;
 }
 static int in_alive(GameMem *m) { (void)m; return 1; }
-static GameMem inside = {in_read, in_write, in_alloc, in_suspend, in_resume, in_alive, ph_now, ph_sleep, ph_key, ph_front, ph_shot, NULL, NULL};
+static GameMem inside = {in_read, in_write, in_alloc, in_suspend, in_resume, in_alive, ph_now, ph_sleep, ph_key, ph_front, ph_shot, NULL, NULL, NULL};
 
 /* ---------------------------------------------------------------- the thread */
 static DWORD WINAPI worker(LPVOID p) {

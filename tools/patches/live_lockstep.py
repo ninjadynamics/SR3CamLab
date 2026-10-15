@@ -184,6 +184,10 @@ def sc_handling():
     F(1, 6, 'Tropical4', front=W, set=[(0x9DBDA0 + 0xC, i32(0x32000008 + 0x80 * 10))])        # the Hornet now
     F(1, 6, 'Tropical4', car_sel=0, front=W, keys=[0x31, 0x32])                              # two keys at once
     F(0, 0, 'Tropical4', front=W)
+    F(0, 0, 'Tropical4', front=W, keys=[0x91]); F(0, 0, 'Tropical4', front=1, keys=[0x11, 0x91])   # Scroll Lock alone; Ctrl+Scroll Lock with another window in front: nothing
+    F(0, 0, 'Tropical4', front=W, keys=[0x11]); F(0, 0, 'Tropical4', front=W, keys=[0x11, 0x91]); F(0, 0, 'Tropical4', front=W, keys=[0x11, 0x91])   # Ctrl+Scroll Lock: the watchdog, once per press
+    for k in range(200): F(0, 0, 'Tropical4', front=W)
+    F(0, 0, 'Tropical4', front=W, keys=[0x11, 0x91])                                          # again later
     return g
 
 def sc_late():

@@ -103,7 +103,8 @@ static int t_shot(GameMem *m, int act, const char *path, const char *info) {
     else tline("G close");
     return 1;
 }
-static GameMem fake = {t_read, t_write, t_alloc, t_suspend, t_resume, t_alive, t_now, t_sleep, t_key, t_front, t_shot, NULL, NULL};
+static int t_watch(GameMem *m, char *l2, int cap) { (void)m; tline("G watch"); snprintf(l2, (size_t)cap, "watchdog_test.log"); return 1; }   /* (live_ps1.ps1's Request-Watchdog answers the same) */
+static GameMem fake = {t_read, t_write, t_alloc, t_suspend, t_resume, t_alive, t_now, t_sleep, t_key, t_front, t_shot, NULL, t_watch, NULL};
 
 static int run(int argc, char **argv);
 void __stdcall entry(void) {                            /* (no C runtime start-up: -nostartfiles) the arguments as UTF-8 */
