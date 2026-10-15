@@ -22,6 +22,8 @@ EXPORT int fg_threads(void) { return omp_get_max_threads(); }
 /* Python's  x ** 0.5  is the C runtime's pow(x, 0.5), which is not sqrt(x) to the last bit (2 in 1000 differ). The importer's normals are made
    with ** 0.5, so the same pow is used here: the one of ucrtbase.dll, the runtime python.exe uses. fg_init() looks it up; without it, sqrt. */
 #include <windows.h>
+#include <stdint.h>
+#include <limits.h>
 #undef far
 #undef near
 typedef double (*pow_t)(double, double);
@@ -34,6 +36,91 @@ EXPORT int fg_init(void)
 }
 static inline double root(double x) { return upow ? upow(x, 0.5) : sqrt(x); }
 static inline double sqr(double x) { return upow ? upow(x, 2.0) : x * x; }      /* Python's  x ** 2  (not x * x to the last bit either) */
+
+/* geobuf's sequence packing uses only exported CPython functions, not object
+   layouts or Python headers. Call these through ctypes.PyDLL (GIL held).
+   All references from PySequence_Tuple are owned here; tuple items are borrowed.
+   This is the copy performed by np.fromiter, with each xyz shape checked. */
+typedef void pyobj;
+typedef intptr_t pysize;
+static struct {
+    pysize (*seq_size)(pyobj *);
+    pyobj *(*seq_tuple)(pyobj *);
+    pysize (*tuple_size)(pyobj *);
+    pyobj *(*tuple_item)(pyobj *, pysize);
+    double (*as_double)(pyobj *);
+    void (*decref)(pyobj *);
+    pyobj *(*error)(void);
+    void (*set_error)(pyobj *, const char *);
+    pyobj *value_error;
+    int ready;
+} fg_py;
+
+EXPORT int fg_py_bind(void *handle)
+{
+    HMODULE h = (HMODULE)handle;
+    fg_py.ready = 0;
+#define FG_PY_LOAD(field, symbol) do { fg_py.field = (__typeof__(fg_py.field))GetProcAddress(h, symbol); if (!fg_py.field) return 0; } while (0)
+    FG_PY_LOAD(seq_size, "PySequence_Size"); FG_PY_LOAD(seq_tuple, "PySequence_Tuple");
+    FG_PY_LOAD(tuple_size, "PyTuple_Size"); FG_PY_LOAD(tuple_item, "PyTuple_GetItem");
+    FG_PY_LOAD(as_double, "PyFloat_AsDouble"); FG_PY_LOAD(decref, "Py_DecRef");
+    FG_PY_LOAD(error, "PyErr_Occurred"); FG_PY_LOAD(set_error, "PyErr_SetString");
+#undef FG_PY_LOAD
+    pyobj **exc = (pyobj **)(void *)GetProcAddress(h, "PyExc_ValueError");
+    if (!exc || !*exc) return 0;
+    fg_py.value_error = *exc; fg_py.ready = 1; return 1;
+}
+
+static void fg_py_bad(const char *message) { fg_py.set_error(fg_py.value_error, message); }
+
+EXPORT i64 fg_py_lengths(pyobj *polygons, i64 n, i64 *off, i64 *lens)
+{
+    if (!fg_py.ready) return -1;
+    pyobj *rows = fg_py.seq_tuple(polygons); if (!rows) return -1;
+    i64 total = 0;
+    if (n < 0 || fg_py.tuple_size(rows) != n) { fg_py_bad("geobuf.pack: polygon count changed"); goto fail; }
+    off[0] = 0;
+    for (i64 i = 0; i < n; i++) {
+        pysize k = fg_py.seq_size(fg_py.tuple_item(rows, (pysize)i));
+        if (k < 0) goto fail;
+        if (k > INT_MAX || (i64)k > INT64_MAX / 24 - total) { fg_py_bad("geobuf.pack: too many corners"); goto fail; }
+        lens[i] = (i64)k; total += (i64)k; off[i + 1] = total;
+    }
+    fg_py.decref(rows); return total;
+fail:
+    fg_py.decref(rows); return -1;
+}
+
+EXPORT int fg_py_pack(pyobj *polygons, i64 n, const i64 *off, const i64 *lens, double *X, i64 corners)
+{
+    if (!fg_py.ready) return -1;
+    pyobj *rows = fg_py.seq_tuple(polygons), *poly = NULL, *point = NULL;
+    if (!rows) return -1;
+    if (n < 0 || fg_py.tuple_size(rows) != n) { fg_py_bad("geobuf.pack: polygon count changed"); goto fail; }
+    for (i64 i = 0; i < n; i++) {
+        poly = fg_py.seq_tuple(fg_py.tuple_item(rows, (pysize)i)); if (!poly) goto fail;
+        pysize k = fg_py.tuple_size(poly);
+        if (k != lens[i] || off[i] < 0 || off[i] > corners || (i64)k > corners - off[i]) {
+            fg_py_bad("geobuf.pack: corner count changed during packing"); goto fail;
+        }
+        for (pysize j = 0; j < k; j++) {
+            point = fg_py.seq_tuple(fg_py.tuple_item(poly, j)); if (!point) goto fail;
+            if (fg_py.tuple_size(point) != 3) { fg_py_bad("geobuf.pack: corners must be xyz triples"); goto fail; }
+            for (int a = 0; a < 3; a++) {
+                double v = fg_py.as_double(fg_py.tuple_item(point, a));
+                if (v == -1.0 && fg_py.error()) goto fail;
+                X[3 * (off[i] + j) + a] = v;
+            }
+            fg_py.decref(point); point = NULL;
+        }
+        fg_py.decref(poly); poly = NULL;
+    }
+    fg_py.decref(rows); return 0;
+fail:
+    if (point) fg_py.decref(point);
+    if (poly) fg_py.decref(poly);
+    fg_py.decref(rows); return -1;
+}
 
 /* ------------------------------------------------------------------ per polygon numbers */
 EXPORT void fg_prep(const double *X, const i64 *off, i64 n, double *nr, double *ar, double *cen, double *lo, double *hi)
