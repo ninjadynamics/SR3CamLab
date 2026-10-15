@@ -119,7 +119,7 @@ def pack(LM, P, centre, near=3.0, far=0.75, reach=60.0):
 
 def bake(LM, path, mode='rt', strength=1.0, shade=0.33, log=print):
     """lightmap1995.bake (LM = that module): the same two files.  None = this code cannot take the input (the caller runs the old code)"""
-    t0 = time.time(); D = np.load(path + '.lm.npz'); P = D['P'].astype(float); N = D['N'].astype(float); I = D['I'].astype(float); U = D['U'].astype(bool); S = pickle.load(open(path + '.scene', 'rb'))
+    t0 = time.time(); D = np.load(path + '.lm.npz'); P = D['P'].astype(float); N = D['N'].astype(float); I = D['I'].astype(float); U = D['U'].astype(bool); import scenefile; S = scenefile.load(path + '.scene', numpy=True)
     if not len(P) or P.shape[1:] != (4, 3) or I.shape != (len(P), 4): return None
     N = N / np.maximum(np.linalg.norm(N, axis=1), 1e-12)[:, None]
     page, x0, y0, nu, nv = pack(LM, P, S['centre']); npg = int(page.max()); PAGE = LM.PAGE
@@ -150,7 +150,7 @@ def roadsight(sc, cen, S1, S2, nrm, C, E, per, reach):
 def selftest(path, nmax=40000000, log=print):
     """the rays of a real bake (<path>.lm.npz + .scene: sky fans from the polygons' corners) through rays.dll and through this DLL's three walks, bit for bit"""
     import rays
-    D = np.load(path + '.lm.npz'); S = pickle.load(open(path + '.scene', 'rb')); T = S['tris'].astype(float); a = rays.Scene(T); a.masks(S['mat'], S['uv'], S['holes']); Lg = Lights(S); b = Lg.sc
+    import scenefile; D = np.load(path + '.lm.npz'); S = scenefile.load(path + '.scene', numpy=True); T = S['tris'].astype(float); a = rays.Scene(T); a.masks(S['mat'], S['uv'], S['holes']); Lg = Lights(S); b = Lg.sc
     P = D['P'].astype(float).reshape(-1, 3); N = np.repeat(D['N'].astype(float), 4, axis=0); N /= np.maximum(np.linalg.norm(N, axis=1), 1e-12)[:, None]; k = max(1, nmax // 16); sel = np.linspace(0, len(P) - 1, min(k, len(P))).astype(int); P = P[sel]; N = N[sel]
     def frame(n):
         ax = np.where((np.abs(n[:, 1]) < 0.9)[:, None], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]); t = np.cross(n, ax); t /= np.maximum(np.linalg.norm(t, axis=1), 1e-12)[:, None]; return t, np.cross(n, t)

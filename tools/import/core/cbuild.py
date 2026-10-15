@@ -23,6 +23,7 @@ HELPERS = {
     'rays':     dict(dir='.', units=[('rays.c', [])], hashed=['rays.c']),
     'fastlm':   dict(dir='.', units=[('fastlm_rays.c', []), ('fastlm.c', FOC)], hashed=['rays.c', 'fastlm_rays.c', 'fastlm.c']),
     'rtg5':     dict(dir='rtbake', units=[('rtg2_rays.c', []), ('rtg5.c', FOC)], hashed=['rays.c', 'fastlm_rays.c', 'rtg2_rays.c', 'rtg5.c']),
+    'rtcompose': dict(dir='rtbake', units=[('rtcompose.c', FOC)], hashed=['rtcompose.c']),
 }
 
 def _settings():

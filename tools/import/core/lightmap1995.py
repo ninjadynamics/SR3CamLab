@@ -81,7 +81,7 @@ def bake(path, mode='rt', strength=1.0, shade=0.33, log=print):
 
 def _old_bake(path, mode='rt', strength=1.0, shade=0.33, log=print):   # (the numpy original of bake: fallback and reference)
     import rays
-    t0 = time.time(); D = np.load(path + '.lm.npz'); P = D['P'].astype(float); N = D['N'].astype(float); I = D['I'].astype(float); U = D['U'].astype(bool); S = pickle.load(open(path + '.scene', 'rb'))
+    t0 = time.time(); D = np.load(path + '.lm.npz'); P = D['P'].astype(float); N = D['N'].astype(float); I = D['I'].astype(float); U = D['U'].astype(bool); import scenefile; S = scenefile.load(path + '.scene', numpy=True)
     N = N / np.maximum(np.linalg.norm(N, axis=1), 1e-12)[:, None]; SUN = np.asarray(S['sun'], float); SUN = SUN / np.linalg.norm(SUN)
     page, x0, y0, nu, nv = pack(P, S['centre']); npg = int(page.max()); sc = rays.Scene(S['tris'].astype(float)); sc.masks(S['mat'], S['uv'], S['holes']); alb = np.asarray(S['albedo_rgb'], float)
     pages = np.full((npg + 1, PAGE, PAGE, 3), 255, np.uint8); ntex = 0; order = np.argsort(page, kind='stable')

@@ -66,7 +66,7 @@ class Scene:
         o = _d(org).reshape(-1, 3); d = _d(dir).reshape(-1, 3); n = len(o); hit = np.empty(n, np.int32); t = np.empty(n, np.float64); fell = ctypes.c_longlong(0)
         LIB.rx_cast(self.x, 1 if MODE else 0, _p(o), _p(d), n, float(tmax), _p(hit), _p(t), ctypes.byref(fell)); return hit, t
 D = np.load(PATH + '.lm.npz'); P = D['P'].astype(float); N = D['N'].astype(float); N /= np.maximum(np.linalg.norm(N, axis=1), 1e-12)[:, None]; I = D['I'].astype(float); U2 = D['U'].astype(bool)
-S = pickle.load(open(PATH + '.scene', 'rb')); SUN = np.asarray(S['sun'], float); SUN /= np.linalg.norm(SUN); PAGE = LM.PAGE
+import scenefile; S = scenefile.load(PATH + '.scene', numpy=True); SUN = np.asarray(S['sun'], float); SUN /= np.linalg.norm(SUN); PAGE = LM.PAGE
 G = pickle.load(open(DUMP, 'rb')); rd = G['rd']; origin = G.get('origin', {}); lab = {k: v[0] for k, v in retex.labels().items()}
 names = []; seen = {}
 for mat, sec, Pf, Uf in ((fc[0], fc[1], fc[2], fc[3]) for fc in G['faces'] + G['sky'] + G['extra']):

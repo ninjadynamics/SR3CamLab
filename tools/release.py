@@ -151,6 +151,8 @@ def mingw(dst):
     for src in glob.glob(os.path.join(REPO, 'tools', 'x86', '*.c')):   # the 32-bit builds (gcc -m32): their headers too
         r = subprocess.run([G, '-m32', '-MG', '-M', src], capture_output=True, text=True, cwd=os.path.dirname(src))
         for tok in r.stdout.replace('\\\n', ' ').split(): add(tok)
+    for f in glob.glob(os.path.join(MINGW, 'x86_64-w64-mingw32', 'lib', 'ldscripts', 'i386pe.*')): add(f)   # ld -m i386pe reads its script from
+    # a file (the 64-bit default is built in), and --trace does not name it
     shutil.rmtree(td, ignore_errors=True)
     for prog in ('cc1', 'collect2', 'lto-wrapper', 'as', 'ld', 'liblto_plugin.dll'): add(subprocess.run([G, '-print-prog-name=' + prog], capture_output=True, text=True).stdout.strip())
     for f in ('gcc.exe', 'ld.bfd.exe', 'dlltool.exe', 'libgomp-1.dll', 'libwinpthread-1.dll', 'libgcc_s_seh-1.dll'): add(os.path.join(MINGW, 'bin', f))

@@ -71,7 +71,7 @@ def save_scene(path, faces, rd, tile_pixels, sun, log=print):
         for q in (np.stack([a, b, c], 2).reshape(-1, 3, 3), np.stack([a, c, d], 2).reshape(-1, 3, 3)):
             T += list(q); UV += [np.zeros((3, 2))] * len(q); M += [k] * len(q)
     D = dict(tris=np.array(T, np.float32), uv=np.array(UV, np.float32), mat=np.array(M, np.int32), albedo=np.array(alb, np.float32), albedo_rgb=np.array(albc, np.float32), holes=holes, sun=np.asarray(sun, float), centre=(np.asarray(rd['V'], float)[:, rd['hw']][:, [0, 2]] if rd is not None else np.zeros((1, 2))))
-    pickle.dump(D, open(path + '.scene', 'wb'), protocol=4); log('       baked light: the scene for the rays, %d triangles, %d materials (%d with see-through texels) -> %s.scene' % (len(T), len(alb), sum(h is not None for h in holes), path))
+    import scenefile; scenefile.save(path + '.scene', D); log('       baked light: the scene for the rays, %d triangles, %d materials (%d with see-through texels) -> %s.scene' % (len(T), len(alb), sum(h is not None for h in holes), path))
 
 def save_points(path, chunks, log=print):
     if not chunks: return
@@ -102,7 +102,7 @@ def lookup(tab, P, N):
 def run_native(path, log=print):
     """the rays of bl_bake.py cast by rays.c (same fans, same rules) -> <path>.light.npy"""
     import rays, math
-    t0 = time.time(); S = pickle.load(open(path + '.scene', 'rb')); D = np.load(path + '.npz'); P = D['P'].astype(float); N = D['N'].astype(float); U = D['U'].astype(bool)
+    import scenefile; t0 = time.time(); S = scenefile.load(path + '.scene', numpy=True); D = np.load(path + '.npz'); P = D['P'].astype(float); N = D['N'].astype(float); U = D['U'].astype(bool)
     T = S['tris'].astype(float); TM = S['mat']; ALB = S['albedo'].astype(float); SUN = np.asarray(S['sun'], float); SUN = SUN / np.linalg.norm(SUN)
     sc = rays.Scene(T); sc.masks(TM, S['uv'], S['holes']); TN = np.cross(T[:, 1] - T[:, 0], T[:, 2] - T[:, 0]); TN /= np.maximum(np.linalg.norm(TN, axis=1), 1e-12)[:, None]
     def frame(n):

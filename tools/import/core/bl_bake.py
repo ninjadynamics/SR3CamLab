@@ -9,7 +9,7 @@ import numpy as np
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 argv = sys.argv[sys.argv.index('--') + 1:]; PATH, A0, A1 = argv[0], int(argv[1]), int(argv[2])
-S = pickle.load(open(PATH + '.scene', 'rb')); D = np.load(PATH + '.npz'); P = D['P'][A0:A1].astype(float); N = D['N'][A0:A1].astype(float); U = D['U'][A0:A1]
+import scenefile; S = scenefile.load(PATH + '.scene', numpy=True); D = np.load(PATH + '.npz'); P = D['P'][A0:A1].astype(float); N = D['N'][A0:A1].astype(float); U = D['U'][A0:A1]
 T = S['tris'].astype(float); TU = S['uv'].astype(float); TM = S['mat']; ALB = S['albedo']; HOLES = S['holes']; SUN = np.asarray(S['sun'], float); SUN /= np.linalg.norm(SUN)
 bvh = BVHTree.FromPolygons([tuple(v) for v in T.reshape(-1, 3)], [(3 * i, 3 * i + 1, 3 * i + 2) for i in range(len(T))], all_triangles=True)
 TN = np.cross(T[:, 1] - T[:, 0], T[:, 2] - T[:, 0]); TN /= np.maximum(np.linalg.norm(TN, axis=1), 1e-12)[:, None]

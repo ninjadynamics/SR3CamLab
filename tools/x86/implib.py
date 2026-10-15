@@ -87,7 +87,9 @@ def main(argv):
     ap.add_argument('--dlltool'); ap.add_argument('--ignore', action='append', default=[]); ap.add_argument('inputs', nargs='+')
     a = ap.parse_args(argv)
     dlls = [d.lower().removesuffix('.dll') for d in (a.dll or DEFAULT_DLLS)]
-    dlltool = a.dlltool or os.environ.get('SR3_DLLTOOL') or os.path.join(os.path.dirname(find_gcc()), 'dlltool.exe')
+    gcc = find_gcc(); dlltool = a.dlltool or os.environ.get('SR3_DLLTOOL') or os.path.join(os.path.dirname(gcc), 'dlltool.exe')
+    # dlltool starts the assembler by the name "as" (PATH); the toolchain zip has it only where gcc keeps its programs
+    asm = subprocess.run([gcc, '-print-prog-name=as'], capture_output=True, text=True).stdout.strip() or 'as'
     defined, undefined = set(), set()
     for p in a.inputs:
         for where, b in inputs(p):
@@ -112,7 +114,7 @@ def main(argv):
         # folder (its temporary files go there too) and the library is moved out afterwards: the same bytes in any folder
         with tempfile.TemporaryDirectory() as td:
             shutil.copyfile(dp, os.path.join(td, d + '.def'))
-            r = subprocess.run([dlltool, '-m', 'i386', '--as-flags=--32', '-k', '--deterministic-libraries', '-t', d,
+            r = subprocess.run([dlltool, '-m', 'i386', '--as', asm, '--as-flags=--32', '-k', '--deterministic-libraries', '-t', d,
                                 '-d', d + '.def', '-l', 'lib%s.a' % d], cwd=td, capture_output=True, text=True)
             if r.returncode: raise SystemExit('dlltool failed for %s:\n%s' % (d, r.stdout + r.stderr))
             shutil.move(os.path.join(td, 'lib%s.a' % d), lp)
