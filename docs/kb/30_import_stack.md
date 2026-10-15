@@ -63,10 +63,12 @@ table (sources, per-unit flags, the files that name each DLL); `python core\cbui
 - `tools\mingw` is the part of WinLibs' gcc 13.2.0 (MinGW-w64 11.0.1, UCRT) that compiling and linking every helper touches:
   314 files, 74.7 MB of the 1.1 GB install, found with gcc -M (headers), -v (programs), -Wl,--trace (link inputs) and the
   DLLs those programs load. Shown enough: every helper built with it while PATH held only Windows' own folder.
-- Licences: Python's (PSF), numpy's and Pillow's travel with them; GCC and binutils are GPL 3 (the runtime libraries under the
-  GCC Runtime Library Exception): the toolchain zip names where the complete source is (winlibs.com, gcc.gnu.org,
-  sourceware.org, mingw-w64.org) and carries the licence files. Whether that is enough for redistributing GCC binaries, or the
-  source archives must be offered beside the zip, is the owner's call before a public release.
+- Licences (the owner left it to me, "lean and legal friendly"): tools\mingw\licenses carries SOURCES.txt (each component,
+  version, licence and source archive: GCC 13.2.0, binutils 2.42, GMP 6.3.0, MPFR 4.2.1, MPC 1.3.1, libiconv 1.17, gettext
+  0.22.4, MinGW-w64 11.0.1, isl 0.26, zlib 1.3.1, zstd 1.5.5, dlfcn-win32), the GPL v3 and the GCC Runtime Library
+  Exception (from numpy's licence file, which carries both), and with `--sources` every component's own licence files. The
+  complete corresponding source, the unchanged upstream archives, is `<name>-toolchain-source.zip` (release.py --sources),
+  published beside the toolchain zip (GPL v3 section 6d). Python, numpy and Pillow carry their own licences.
 - The target: x86-64-v3 by default (`SR3_MARCH` / settings `march`; 'native' still possible, with its own DLL names), so every
   AVX2 + FMA PC compiles the same code. On the author's PC it gives the native build's bytes: the release check (every
   helper built for x86-64-v3 by the toolchain zip's gcc) rebuilt v15 byte for byte. winget's oldest WinLibs is gcc 14.2:

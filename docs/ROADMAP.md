@@ -38,14 +38,15 @@ In-memory patching (as patch.ps1 does today) or more side-loaded DLLs, on the Te
    don't need to download anything or an internet connection at all (just click next and we'll set everything up for you
    automagically), but if you insist, we provide that option too - winget will fetch the necessary tools instead."
    - **The only binaries the mod includes are Python and a C compiler, in one zip.** Using it is optional, and it is safe to
-     delete when the user picks the winget option. Everything else (the C helpers' DLLs, CamLab's exe, the machine code
-     patch.ps1 writes into the game) is built on the user's PC from the shipped sources.
+     delete when the user picks the winget option. Everything else (the C helpers' DLLs, the machine code patch.ps1
+     writes into the game) is built on the user's PC from the shipped sources.
+   - **The exception: CamLab** (`camlab.exe`) stays a shipped binary, as it is now, and CamLab is not to be changed (owner,
+     2026-10-15).
    - Default: setup unpacks the toolchain zip (Python with numpy and Pillow, MinGW-w64 gcc) into the mod folder, offline.
      Option: winget installs Python and WinLibs gcc, and pip the pinned numpy / Pillow.
    - Status (2026-10-15): the import stack works this way (tools\release.py makes both zips; tools\setup_toolchain.ps1).
      Not yet: patch.ps1 still carries its machine code as hex made on the author's PC (the sources and their build scripts,
-     tools\build_*.py, ship; they need keystone and clang, which the toolchain zip does not have yet), and camlab.exe is built
-     with the author's raylib setup (src\).
+     tools\build_*.py, ship; they need keystone and clang, which the toolchain zip does not have yet).
    - Builds must stay byte-identical across PCs: the C helpers are compiled for one fixed target (x86-64-v3) rather than
      each PC's own, and the Python packages are pinned to the versions the builds were checked with. winget's oldest WinLibs
      is gcc 14.2 (the zip's is 13.2): that the winget compiler gives the same bytes is still to be shown.
@@ -55,6 +56,11 @@ In-memory patching (as patch.ps1 does today) or more side-loaded DLLs, on the Te
 No SEGA assets or code, except "where our pieces fit": coordinates for 3D, audio, video, textures and code (addresses, offsets,
 hooks). Partial data may bend this rule a little, but 1. it should not be necessary, and 2. if it is, keep it to the bare
 minimum. (Earlier rule, still standing: a whole track, modified or not, is never shipped.)
+
+The toolchain zip's GPL parts (owner: "your decision, keep it lean and legal friendly", 2026-10-15): the zip carries the
+licences and SOURCES.txt (every component, version, licence and source archive); the complete corresponding source, the
+unchanged upstream archives (about 150 MB), is a separate `<name>-toolchain-source.zip` published beside it in the same place
+(GPL v3 section 6d), made by `tools\release.py --sources`. Python, numpy and Pillow need only their licences, which they carry.
 
 ## Where things are
 
