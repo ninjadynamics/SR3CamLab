@@ -1,6 +1,5 @@
 """Parser for the 'route grid' chunk (track root +0x08): a quadtree over 2 m cells with 8-neighbour links."""
 import struct, collections
-import numpy as np
 from common import *
 import sbfw
 
@@ -27,7 +26,7 @@ def parse_grid(c):
     return g
 
 if __name__ == '__main__':
-    import sys
+    import sys, numpy as np                                           # (only these diagnostics use numpy - kb 31)
     for t in (sys.argv[1:] or SR3):
         f = sbfw.read_sbf(track_files(os.path.join(TRACKS, t))['master_xdata'])
         root = f.chunks[-1]; c = f.get(root.u32(8)); g = parse_grid(c)
