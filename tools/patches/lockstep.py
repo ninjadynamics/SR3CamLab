@@ -63,6 +63,15 @@ def main(argv):
         rp = subprocess.run(a, capture_output=True, text=True)
         D = json.load(open(pd, encoding='utf-8')) if os.path.exists(pd) else {'error': 'no plan (exit %d)' % rd}
         P = json.load(open(pp, encoding='utf-8-sig')) if os.path.exists(pp) else {'error': 'no plan: ' + (rp.stdout + rp.stderr).strip()[-300:]}
+        sx = os.path.join(os.path.dirname(dll), 'sr3mods.exe')          # the outside front end, its settings as switches (CamLab's way)
+        if os.path.exists(sx):
+            pe = os.path.join(tmp, 'exe%d.json' % k); flags = {'CameraProfile': '--camera-profile', 'ProfilesFile': '--profiles-file', 'Overlay': '--overlay',
+                                                            'MouseSmoothing': '--mouse-smoothing', 'CameraBlend': '--camera-blend', 'Canary': '--canary'}
+            xa = [sx, 'plan', pe, '--mod', REPO]
+            for key, v in c.items(): xa += [flags[key]] if v is True else [flags[key], str(v)]
+            subprocess.run(xa, capture_output=True)
+            E = json.load(open(pe, encoding='utf-8')) if os.path.exists(pe) else {'error': 'no plan from sr3mods.exe'}
+            if E != D: D = dict(D, sr3mods_differs_from_dll=[key for key in sorted(set(D) | set(E)) if D.get(key) != E.get(key)])
         n += 1; diffs = [key for key in sorted(set(D) | set(P)) if D.get(key) != P.get(key)]
         if diffs:
             bad += 1; print('DIFFERENT %s: %s' % (c or '(defaults)', ', '.join(diffs)))

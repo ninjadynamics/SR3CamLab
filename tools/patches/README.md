@@ -1,4 +1,21 @@
-# patches.dll
+# patches.dll and sr3mods.exe
+
+**One implementation** (Bruno, 2026-10-15, option B): the patch logic is `patchcore.c`, written once against a small
+game-memory interface (`patchcore.h`: read, write, alloc, suspend / resume, alive). Two front ends run it:
+
+- `patches.dll` (`patches.c`): inside the game, the game's own memory; started by the TeknoParrot-free runtime.
+- `sr3mods.exe` (`sr3mods.c`): from outside, ReadProcessMemory / WriteProcessMemory on a running Rally.exe (the
+  TeknoParrot route):
+  `sr3mods attach [<pid>] [--settings <yaml>] [--mod <dir>] [--delay <s>] [--camera-profile <n>] [--profiles-file <f>]
+  [--overlay <px>] [--mouse-smoothing <s>] [--camera-blend <s>] [--canary] [--log <f>]`, or `sr3mods plan <out.json> ...`.
+  (Not "sr3patch": Windows treats an unmanifested 32-bit exe with "patch" in its name as an installer and asks for
+  administrator rights.)
+
+`patches.ps1` keeps its own PowerShell implementation until patchcore covers all of it (the live loop: track switcher,
+cars and handling, START / race exit, watchdog); then it keeps only setup, the TeknoParrot launch and CamLab's options,
+and runs `sr3mods.exe attach`.
+
+## patches.dll
 
 SR3Lab's in-game patches applied from inside the game: the same bytes `patches.ps1` writes from outside. The
 TeknoParrot-free runtime (`standalone\`, Codex's) loads `patches.dll` from the game folder after its own check of
@@ -26,8 +43,9 @@ The owner (2026-10-15): every change must reach both variants, checked by a scri
   combinations (every profile, the built-in SR3 cameras, popup size, smoothing and blend at off / default / other
   values, canary, a profiles file with hiddenCameras off and its own fallbacks). `patches.ps1` answers through
   `plan_ps1.ps1` (its own code against a fake game holding the original bytes, as the mock tests run it), the DLL
-  through `patches_plan()` (`plan32.exe`, the code `patches_start` runs). Every site, hook, pointer, the camera block's
-  16 KB image, the profile and the camera list must be the same. `build.py` runs it; a difference fails the build.
+  through `patches_plan()` (`plan32.exe`, the code `patches_start` runs), and `sr3mods.exe plan` with the same settings
+  as switches (CamLab's way). Every site, hook, pointer, the camera block's 16 KB image, the profile and the camera list
+  must be the same, three ways. `build.py` runs it; a difference fails the build.
 - **Checked in the running game** (TeknoParrot route, 2026-10-15): the game patched by `PLAY.bat`, then patched by
   `patches.dll` (loaded in and started): every site, hook and pointer the same; the camera block the same but for 80
   bytes in its run-time state (0x2275-0x2278 the cockpit-seat copy, 0x2440-0x246e and 0x2500-0x251f smoothing and blend

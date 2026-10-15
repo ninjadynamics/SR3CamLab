@@ -16,19 +16,21 @@ def run(cmd, **k):
 def main(argv):
     out = argv[argv.index('--out') + 1] if '--out' in argv else os.path.join(HERE, 'build'); os.makedirs(out, exist_ok=True)
     run([sys.executable, os.path.join(HERE, 'gen_blobs.py'), os.path.join(out, 'blobs.h')])
-    units = [(os.path.join(HERE, 'patches.c'), 'patches.o'), (os.path.join(STAND, 'settings.c'), 'settings.o'), (os.path.join(STAND, 'ucrt_stdio.c'), 'ucrt_stdio.o'),
-             (os.path.join(TOOLS, 'x86', 'builtins.c'), 'builtins.o')]
+    units = [(os.path.join(HERE, 'patchcore.c'), 'patchcore.o'), (os.path.join(HERE, 'patches.c'), 'patches.o'), (os.path.join(HERE, 'sr3mods.c'), 'sr3mods.o'),
+             (os.path.join(STAND, 'settings.c'), 'settings.o'), (os.path.join(STAND, 'ucrt_stdio.c'), 'ucrt_stdio.o'), (os.path.join(TOOLS, 'x86', 'builtins.c'), 'builtins.o')]
     maps = ['-ffile-prefix-map=%s=.' % p for p in (out, HERE, STAND, os.path.join(TOOLS, 'x86'))]          # no build paths in the DLL
-    objs = []
-    for src, o in units:
-        op = os.path.join(out, o); run([GCC] + X86 + maps + ['-I', out, '-I', STAND, '-c', src, '-o', op]); objs.append(op)
+    o = {}
+    for src, name in units:
+        op = os.path.join(out, name); run([GCC] + X86 + maps + ['-I', out, '-I', STAND, '-I', HERE, '-c', src, '-o', op]); o[name] = op
+    shared = [o['patchcore.o'], o['settings.o'], o['ucrt_stdio.o'], o['builtins.o']]       # patchcore: the one implementation both run
     imp = os.path.join(out, 'imp')
-    if implib.main(['--out', imp] + objs): raise SystemExit('implib: unresolved imports')
+    if implib.main(['--out', imp, '--dll', 'kernel32', '--dll', 'user32', '--dll', 'shell32', '--dll', 'ucrtbase'] + list(o.values())): raise SystemExit('implib: unresolved imports')
     libs = ['-l' + f[3:-2] for f in sorted(os.listdir(imp)) if f.startswith('lib') and f.endswith('.a')]
-    dll = os.path.join(out, 'patches.dll')
-    run([GCC, '-m32', '-nostdlib', '-nostartfiles', '-s', '-shared', '-Wl,-e,_DllMain@12', '-Wl,--kill-at,--exclude-all-symbols,--image-base,0x63000000,--no-insert-timestamp',
-         '-Wl,--gc-sections'] + objs + ['-L', imp] + libs + ['-o', dll])
-    print('patches.dll: %d bytes -> %s' % (os.path.getsize(dll), dll))
+    link = [GCC, '-m32', '-nostdlib', '-nostartfiles', '-s', '-Wl,--no-insert-timestamp,--gc-sections']
+    dll = os.path.join(out, 'patches.dll'); exe = os.path.join(out, 'sr3mods.exe')
+    run(link + ['-shared', '-Wl,-e,_DllMain@12', '-Wl,--kill-at,--exclude-all-symbols,--image-base,0x63000000', o['patches.o']] + shared + ['-L', imp] + libs + ['-o', dll])
+    run(link + ['-Wl,-e,_entry@0', o['sr3mods.o']] + shared + ['-L', imp] + libs + ['-o', exe])
+    print('patches.dll: %d bytes, sr3mods.exe: %d bytes -> %s' % (os.path.getsize(dll), os.path.getsize(exe), out))
     if '--no-lockstep' not in argv:                                     # the DLL must plan exactly what patches.ps1 does, or the build fails
         import lockstep
         if lockstep.main(['--dll', dll]): raise SystemExit('lockstep: patches.dll and patches.ps1 differ; nothing is to be installed')
