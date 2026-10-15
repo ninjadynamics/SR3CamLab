@@ -9,9 +9,10 @@ object (trackside table kinds 16 / 17) whose model was not identified, so the ga
 texture drawn by this script (no SEGA data). Emulator reference: Screenshots/ref_model2 (blue banner, yellow text, posts).
 
     faces = checkpoints1995.gantries(cfg, rd)        importer face format (material, section, [xyz], [uv]), SR3 coordinates
+Plain floats since 2026-10-16 (kb 31): the numpy it replaced is quoted where its order matters.
 """
-import os, json
-import numpy as np
+import os, json, math
+import npexact
 from PIL import Image, ImageDraw, ImageFont
 from common import *
 
@@ -44,7 +45,7 @@ def sections(cfg):
 def box(c, ax, ay, az, hx, hy, hz, mat, sec, front_uv=None):
     """axis-aligned-in-its-own-frame box centred at c with half sizes along the unit axes ax (right), ay (up), az (forward).
     -> OBJ-space faces, counter-clockwise seen from outside; the -az face (seen by a car driving along +az) carries front_uv."""
-    def P(i, j, k): return tuple(c + i * hx * ax + j * hy * ay + k * hz * az)
+    def P(i, j, k): a, b, d = i * hx, j * hy, k * hz; return tuple(((c[q] + a * ax[q]) + b * ay[q]) + d * az[q] for q in range(3))      # c + i * hx * ax + j * hy * ay + k * hz * az
     uv = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
     f = [((P(-1, -1, -1), P(1, -1, -1), P(1, 1, -1), P(-1, 1, -1)), front_uv),            # faces -az: left of the driver first
          ((P(1, -1, 1), P(-1, -1, 1), P(-1, 1, 1), P(1, 1, 1)), front_uv),                # faces +az: reads the right way from behind too
@@ -52,27 +53,31 @@ def box(c, ax, ay, az, hx, hy, hz, mat, sec, front_uv=None):
          ((P(-1, 1, -1), P(1, 1, -1), P(1, 1, 1), P(-1, 1, 1)), None), ((P(-1, -1, 1), P(1, -1, 1), P(1, -1, -1), P(-1, -1, -1)), None)]
     return [((mat[0] if fuv else mat[1]), sec, list(q), list(fuv or uv)) for q, fuv in f]
 
+def _centreline(path):
+    """np.loadtxt(path, delimiter=',', comments='#') for the course's centre line: rows of floats (Python's float parse = numpy's)"""
+    rows = []
+    for line in open(path):
+        line = line.split('#', 1)[0].strip()
+        if line: rows.append(tuple(float(v) for v in line.split(',')))
+    return rows
 def gantries(cfg, rd, clear=4.7, tall=1.8, post=0.22, side=1.6):
     import build_classic as BC
     secs, g = sections(cfg)
     if not secs: return []
-    textures(cfg); C = np.loadtxt(os.path.join(course_dir(cfg), 'src_course%s_centreline.csv' % cfg['course']), delimiter=',', comments='#'); n = len(C)
-    up = np.array([0.0, 1.0, 0.0]); out = []; ox, oz, zs = rd['ox'], rd['oz'], BC.ZS
-    Vr = None; edges = None                                           # rd['V'] columns 0 / -1 are NOT the driveable edges (they gave a 30 m wide, tilted banner): fixed 12 m gantry on the centre line, like the 13 m 1995 one
-    if Vr is not None and getattr(Vr, 'ndim', 0) == 3 and len(Vr) > 10:      # the SR3 road as built (variable width): posts stand just outside ITS edges,
-        Vr = np.asarray(Vr, float); cen = Vr[:, rd['hw']]                     # not at a fixed half width (a post stood in a cliff, user 2026-10-07)
-        edges = lambda q: (lambda k: (Vr[k, 0], Vr[k, -1]))(int(np.argmin(np.hypot(cen[:, 0] - (q[0] + ox), cen[:, 2] - (zs * q[2] + oz)))))
+    textures(cfg); C = _centreline(os.path.join(course_dir(cfg), 'src_course%s_centreline.csv' % cfg['course'])); n = len(C)
+    up = (0.0, 1.0, 0.0); out = []; ox, oz, zs = rd['ox'], rd['oz'], BC.ZS
+    # (rd['V'] columns 0 / -1 are NOT the driveable edges: they gave a 30 m wide, tilted banner, and a post stood in a cliff with the
+    # posts put just outside them (user 2026-10-07). So: a fixed 12 m gantry on the centre line, like the 13 m 1995 one.)
     for s in secs:
-        i = int(s) % n; p = C[i].astype(float); f = C[(i + 1) % n] - C[(i - 1) % n]; f[1] = 0.0; f /= np.linalg.norm(f); r = np.cross(f, up)   # OBJ axes are right-handed: right = forward x up
+        i = int(s) % n; p = C[i]; a, b = C[(i + 1) % n], C[(i - 1) % n]; f = [a[0] - b[0], 0.0, a[2] - b[2]]
+        l = math.sqrt(npexact.ddot(f, f, 0)); f = [f[0] / l, f[1] / l, f[2] / l]     # f /= np.linalg.norm(f) (a fresh array: sqrt((f0 f0 + f2 f2) + f1 f1))
+        r = (f[1] * up[2] - f[2] * up[1], f[2] * up[0] - f[0] * up[2], f[0] * up[1] - f[1] * up[0])      # np.cross(f, up): OBJ axes are right-handed, right = forward x up
         hw = float(cfg.get('gantry_half_width', 6.0))
-        if edges:
-            a, b = [np.array([e[0] - ox, e[1], (e[2] - oz) / zs]) for e in edges(p)]          # road edges back in OBJ axes
-            mid = (a + b) / 2; half = np.linalg.norm((b - a)[[0, 2]]) / 2; p = np.array([mid[0], max(a[1], b[1], p[1]), mid[2]]); hw = half + 0.45
-            rr = (b - a); rr[1] = 0.0; rr /= np.linalg.norm(rr); r = rr if np.dot(rr, r) > 0 else -rr; f = np.cross(up, r)
         sec = 'gantry_%d' % s; uvb = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
         for sg in (-1.0, 1.0):                                         # posts, 1 m into the ground so no foot hangs on a slope
-            out += box(p + sg * hw * r + up * ((clear + tall) / 2 - 0.5), r, up, f, post, (clear + tall) / 2 + 0.5, post, (POST, POST), sec)
-        out += box(p + up * (clear + tall / 2), r, up, f, hw - post - 0.02, tall / 2, 0.12, (BANNER, POST), sec, front_uv=uvb)
+            h = sg * hw; v = (clear + tall) / 2 - 0.5; c = tuple((p[q] + h * r[q]) + up[q] * v for q in range(3))      # p + sg * hw * r + up * (...)
+            out += box(c, r, up, f, post, (clear + tall) / 2 + 0.5, post, (POST, POST), sec)
+        v = clear + tall / 2; out += box(tuple(p[q] + up[q] * v for q in range(3)), r, up, f, hw - post - 0.02, tall / 2, 0.12, (BANNER, POST), sec, front_uv=uvb)
     return [(m, sec, [(x + ox, y, zs * z + oz) for x, y, z in P][::int(zs)], uv[::int(zs)]) for m, sec, P, uv in out]
 
 if __name__ == '__main__':
