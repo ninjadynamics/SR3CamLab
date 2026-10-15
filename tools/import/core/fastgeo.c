@@ -622,3 +622,30 @@ EXPORT int fg_tri_points(int mode, const double *X0, const double *X1, i64 n, co
     }
     free(g.start); free(g.items); return 0;
 }
+
+/* round1995._bends, its arithmetic part: for every edge k shared by two triangles, TA[k] = (u, v, w) with u -> v the shared edge
+   and TB[k] the other triangle, n1 = cross(v - u, w - u), n2 = cross(TB1 - TB0, TB2 - TB0) as numpy.cross makes them
+   (cp0 = a1 b2 - a2 b1, cp1 = a2 b0 - a0 b2, cp2 = a0 b1 - a1 b0), the lengths as numpy.linalg.norm(axis=1) and the sums as
+   (.).sum(1) take them (a reduction over three, left to right: (x0 + x1) + x2, checked against numpy 1.24), then
+   c = clip((n1.n2) / max(l1 l2, 1e-30), -1, 1); ok = l1 > 1e-12 and l2 > 1e-12; pos = ((TB2 - u).n1) > 0.
+   The arccos and the degrees stay with numpy (fastround.py). */
+static inline double red3(double a, double b, double c) { return (a + b) + c; }
+EXPORT void fg_bends(const double *X, const i64 *TA, const i64 *TB, i64 m, double *cosv, unsigned char *ok, unsigned char *pos) {
+    #pragma omp parallel for schedule(static)
+    for (i64 k = 0; k < m; k++) {
+        const double *a = X + 3 * TA[3 * k], *b = X + 3 * TA[3 * k + 1], *w = X + 3 * TA[3 * k + 2];
+        const double *p = X + 3 * TB[3 * k], *q = X + 3 * TB[3 * k + 1], *r = X + 3 * TB[3 * k + 2];
+        double e0 = b[0] - a[0], e1 = b[1] - a[1], e2 = b[2] - a[2], f0 = w[0] - a[0], f1 = w[1] - a[1], f2 = w[2] - a[2];
+        double n10 = e1 * f2 - e2 * f1, n11 = e2 * f0 - e0 * f2, n12 = e0 * f1 - e1 * f0;
+        double g0 = q[0] - p[0], g1 = q[1] - p[1], g2 = q[2] - p[2], h0 = r[0] - p[0], h1 = r[1] - p[1], h2 = r[2] - p[2];
+        double n20 = g1 * h2 - g2 * h1, n21 = g2 * h0 - g0 * h2, n22 = g0 * h1 - g1 * h0;
+        double l1 = sqrt(red3(n10 * n10, n11 * n11, n12 * n12)), l2 = sqrt(red3(n20 * n20, n21 * n21, n22 * n22));
+        double pr = l1 * l2; if (!(pr >= 1e-30)) pr = 1e-30;          /* np.maximum(l1 * l2, 1e-30) (NaN stays NaN in numpy: see below) */
+        if (l1 != l1 || l2 != l2) pr = l1 * l2;
+        double c = red3(n10 * n20, n11 * n21, n12 * n22) / pr;
+        if (c < -1.0) c = -1.0; else if (c > 1.0) c = 1.0;            /* np.clip(., -1, 1) */
+        cosv[k] = c; ok[k] = (l1 > 1e-12) && (l2 > 1e-12);
+        double s0 = r[0] - a[0], s1 = r[1] - a[1], s2 = r[2] - a[2];
+        pos[k] = red3(s0 * n10, s1 * n11, s2 * n12) > 0;
+    }
+}

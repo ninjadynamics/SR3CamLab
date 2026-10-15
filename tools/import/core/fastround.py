@@ -1,4 +1,5 @@
-"""fastround.py - the two loops over triangles of round1995.py (_order_limits, _gap_over) in C (fastgeo.c: fg_tri_points).
+"""fastround.py - the two loops over triangles of round1995.py (_order_limits, _gap_over) in C (fastgeo.c: fg_tri_points), and the
+arithmetic of its _bends (fg_bends; arccos and degrees stay with numpy).
 The same corners are tested against the same triangles with the same formulas; the results are minima / maxima, so the order does not matter
 and the numbers are the original's to the last bit.
 
@@ -32,5 +33,16 @@ def install(R):
         if _run(0, None, X, None, S, 0.0, cell, gap, None): return old_go(X, S, cell)
         if fastgeo.CHECK: a = old_go(X, S, cell); fastgeo.note('round1995._gap_over', np.array_equal(a, gap), int((a != gap).sum()))
         return gap
-    R._old__order_limits = old_ol; R._old__gap_over = old_go; R._order_limits = _order_limits; R._gap_over = _gap_over; R._fastround = True
+    old_b = R._bends
+    def _bends(X, TA, TB):
+        """signed bend of every edge shared by two drawn triangles (round1995._bends): the arithmetic in C (fastgeo.c fg_bends), arccos and degrees in numpy"""
+        L = fastgeo.lib(); P = fastgeo.ctypes.c_void_p
+        L.fg_bends.argtypes = [P, P, P, fastgeo.ctypes.c_longlong, P, P, P]; L.fg_bends.restype = None
+        Xc = np.ascontiguousarray(X, np.float64); A = np.ascontiguousarray(TA, np.int64); B = np.ascontiguousarray(TB, np.int64); m = len(A)
+        c = np.empty(m); ok = np.empty(m, np.uint8); pos = np.empty(m, np.uint8)
+        if m: L.fg_bends(_p(Xc), _p(A), _p(B), m, _p(c), _p(ok), _p(pos))
+        ang = np.degrees(np.arccos(c)); out = (np.where(pos.astype(bool), ang, -ang), ok.astype(bool))
+        if fastgeo.CHECK: o = old_b(X, TA, TB); fastgeo.note('round1995._bends', np.array_equal(o[0], out[0], equal_nan=True) and np.array_equal(o[1], out[1]), (int((o[0] != out[0]).sum()), int((o[1] != out[1]).sum())))
+        return out
+    R._old__order_limits = old_ol; R._old__gap_over = old_go; R._order_limits = _order_limits; R._gap_over = _gap_over; R._old__bends = old_b; R._bends = _bends; R._fastround = True
     return True
