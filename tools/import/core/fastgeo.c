@@ -658,6 +658,46 @@ EXPORT void fg_argmin2(const double *P, i64 n, const double *R, i64 m, i64 *out)
 }
 
 /* ------------------------------------------------------------------ round1995._order_limits / _gap_over (fastround.py) */
+/* Buffer entry points validate values before the existing integer grid casts
+   and vertex dereferences. These scans do not change the old kernels' math. */
+EXPORT int fg_round_grid_ok(const double *X, i64 n, const double *S, i64 m, double cell)
+{
+    if (!isfinite(cell) || cell <= 0.0) return 0;
+    for (int which = 0; which < 2; which++) {
+        const double *v = which ? S : X; i64 count = which ? m * 3 : n;
+        for (i64 i = 0; i < count; i++) for (int c = 0; c <= 2; c += 2) {
+            double q = v[3 * i + c] / cell;
+            if (!isfinite(q) || fabs(q) > 1073741824.0) return 0;
+        }
+    }
+    return 1;
+}
+EXPORT int fg_round_indices_ok(const i64 *A, const i64 *B, i64 count, i64 vertices)
+{
+    for (i64 i = 0; i < count; i++)
+        if (A[i] < 0 || A[i] >= vertices || B[i] < 0 || B[i] >= vertices) return 0;
+    return 1;
+}
+typedef double (*round_acos_t)(double);
+static round_acos_t round_acos = NULL;
+EXPORT int fg_round_init(void)
+{
+    HMODULE h = GetModuleHandleA("ucrtbase.dll");
+    if (h) round_acos = (round_acos_t)(void *)GetProcAddress(h, "acos");
+    return round_acos != NULL;
+}
+EXPORT int fg_round_angles(double *cosine, const unsigned char *positive, i64 n)
+{
+    if (!round_acos) return -1;
+    #pragma omp parallel for schedule(static) if(n > 4096)
+    for (i64 i = 0; i < n; i++) {
+        /* math.degrees / numpy.degrees: multiplication by the rounded 180/pi,
+           after the same UCRT acos as Python. No fused arithmetic. */
+        double angle = round_acos(cosine[i]) * 57.295779513082323;
+        cosine[i] = positive[i] ? angle : -angle;
+    }
+    return 0;
+}
 typedef struct { i64 x0, z0, NX, NZ; i64 *start, *items; } pgrid_t;
 static int pgrid_build(pgrid_t *g, const double *X, i64 n, const unsigned char *use, double cell)
 {
