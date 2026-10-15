@@ -20,7 +20,7 @@ HELPERS = {
     'fastgeo':  dict(dir='.', units=[('fastgeo.c', FOC)], hashed=['fastgeo.c']),
     'nplapack': dict(dir='.', units=[('nplapack.c', FOC)], hashed=['nplapack.c']),
     'fastdxt':  dict(dir='.', units=[('fastdxt.c', [])], hashed=['fastdxt.c']),
-    'fastseal': dict(dir='.', units=[('fastseal.c', [])], hashed=['fastseal.c']),
+    'fastseal': dict(dir='.', units=[('fastseal.c', FOC)], hashed=['fastseal.c']),
     'rays':     dict(dir='.', units=[('rays.c', [])], hashed=['rays.c']),
     'fastlm':   dict(dir='.', units=[('fastlm_rays.c', []), ('fastlm.c', FOC)], hashed=['rays.c', 'fastlm_rays.c', 'fastlm.c']),
     'rtg5':     dict(dir='rtbake', units=[('rtg2_rays.c', []), ('rtg5.c', FOC), ('rtg5prep.c', FOC)], hashed=['rays.c', 'fastlm_rays.c', 'rtg2_rays.c', 'rtg5.c', 'rtg5prep.c']),

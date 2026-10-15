@@ -14,12 +14,15 @@ Both are cured in the meshes, after everything else is decided (pictures, light-
 Only opaque meshes are touched: boards cross each other and their edges are cut by their pictures.
 A mesh holds at most 65 535 indices. One that would pass that with its cuts is written as several (the first keeps its number, the others take new
 numbers at the end of `ids`, the list of the scene's meshes): at R4 a mesh of 10 000 rounded pieces was left uncut for that, 1 516 joints in it.
-    seal(new, ids=ids)    new = the chunks add_scenery made ; meshes are replaced in the list. -> (corners moved, edges cut, triangles added)"""
-import struct, collections
-import numpy as np
-import meshgen
+    seal(new, ids=ids)    new = the chunks add_scenery made ; meshes are replaced in the list. -> (corners moved, edges cut, triangles added)
+Without numpy since 2026-10-16 (kb 31): the steps on arrays are fastseal.c (seal_unique ... seal_flags, each quoting the numpy it replaced),
+the meshes read and written by meshbuf, the cutting below on Python numbers; the same chunks as the numpy code, which stays as
+_seal_numpy (SR3_FASTSEAL=0 runs it) and as the reference."""
+import struct, collections, math, array
+import npexact
 
 def _clusters(U, tol):
+    import numpy as np
     """U: n x 3 distinct places -> a label per place; places closer than tol (through a chain too) share one: the lowest number among them.
     The pairs closer than tol are found on arrays (the places sorted by their cell of tol a side, each cell against itself and the 13 cells
     'after' it); the few pairs there are, are joined as _clusters_py joins them. The same labels: a label is the lowest number of its group
@@ -47,6 +50,7 @@ def _clusters(U, tol):
     return par
 def _clusters_py(U, tol):
     """(as it was written: the reference)"""
+    import numpy as np
     n = len(U); par = list(range(n))
     def find(x):
         while par[x] != x: par[x] = par[par[x]]; x = par[x]
@@ -65,7 +69,119 @@ def _clusters_py(U, tol):
                         if a != b: par[max(a, b)] = min(a, b)
     return np.array([find(i) for i in range(n)], np.int64)
 
+def _rint(x):
+    r = float(round(x)); return math.copysign(r, x) if r == 0.0 else r                 # np.round(x): half to even
 def seal(new, log=print, tol=0.001, ids=None):
+    import fastseal
+    if not fastseal.ON: return _seal_numpy(new, log, tol, ids)
+    import meshbuf
+    from npyio import Arr
+    L = fastseal.lib(); ad = lambda a: a.buffer_info()[0]; I8 = lambda n: array.array('q', bytes(8 * n))
+    mats = {c.id: c for c in new if c.kind == 2}
+    def opaque(mid):
+        m = mats.get(mid); return not (m is not None and len(m.data) == 1848 and (struct.unpack_from('<I', m.data, 0x4d4)[0] or struct.unpack_from('<I', m.data, 0x4e4)[0]))
+    items = []
+    for q, c in enumerate(new):
+        if c.kind != 1 or (c.id >> 16) != 0xc1a7: continue
+        m = meshbuf.parse_mesh(c); mid = m['groups'][0][4]
+        if m['stride'] != 48 or (m['ni'] + 2) % 6 or m['nv'] == 0 or not opaque(mid): continue
+        items.append([q, c, m['nv'], bytes(m['idx'].buf), mid, bytes(m['verts'].buf)])
+    if not items: return 0, 0, 0
+    # ---- 1. one place for corners that are meant to be one
+    voff = array.array('q', [0]); ioff = array.array('q', [0])
+    for it in items: voff.append(voff[-1] + it[2]); ioff.append(ioff[-1] + len(it[3]) // 2)
+    nv = voff[-1]; V = bytearray(b''.join(it[5] for it in items))      # all their vertex records, in order
+    P = array.array('f', bytes(12 * nv)); L.seal_gather(nv, ad_b(V), ad(P))
+    inv = I8(nv); first = I8(nv); cnt = I8(nv); nu = L.seal_unique(nv, ad(P), ad(inv), ad(first), ad(cnt))      # allp + 0.0f, np.unique of the 12-byte rows
+    U = array.array('d', bytes(24 * nu)); L.seal_places(nu, ad(P), ad(first), ad(U))                            # U = allp[first] as float64
+    lab = I8(nu); L.seal_clusters(nu, ad(U), float(tol), ad(lab))                                               # _clusters(U, tol)
+    rp = I8(nu); cid = I8(nv); moved = L.seal_reps(nu, ad(lab), ad(cnt), ad(rp), nv, ad(inv), ad(cid))          # the place most vertices have; cid = rep[inv]
+    L.seal_scatter(nv, ad_b(V), ad(P), ad(first), ad(cid))                                                      # it[2]['p'][:, :3] = U32[it[5]]
+    # ---- 2. corners on the inside of an edge
+    idx = array.array('H', b''.join(it[3] for it in items)); cn = array.array('q', [0, 0])
+    L.seal_joints(nu, ad(U), float(tol), len(items), ad(idx), ad(ioff), ad(cid), ad(voff), ad(cn)); ne, jn = cn[0], cn[1]
+    E = I8(2 * ne); je = I8(jn); jt = array.array('d', bytes(8 * jn)); jv = I8(jn); L.seal_joints_get(ad(E), ad(je) if jn else None, ad(jt) if jn else None, ad(jv) if jn else None)
+    J = {}
+    for e, t, v in zip(je, jt, jv): J.setdefault((E[2 * e], E[2 * e + 1]), []).append((t, v))
+    nj = jn
+    if not J and not moved: return 0, 0, 0
+    Jk = array.array('q', sorted(a * nu + b for a, b in J)); added = 0; skipped = 0; nparted = 0; nempty = 0
+    qoff = array.array('q', [0])
+    for k in range(len(items)): qoff.append(qoff[-1] + (ioff[k + 1] - ioff[k] + 2) // 6)
+    flag = bytearray(qoff[-1]); L.seal_flags(nu, ad(Jk) if len(Jk) else None, len(Jk), len(items), ad(idx), ad(ioff), ad(cid), ad(voff), ad(qoff), ad_b(flag))
+    U32 = memoryview(P).cast('B'); fst = first
+    def clone(ch, cid_, recs, strip, mid):
+        return meshbuf.clone_mesh(ch, cid_, Arr('|V48', (len(recs) // 48,), recs), Arr('<u2', (len(strip),), array.array('H', strip).tobytes()), mid)
+    for k, it in enumerate(items):
+        q, ch, nvk, ib, mid = it[:5]; Vk = bytes(V[48 * voff[k]:48 * voff[k + 1]]); il = idx[ioff[k]:ioff[k + 1]].tolist()
+        nq = qoff[k + 1] - qoff[k]; fl = flag[qoff[k]:qoff[k + 1]]
+        if not any(fl):
+            if moved: new[q] = clone(ch, ch.id, Vk, il, mid)
+            continue
+        cl = cid[voff[k]:voff[k + 1]].tolist(); extra = []; cache = {}; nv0 = nvk
+        def newvert(p, r, t, v):
+            key = (p, r, v)
+            if key in cache: return cache[key]
+            a = Vk[48 * p:48 * p + 48] if p < nv0 else extra[p - nv0]; b = Vk[48 * r:48 * r + 48] if r < nv0 else extra[r - nv0]; w = bytearray(48)
+            w[0:12] = U32[12 * fst[v]:12 * fst[v] + 12]; w[12:16] = a[12:16]                                  # w['p'][:3] = U32[v]; w['p'][3] = a['p'][3]
+            for o in (16, 28):                                          # n, t: x = a * (1 - t) + b * t in float64; l = np.linalg.norm(x) (a fresh 3-vector); (x / l if l > 1e-9 else a) as float32
+                xa = struct.unpack_from('<3f', a, o); xb = struct.unpack_from('<3f', b, o); x = [xa[c] * (1 - t) + xb[c] * t for c in range(3)]
+                l = math.sqrt(npexact.ddot(x, x, 0)); struct.pack_into('<3f', w, o, *((x[0] / l, x[1] / l, x[2] / l) if l > 1e-9 else xa))
+            ua = struct.unpack_from('<2h', a, 40); ub = struct.unpack_from('<2h', b, 40)                     # uv0 as int16: np.clip(np.round(lerp), -32768, 32767)
+            struct.pack_into('<2h', w, 40, *(int(min(max(_rint(ua[c] * (1 - t) + ub[c] * t), -32768.0), 32767.0)) for c in range(2)))
+            ua = struct.unpack_from('<2H', a, 44); ub = struct.unpack_from('<2H', b, 44)                     # uv1: np.clip(np.round(lerp), 0, 65535)
+            struct.pack_into('<2H', w, 44, *(int(min(max(_rint(ua[c] * (1 - t) + ub[c] * t), 0.0), 65535.0)) for c in range(2)))
+            extra.append(bytes(w)); cl.append(v); cache[key] = nv0 + len(extra) - 1; return cache[key]
+        def cut(tri):
+            out = []; stack = [tri]; guard = 0
+            while stack:
+                a, b, c = stack.pop(); guard += 1
+                if len({cl[a], cl[b], cl[c]}) < 3: continue
+                for p, r, o in ((a, b, c), (b, c, a), (c, a, b)):
+                    ca, cb = cl[p], cl[r]; js = J.get((ca, cb) if ca < cb else (cb, ca)) if guard < 400 else None
+                    if js:
+                        seq = js if ca < cb else [(1.0 - t, v) for t, v in reversed(js)]; chain = [p] + [newvert(p, r, t, v) for t, v in seq] + [r]
+                        for x, y in zip(chain[:-1], chain[1:]): stack.append((x, y, o))
+                        break
+                else: out.append((a, b, c))
+            return out
+        units = []; nt0 = 0; nt1 = 0
+        for j in range(nq):
+            s0, s1, s2, s3 = il[6 * j:6 * j + 4]
+            if not fl[j]: units.append([s0, s1, s2, s3]); continue
+            a = cut((s0, s1, s2)); b = cut((s2, s1, s3)) if cl[s3] != cl[s2] and cl[s3] != cl[s1] else []
+            nt0 += 1 + (1 if b or (cl[s3] != cl[s2] and cl[s3] != cl[s1]) else 0); nt1 += len(a) + len(b)
+            for x, y, z in a + b: units.append([x, y, z, z])
+        strip = []
+        for u in units:
+            if strip: strip += [strip[-1], u[0]]
+            strip += u
+        if not strip:                                              # every triangle of this mesh is gone (a sliver under 1 mm whose corners became one place): it keeps its own
+            new[q] = clone(ch, ch.id, Vk, il, mid); nempty += 1; continue          # indices, on the moved corners (see _seal_numpy: a mesh with NO indices kills the game)
+        V2 = Vk + b''.join(extra); nv2 = len(V2) // 48
+        if nv2 >= 65536 or len(strip) >= 65536:
+            if ids is None: skipped += 1; new[q] = clone(ch, ch.id, Vk, il, mid); continue
+            npart = -(-len(units) * 6 // 54000); per = -(-len(units) // npart); nparted += 1          # too many indices for one mesh: several, each with the corners it uses
+            for pi in range(npart):
+                us = units[pi * per:(pi + 1) * per]; uq_ = sorted({x for u in us for x in u}); pos = {x: i for i, x in enumerate(uq_)}; sp = []      # np.unique(us, return_inverse=True)
+                for u in us:
+                    u = [pos[x] for x in u]
+                    if sp: sp += [sp[-1], u[0]]
+                    sp += u
+                recs = b''.join(V2[48 * x:48 * x + 48] for x in uq_)
+                if pi == 0: new[q] = clone(ch, ch.id, recs, sp, mid)
+                else: nid = 0xc1a70000 + len(ids); new.append(clone(ch, nid, recs, sp, mid)); ids.append(nid)
+            added += nt1 - nt0; continue
+        new[q] = clone(ch, ch.id, V2, strip, mid); added += nt1 - nt0
+    log('       gaps sealed (seal1995): %d opaque meshes ; %d corners moved onto their neighbour (under %.1f mm) ; %d edges cut at %d corners that lay on them, %d triangles added%s'
+        % (len(items), moved, tol * 1000, len(J), nj, added, (' ; %d meshes left uncut (too large)' % skipped if skipped else '') + (' ; %d meshes written as several (index limit)' % nparted if nparted else '') + (' ; %d meshes with no triangle left keep their own (of no area)' % nempty if nempty else '')))
+    return moved, nj, added
+def ad_b(b):
+    import ctypes
+    return ctypes.addressof((ctypes.c_char * len(b)).from_buffer(b)) if len(b) else None
+def _seal_numpy(new, log=print, tol=0.001, ids=None):
+    """the numpy seal (the reference; SR3_FASTSEAL=0)"""
+    import numpy as np, meshgen
     mats = {c.id: c for c in new if c.kind == 2}
     def opaque(mid):
         m = mats.get(mid); return not (m is not None and len(m.data) == 1848 and (struct.unpack_from('<I', m.data, 0x4d4)[0] or struct.unpack_from('<I', m.data, 0x4e4)[0]))
