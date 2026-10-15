@@ -42,6 +42,19 @@ Then try it on the running game with
 `patches.ps1 -NoLaunch -DelaySeconds 0`. A changed block is installed alongside the old one,
 never over it.
 
+## 32-bit builds (`x86\`)
+
+Rally.exe is 32-bit; the DLLs that go into it (patches.dll, the TeknoParrot-free runtime) are built with the same 64-bit
+gcc the toolchain ships, as `gcc -m32 -nostdlib -nostartfiles`. That gcc has no 32-bit libraries, so these supply the rest:
+
+| File | What it is |
+|---|---|
+| `x86\implib.py` | Import libraries made from what the objects call. `python implib.py --out DIR [--dll kernel32 --dll ucrtbase ...] OBJECTS_OR_LIBS...`: every symbol the inputs use and none defines is looked up, by name only, in Windows' own 32-bit DLLs (SysWOW64; nothing copied), first match in the `--dll` order (default: kernel32, user32, gdi32, winmm, ole32, oleaut32, setupapi, shell32, advapi32, imm32, version, cfgmgr32, hid, ucrtbase). Writes `DIR\<dll>.def` (sorted), `DIR\lib<dll>.a` (binutils' dlltool, deterministic) and `DIR\imports.json`; the same files in any folder. A symbol no DLL exports stops it (exit 2) with the list. |
+| `x86\builtins.c` | The helpers gcc's 32-bit code calls in place of libgcc: 64-bit divide and remainder (`___udivdi3 ___umoddi3 ___udivmoddi4 ___divdi3 ___moddi3 ___divmoddi4`), 64-bit bit counts and the stack probe `___chkstk_ms`. `gcc -m32 -O2 -c builtins.c`, then link `builtins.o`. |
+| `x86\test_builtins.py` | Builds a 32-bit test program with the two above and runs it: about 60,000 division vectors against Python's exact integers (boundaries, high-bit divisors, signed minimums, random), the bit counts, stack frames of 4 KB to 3 MB in a thread with only reserved stack, registers kept across the probe; a negative control (probes off) that must crash; implib.py's output compared across two folders. `RESULT: PASS` on the last line. |
+
+A link: `gcc -m32 -nostdlib -nostartfiles -shared -Wl,-e,_DllMain@12 -Wl,--kill-at OBJECTS builtins.o -LDIR -lkernel32 ...`.
+
 ## Tests
 
 | Script | What it does |
