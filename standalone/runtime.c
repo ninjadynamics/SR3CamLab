@@ -13,25 +13,35 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include "input.h"
+#include "settings.h"
+#include "patch_loader.h"
+#include "capture.h"
+#ifdef _MSC_VER
+/* Win32 x86 IAT/vtable replacement uses equal-sized function and data pointers. */
+#pragma warning(disable:4152)
+#endif
 
 static HMODULE module, realInput;
 static HANDLE logfile=INVALID_HANDLE_VALUE;
 static char root[MAX_PATH], config[MAX_PATH], saves[MAX_PATH];
+static Sr3Settings settings;
+static char settingsPath[SR3_PATH];
+static volatile LONG patchesAttempted;
 static INIT_ONCE once=INIT_ONCE_STATIC_INIT;
 static CRITICAL_SECTION inputLock;
 static HWND gameWindow;
 static WNDPROC oldWindowProc;
 static SDL_Gamepad *pad;
+static short padAxes[6];
+static unsigned padButtons;
 static int sdlStarted, width=1280, height=720, windowed=1, deadzone=4096;
 static int backgroundInput, freeplay=1, cores=4, controllerIndex=0;
-static int startButton=SDL_GAMEPAD_BUTTON_START, viewButton=SDL_GAMEPAD_BUTTON_SOUTH;
-static int handButton=SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER;
-static int upButton=SDL_GAMEPAD_BUTTON_NORTH, downButton=SDL_GAMEPAD_BUTTON_WEST;
 static DWORD lastSearch, lastReportLog;
 static volatile LONG outputCommand;
 static IDirect3D9 *(WINAPI *systemCreate9)(UINT);
 static HRESULT (WINAPI *systemCreateDevice)(IDirect3D9*,UINT,D3DDEVTYPE,HWND,DWORD,D3DPRESENT_PARAMETERS*,IDirect3DDevice9**);
 static HRESULT (WINAPI *systemReset)(IDirect3DDevice9*,D3DPRESENT_PARAMETERS*);
+static HRESULT (WINAPI *systemPresent)(IDirect3DDevice9*,const RECT*,const RECT*,HWND,const RGNDATA*);
 static BOOL WINAPI cabinetRead(HANDLE,LPVOID,DWORD,LPDWORD,LPOVERLAPPED);
 static void *cabinetReadPointer=cabinetRead;
 
@@ -66,22 +76,50 @@ static void findPad(void) {
     SDL_free(ids);
     if(pad) logline("Controller: %s\n",SDL_GetGamepadName(pad));
 }
+static void hudAdjust(void) {
+    /* Four width operands use the cabinet's 1280-wide HUD coordinate space.
+       Measurements and sites are documented in INVESTIGATION.md. */
+    static const int widths[]={640,800,1024,1152,1176,1280,1360,1366,1440,1600,1680,1920,2560,3840,5120};
+    static const int values[][3]={{1160,1045,1100},{1200,1140,1170},{1255,1235,1240},{1260,1270,1270},{1270,1280,1270},{1280,1280,1280},{1280,1320,1305},{1285,1320,1305},{1300,1340,1310},{1305,1360,1325},{1310,1370,1335},{1320,1400,1355},{1340,1450,1390},{1365,1500,1425},{1375,1525,1440}};
+    static const uintptr_t sites[]={0x5a6f28,0x59ea49,0x59e806,0x5a48e5};
+    int i,j,index=5,v;unsigned char code[7];
+    if(!settings.hud_adjust)return;
+    for(i=0;i<(int)(sizeof(widths)/sizeof(widths[0]));i++)if(widths[i]==width){index=i;break;}
+    if(i==(int)(sizeof(widths)/sizeof(widths[0])))logline("HUD: custom width uses cabinet baseline coordinates\n");
+    for(j=0;j<4;j++){
+        v=values[index][j==3?0:j];memset(code,0x90,sizeof(code));
+        if(j==3){code[0]=0xba;memcpy(code+1,&v,4);}
+        else {code[0]=0x66;code[1]=(j==0)?0xba:0xb9;code[2]=(unsigned char)v;code[3]=(unsigned char)(v>>8);}
+        if(!writeMemory((void*)sites[j],code,sizeof(code))){logline("HUD patch failed\n");ExitProcess(1);}
+    }
+}
 static BOOL CALLBACK initialize(PINIT_ONCE ignored,PVOID parameter,PVOID *context) {
     char path[MAX_PATH]; DWORD_PTR available,systemMask,chosen=0; int i,n;
+    char yaml[SR3_PATH],error[256];DWORD explicitPath;
     (void)ignored;(void)parameter;(void)context;
-    width=integer("Display","Width",1280,640,7680);
-    height=integer("Display","Height",720,480,4320);
-    windowed=integer("Display","Windowed",1,0,1);
-    deadzone=integer("Input","Deadzone",4096,0,30000);
-    backgroundInput=integer("Input","Background",0,0,1);
-    controllerIndex=integer("Input","ControllerIndex",0,0,15);
-    startButton=integer("Input","StartButton",startButton,0,SDL_GAMEPAD_BUTTON_COUNT-1);
-    viewButton=integer("Input","ViewButton",viewButton,0,SDL_GAMEPAD_BUTTON_COUNT-1);
-    handButton=integer("Input","HandbrakeButton",handButton,0,SDL_GAMEPAD_BUTTON_COUNT-1);
-    upButton=integer("Input","ShiftUpButton",upButton,0,SDL_GAMEPAD_BUTTON_COUNT-1);
-    downButton=integer("Input","ShiftDownButton",downButton,0,SDL_GAMEPAD_BUTTON_COUNT-1);
-    freeplay=integer("Game","Freeplay",1,0,1);
-    cores=integer("Runtime","Cores",4,0,32);
+    sr3_defaults(&settings);
+    explicitPath=GetEnvironmentVariableA("SR3LAB_SETTINGS",yaml,sizeof(yaml));
+    if(explicitPath>=sizeof(yaml)){MessageBoxA(NULL,"Settings path is too long","SR3Lab",MB_ICONERROR);ExitProcess(1);}
+    if(!explicitPath)snprintf(yaml,sizeof(yaml),"%s\\settings.yaml",root);
+    memcpy(settingsPath,yaml,strlen(yaml)+1);
+    if(explicitPath || GetFileAttributesA(yaml)!=INVALID_FILE_ATTRIBUTES){
+        if(!sr3_load(yaml,&settings,error,sizeof(error))){logline("%s\n",error);MessageBoxA(NULL,error,"SR3Lab settings",MB_ICONERROR);ExitProcess(1);}
+        logline("Settings: %s\n",yaml);
+    } else {
+        /* Compatibility with the first test build. New launchers always provide YAML. */
+        settings.width=integer("Display","Width",1280,640,7680);
+        settings.height=integer("Display","Height",720,480,4320);
+        settings.windowed=integer("Display","Windowed",1,0,1);
+        settings.deadzone=integer("Input","Deadzone",4096,0,30000);
+        settings.background=integer("Input","Background",0,0,1);
+        settings.controller=integer("Input","ControllerIndex",0,0,15);
+        settings.freeplay=integer("Game","Freeplay",1,0,1);
+        settings.cores=integer("Runtime","Cores",4,0,32);
+        logline("Legacy sr3lab.ini fallback\n");
+    }
+    width=settings.width;height=settings.height;windowed=settings.windowed;deadzone=settings.deadzone;
+    backgroundInput=settings.background;controllerIndex=settings.controller;freeplay=settings.freeplay;cores=settings.cores;
+    hudAdjust();
     if(cores && GetProcessAffinityMask(GetCurrentProcess(),&available,&systemMask)) {
         for(i=0,n=0;i<32 && n<cores;i++) if(available&((DWORD_PTR)1<<i)){chosen|=(DWORD_PTR)1<<i;n++;}
         if(chosen && !SetProcessAffinityMask(GetCurrentProcess(),chosen)) logline("Affinity failed: %lu\n",GetLastError());
@@ -95,8 +133,11 @@ static BOOL CALLBACK initialize(PINIT_ONCE ignored,PVOID parameter,PVOID *contex
 static void ready(void) {InitOnceExecuteOnce(&once,initialize,NULL,NULL);}
 static int key(int vk) {return (GetAsyncKeyState(vk)&0x8000)!=0;}
 static unsigned trigger(Sint16 v) {return v>0?((unsigned)v*255+16383)/32767:0;}
+static int binding(int b) {
+    return sr3_binding(b,padAxes,padButtons,settings.threshold);
+}
 static BOOL WINAPI cabinetRead(HANDLE file,LPVOID data,DWORD size,LPDWORD read,LPOVERLAPPED overlapped) {
-    Sr3Input in={0}; DWORD now,pid=0; SDL_Event event; int active; static int coinWasDown;
+    Sr3Input in={0}; DWORD now,pid=0; SDL_Event event; int active,i; static int coinWasDown;
     (void)file;(void)overlapped;
     if(read) *read=0;
     if(!data || size!=15){SetLastError(ERROR_INVALID_PARAMETER);return FALSE;}
@@ -118,18 +159,22 @@ static BOOL WINAPI cabinetRead(HANDLE file,LPVOID data,DWORD size,LPDWORD read,L
     }
     GetWindowThreadProcessId(GetForegroundWindow(),&pid);
     active=backgroundInput || pid==GetCurrentProcessId();
+    memset(padAxes,0,sizeof(padAxes));padButtons=0;
     if(active){
         if(pad){
-            in.steering=SDL_GetGamepadAxis(pad,SDL_GAMEPAD_AXIS_LEFTX);
-            in.gas=trigger(SDL_GetGamepadAxis(pad,SDL_GAMEPAD_AXIS_RIGHT_TRIGGER));
-            in.brake=trigger(SDL_GetGamepadAxis(pad,SDL_GAMEPAD_AXIS_LEFT_TRIGGER));
-            if(SDL_GetGamepadButton(pad,(SDL_GamepadButton)startButton)) in.buttons|=SR3_START;
-            if(SDL_GetGamepadButton(pad,(SDL_GamepadButton)viewButton)) in.buttons|=SR3_VIEW;
-            if(SDL_GetGamepadButton(pad,(SDL_GamepadButton)handButton)) in.buttons|=SR3_HANDBRAKE;
-            if(SDL_GetGamepadButton(pad,(SDL_GamepadButton)upButton) || SDL_GetGamepadAxis(pad,SDL_GAMEPAD_AXIS_RIGHTY)<-16384) in.buttons|=SR3_UP;
-            if(SDL_GetGamepadButton(pad,(SDL_GamepadButton)downButton) || SDL_GetGamepadAxis(pad,SDL_GAMEPAD_AXIS_RIGHTY)>16384) in.buttons|=SR3_DOWN;
-            if(SDL_GetGamepadButton(pad,SDL_GAMEPAD_BUTTON_DPAD_LEFT))in.steering=-32768;
-            if(SDL_GetGamepadButton(pad,SDL_GAMEPAD_BUTTON_DPAD_RIGHT))in.steering=32767;
+            for(i=0;i<6;i++)padAxes[i]=SDL_GetGamepadAxis(pad,(SDL_GamepadAxis)i);
+            for(i=0;i<15;i++)if(SDL_GetGamepadButton(pad,(SDL_GamepadButton)i))padButtons|=1u<<i;
+            in.steering=padAxes[settings.steering];
+            if(settings.invert)in.steering=-in.steering-1;
+            in.gas=trigger(padAxes[settings.gas]);
+            in.brake=trigger(padAxes[settings.brake]);
+            if(binding(settings.start)) in.buttons|=SR3_START;
+            if(binding(settings.view)) in.buttons|=SR3_VIEW;
+            if(binding(settings.handbrake)) in.buttons|=SR3_HANDBRAKE;
+            if(binding(settings.up)) in.buttons|=SR3_UP;
+            if(binding(settings.down)) in.buttons|=SR3_DOWN;
+            if(settings.dpad && SDL_GetGamepadButton(pad,SDL_GAMEPAD_BUTTON_DPAD_LEFT))in.steering=-32768;
+            if(settings.dpad && SDL_GetGamepadButton(pad,SDL_GAMEPAD_BUTTON_DPAD_RIGHT))in.steering=32767;
         }
         if(key(VK_LEFT))in.steering=-32768;
         if(key(VK_RIGHT))in.steering=32767;
@@ -140,10 +185,16 @@ static BOOL WINAPI cabinetRead(HANDLE file,LPVOID data,DWORD size,LPDWORD read,L
         if(key(VK_SPACE))in.buttons|=SR3_HANDBRAKE;
         if(key('E'))in.buttons|=SR3_UP;
         if(key('Q'))in.buttons|=SR3_DOWN;
-        if(!freeplay && key('5') && !coinWasDown && *(volatile unsigned char*)0xb41748<255) ++*(volatile unsigned char*)0xb41748;
-        coinWasDown=key('5');
+        {int coin=key('5') || binding(settings.coin);
+        if(!freeplay && coin && !coinWasDown && *(volatile unsigned char*)0xb41748<255) ++*(volatile unsigned char*)0xb41748;
+        coinWasDown=coin;}
     } else coinWasDown=0;
     sr3_report(data,&in,deadzone);
+    if(settings.curve){
+        unsigned v=sr3_axis(in.steering,deadzone);
+        if(!deadzone)v=sr3_tp_axis(in.steering);
+        ((unsigned char*)data)[1]=((unsigned char*)data)[2]=(unsigned char)v;
+    }
     if((DWORD)(now-lastReportLog)>=5000){lastReportLog=now;logline("Input alive: focus=%d pad=%d steering=%d gas=%u brake=%u buttons=%02x\n",active,pad!=NULL,in.steering,in.gas,in.brake,in.buttons);}
     if(read)*read=15;
     LeaveCriticalSection(&inputLock);
@@ -174,6 +225,14 @@ static UINT WINAPI profileInt(LPCSTR section,LPCSTR keyName,INT def,LPCSTR filen
         if(!_stricmp(section,"Graphics")){
             if(!_stricmp(keyName,"HorizontalResolution"))return width;
             if(!_stricmp(keyName,"VerticalResolution"))return height;
+            if(!_stricmp(keyName,"VSync"))return settings.vsync;
+            if(!_stricmp(keyName,"RefreshRate"))return settings.refresh_rate;
+        }
+        if(!_stricmp(section,"Audio")){
+            if(!_stricmp(keyName,"MusicVolume"))return settings.music;
+            if(!_stricmp(keyName,"SFXVolume"))return settings.sfx;
+            if(!_stricmp(keyName,"VoiceVolume"))return settings.voice;
+            if(!_stricmp(keyName,"AttractMusic"))return settings.attract_music;
         }
         if(!_stricmp(keyName,"Freeplay"))return freeplay;
         if(!_stricmp(section,"CalibrationData")){
@@ -183,6 +242,14 @@ static UINT WINAPI profileInt(LPCSTR section,LPCSTR keyName,INT def,LPCSTR filen
         if(!_stricmp(section,"Network") && !_stricmp(keyName,"Enabled"))return 0;
     }
     return GetPrivateProfileIntA(section,keyName,def,filename);
+}
+static DWORD WINAPI profileString(LPCSTR section,LPCSTR keyName,LPCSTR def,LPSTR out,DWORD size,LPCSTR filename) {
+    ready();
+    if(keyName && !_stricmp(keyName,"LANGUAGE") && out && size){
+        const char *language=sr3_languages[settings.language];size_t n=strlen(language);
+        if(n>=size)n=size-1;memcpy(out,language,n);out[n]=0;return (DWORD)n;
+    }
+    return GetPrivateProfileStringA(section,keyName,def,out,size,filename);
 }
 static HANDLE WINAPI createFile(LPCSTR name,DWORD access,DWORD sharing,LPSECURITY_ATTRIBUTES sa,DWORD how,DWORD flags,HANDLE templ) {
     char path[MAX_PATH]; const char *base=name?strrchr(name,'\\'):NULL;
@@ -204,7 +271,20 @@ static HWND WINAPI createWindow(DWORD ex,LPCSTR cls,LPCSTR title,DWORD style,int
         x=windowed?40:0;y=windowed?40:0;parent=NULL;title="SEGA Rally 3 - SR3Lab";
     }
     result=CreateWindowExA(ex,cls,title,style,x,y,w,h,parent,menu,instance,arg);
-    if(ours && result){gameWindow=result;oldWindowProc=(WNDPROC)SetWindowLongPtrA(result,GWLP_WNDPROC,(LONG_PTR)windowProc);}
+    if(ours && result){
+        gameWindow=result;oldWindowProc=(WNDPROC)SetWindowLongPtrA(result,GWLP_WNDPROC,(LONG_PTR)windowProc);
+        /* Game startup calls CreateWindowExA after CRT/process initialization.
+           ready() has returned (including HUD writes), and the original window
+           call has returned: neither loader lock nor our INIT_ONCE is held.
+           The plugin may start a worker that waits for game data. */
+        if(!InterlockedCompareExchange(&patchesAttempted,1,0)){
+            char error[512];const char *enabled=sr3_patch_value(&settings,"enabled");
+            int mode=enabled&&!strcmp(enabled,"off")?2:enabled&&!strcmp(enabled,"on")?1:0;
+            int status=sr3_load_patches(module,settingsPath,mode,error,sizeof(error));
+            if(status<0){logline("Patches: %s\n",error);MessageBoxA(result,error,"SR3Lab patches",MB_ICONERROR);ExitProcess(1);}
+            logline("Patches: %s\n",status?"started":"disabled or absent (auto)");
+        }
+    }
     return result;
 }
 static BOOL WINAPI clipCursor(const RECT *rect) {(void)rect;return TRUE;}
@@ -212,14 +292,34 @@ static BOOL WINAPI cursorPosition(int x,int y) {(void)x;(void)y;return TRUE;}
 static HCURSOR WINAPI setCursor(HCURSOR cursor) {return SetCursor(cursor?cursor:LoadCursorA(NULL,IDC_ARROW));}
 static void presentation(D3DPRESENT_PARAMETERS *p) {
     p->BackBufferWidth=width;p->BackBufferHeight=height;
-    if(windowed){p->Windowed=TRUE;p->FullScreen_RefreshRateInHz=0;}
+    p->Windowed=windowed?TRUE:FALSE;
+    p->FullScreen_RefreshRateInHz=windowed?0:settings.refresh_rate;
+    p->PresentationInterval=settings.vsync?D3DPRESENT_INTERVAL_ONE:D3DPRESENT_INTERVAL_IMMEDIATE;
 }
 static HRESULT WINAPI resetDevice(IDirect3DDevice9 *self,D3DPRESENT_PARAMETERS *p) {presentation(p);return systemReset(self,p);}
+static HRESULT WINAPI presentDevice(IDirect3DDevice9 *self,const RECT *source,const RECT *dest,HWND window,const RGNDATA *dirty) {
+    static int first=1;
+    if(first){first=0;logline("D3D first Present: device=%p tick=%lu\n",self,(unsigned long)GetTickCount());}
+    sr3_capture_present(self);
+    return systemPresent(self,source,dest,window,dirty);
+}
 static HRESULT WINAPI createDevice(IDirect3D9 *self,UINT adapter,D3DDEVTYPE type,HWND window,DWORD flags,D3DPRESENT_PARAMETERS *p,IDirect3DDevice9 **out) {
-    HRESULT hr;presentation(p);hr=systemCreateDevice(self,adapter,type,window,flags,p,out);
+    D3DDISPLAYMODE mode;HRESULT hr;
+    logline("D3D requested: adapter=%u type=%u flags=%08lx size=%ux%u format=%u count=%u msaa=%u/%lu swap=%u depth=%u/%u presentflags=%08lx window=%p focus=%p windowed=%d refresh=%u interval=%08x\n",
+        adapter,type,(unsigned long)flags,p->BackBufferWidth,p->BackBufferHeight,p->BackBufferFormat,p->BackBufferCount,
+        p->MultiSampleType,(unsigned long)p->MultiSampleQuality,p->SwapEffect,p->EnableAutoDepthStencil,p->AutoDepthStencilFormat,
+        (unsigned long)p->Flags,p->hDeviceWindow,window,p->Windowed,p->FullScreen_RefreshRateInHz,p->PresentationInterval);
+    if(SUCCEEDED(IDirect3D9_GetAdapterDisplayMode(self,adapter,&mode)))logline("D3D desktop: %ux%u format=%u refresh=%u\n",mode.Width,mode.Height,mode.Format,mode.RefreshRate);
+    presentation(p);hr=systemCreateDevice(self,adapter,type,window,flags,p,out);
     logline("D3D CreateDevice: 0x%08lx %ux%u windowed=%d\n",(unsigned long)hr,p->BackBufferWidth,p->BackBufferHeight,p->Windowed);
     if(SUCCEEDED(hr) && out && *out){
         if((*out)->lpVtbl->Reset!=resetDevice){systemReset=(*out)->lpVtbl->Reset;replacePointer((void*)&(*out)->lpVtbl->Reset,resetDevice);}
+        if((*out)->lpVtbl->Present!=presentDevice){
+            systemPresent=(*out)->lpVtbl->Present;
+            if(replacePointer((void*)&(*out)->lpVtbl->Present,presentDevice))sr3_capture_enable();
+            else logline("Screenshot Present hook unavailable\n");
+        }
+        logline("D3D device ready: device=%p vtable=%p Present=%p tick=%lu\n",*out,(*out)->lpVtbl,(*out)->lpVtbl->Present,(unsigned long)GetTickCount());
         ShowWindow(window,SW_SHOW);
     }
     return hr;
@@ -256,6 +356,7 @@ BOOL WINAPI DllMain(HINSTANCE self,DWORD reason,LPVOID reserved) {
        !replacePointer((void*)0x57b696,&cabinetReadPointer))return FALSE;
     systemCreate9=*(void**)0x674380;
     if(!replacePointer((void*)0x674380,create9) || !replacePointer((void*)0x674200,loadLibrary) ||
+       !replacePointer((void*)0x6741d4,profileString) ||
        !replacePointer((void*)0x6741d8,profileInt) || !replacePointer((void*)0x6740f8,createFile) ||
        !replacePointer((void*)0x6742cc,createWindow) || !replacePointer((void*)0x674280,clipCursor) ||
        !replacePointer((void*)0x674278,cursorPosition) || !replacePointer((void*)0x674270,setCursor) ||

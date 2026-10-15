@@ -20,6 +20,8 @@ class OverlayTests(unittest.TestCase):
         self.dll = self.root / "dinput8.dll"
         self.dll.write_bytes(b"test-runtime")
         (self.root / "SDL-LICENSE.txt").write_text("test license")
+        for name in ('launch.exe', 'settings.exe', 'raylib-LICENSE.txt'):
+            (self.root / name).write_bytes(b'test companion')
         self.version = patch.object(overlay, "EXE_SHA256", overlay.digest(self.source / "Rally.exe"))
         self.version.start()
 

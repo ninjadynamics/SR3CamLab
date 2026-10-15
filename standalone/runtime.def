@@ -3,3 +3,4 @@ EXPORTS
     DirectInput8Create
     Out32
     SR3LabGetOutput
+    sr3rt_grab_backbuffer

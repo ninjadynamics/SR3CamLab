@@ -9,6 +9,23 @@ typedef struct {
     unsigned gas, brake;          /* 0 .. 255 */
     unsigned buttons;
 } Sr3Input;
+/* TP's SR3 XInput conversion divides the biased signed sample by 257.
+   Integer truncation deliberately preserves its center (127) and upper end (254). */
+static unsigned sr3_tp_axis(int value) {
+    if(value < -32768)value=-32768;
+    if(value > 32767)value=32767;
+    return (unsigned)((value+32767)/257);
+}
+/* Canonical binding IDs from settings.c: buttons 1..15, signed axes 16..23,
+   triggers 24..25. SDL axis Y is negative upward. */
+static int sr3_binding(int binding,const short axes[6],unsigned buttons,int threshold) {
+    int value;
+    if(binding<1 || binding>25)return 0;
+    if(binding<=15)return (buttons & (1u<<(binding-1)))!=0;
+    if(binding>=24)return axes[binding-20]>0;
+    value=axes[(binding-16)/2];
+    return binding%2?value>=threshold:value<=-threshold;
+}
 static unsigned sr3_axis(int value, int deadzone) {
     int magnitude, scaled;
     if (value < -32768) value=-32768;

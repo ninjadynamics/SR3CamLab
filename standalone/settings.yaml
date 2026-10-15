@@ -1,0 +1,37 @@
+# Default standalone settings. import_settings.py imports your TeknoParrot profile.
+version: 1
+launch:
+  game_path: 'Rally.exe'
+display:
+  width: 1280
+  height: 720
+  windowed: true
+  hud_adjust: true
+  vsync: true
+  refresh_rate: 60
+game:
+  freeplay: true
+  language: English
+  music: 80
+  sfx: 70
+  voice: 80
+  attract_music: true
+input:
+  controller: 0
+  deadzone: 4096
+  threshold: 15000
+  background: false
+  steering: left_x
+  invert: false
+  gas: right_trigger
+  brake: left_trigger
+  start: start
+  view: south
+  handbrake: right_shoulder
+  up: right_y_minus
+  down: right_x_minus
+  coin: back
+  dpad: false
+  curve: linear
+runtime:
+  cores: 4

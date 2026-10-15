@@ -40,7 +40,7 @@ def create(source, destination, mode="copy", dll=None):
         source = source.parent
     destination = destination.absolute()
     resolved = destination.resolve()
-    dll = (dll or ROOT / "build/Release/dinput8.dll").resolve()
+    dll = (dll or ROOT / "build/native/dinput8.dll").resolve()
     exe = source / "Rally.exe"
     if not exe.is_file() or digest(exe) != EXE_SHA256:
         raise ValueError("Requires Rally.exe 3.8.4.1 with the supported SHA-256; no executable was changed.")
@@ -55,6 +55,10 @@ def create(source, destination, mode="copy", dll=None):
     sdl_license = dll.parent / "SDL-LICENSE.txt"
     if not sdl_license.is_file():
         raise ValueError("SDL-LICENSE.txt missing beside DLL. Run build.py to complete the build.")
+    companions = ['launch.exe', 'settings.exe', 'raylib-LICENSE.txt']
+    for name in companions:
+        if not (dll.parent / name).is_file():
+            raise ValueError(f'{name} is missing. Run build.py and build_companion.py first.')
     if mode not in {"copy", "hardlink", "junction"}:
         raise ValueError("Unknown overlay mode.")
     # Reparse points could refer outside the selected source or form loops.
@@ -88,10 +92,13 @@ def create(source, destination, mode="copy", dll=None):
             shutil.copy2(existing, save / name)
     shutil.copy2(dll, destination / "dinput8.dll")
     shutil.copy2(ROOT / "sr3lab.ini", destination / "sr3lab.ini")
+    shutil.copy2(ROOT / "settings.yaml", destination / "settings.yaml")
+    for name in companions:
+        shutil.copy2(dll.parent / name, destination / name)
     shutil.copy2(ROOT.parent / "LICENSE", destination / "SR3Lab-LICENSE.txt")
     shutil.copy2(sdl_license, destination / "SDL-LICENSE.txt")
     (destination / "PLAY-STANDALONE.bat").write_text(
-        '@echo off\ncd /d "%~dp0"\nstart "" /wait "%~dp0Rally.exe"\n', encoding="ascii")
+        '@echo off\ncd /d "%~dp0"\nstart "" "%~dp0launch.exe"\n', encoding="ascii")
     manifest["complete"] = True
     manifest["runtime_sha256"] = digest(destination / "dinput8.dll")
     marker.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
