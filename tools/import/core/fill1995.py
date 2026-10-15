@@ -51,9 +51,8 @@ def _leaf_row(mat, v, u0, u1):
     """True when the opaque texels of tile row v between u0 and u1 are leaf green (a crown, not a stem)"""
     im = tile_rgb(mat)
     if im is None: return False
-    th, tw = im.shape[:2]; row = int(np.floor((1.0 - v) * th)) % th; m = max(int(round(abs(u1 - u0) * tw)), 2)
-    px = im[row, np.floor(np.linspace(u0, u1, m, endpoint=False) * tw).astype(int) % tw].astype(float); px = px[px[:, 3] > 127]
-    return bool(len(px)) and float(px[:, 1].mean()) > 1.08 * float(px[:, 0].mean())
+    import filltex
+    return filltex.leaf_row(filltex.image_buffer(im), v, u0, u1)
 def tile_size(mat):
     m = re.search(r'_(\d+)x(\d+)_', mat); return (int(m.group(1)), int(m.group(2))) if m else (64, 64)
 def _normal(P):
@@ -141,8 +140,8 @@ def road_faces(rd):
     return out
 
 def _stem_runs(al, row, u0, u1):
-    tw = al.shape[1]; m = max(int(round(abs(u1 - u0) * tw)), 2); cols = np.floor(np.linspace(u0, u1, m, endpoint=False) * tw).astype(int) % tw
-    r = al[row, cols]; return float(r.mean()), int((r[1:] & ~r[:-1]).sum() + int(r[0]))
+    import filltex
+    return filltex.stem_runs(filltex.image_buffer(al, True), row, u0, u1)
 
 def hanging_boards(faces, gap=1.0, ix=None, sunk=1.5):
     """upright cut-out boards whose tile shows something (a trunk, a post) on the board's lowest edge and that have
