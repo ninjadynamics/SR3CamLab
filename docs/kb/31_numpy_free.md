@@ -84,6 +84,26 @@ arrays back through the unpickler's `find_class`. On the real 92 MB `faces.pkl`:
 
 | `src\tracks\rom\rom_import.py` and its 11 stages | numpy in 9 stages and in rom_import itself (regions ran in-process): 36 s | m2_build, m2xlat / m2colour (tables as bytes, npyio), m2_collision (float32 sums emulated), src_all / classic_export / classic_tex / m2tex (pages and tiles as bytes, `bytes.translate` for nibbles and colours, the page fit in exact integer sums), m2_gameplay / m2_game / m2_surface, gates1995, derived_tiles, src_leftovers; plain Python, no C needed: 30 s | all 708 files of the step byte for byte numpy's, numpy blocked in every stage (a sitecustomize on PYTHONPATH); the build-facing numpy functions (`load_pages`, `tile`, `tile_rgb`, `usable`, `palette`, `lumaram`, `table`) return the same arrays as before for all 12 pages and 130 tiles |
 
+### The importer (`import_classic.py`), module by module
+
+The importer's two passes are one process with ~45 modules, so it stays numpy-dependent until the last of them is done. Split
+(2026-10-15, agreed in the agents chat): Codex the geometry and the build's core (build_classic, import_classic, fastgeo /
+geobuf, fastround, round1995, meshgen / meshbuf, fastbuild, fill1995, build_more, fastside / lightside, ...), Claude the light
+maps, textures, overlays and helpers. Rule: a function whose callers still compute with numpy keeps its return type; a
+numpy-free twin sits beside it until the caller switches. Each step checked with the stack's light / build steps on isolated
+data roots, old against new (scratchpad tools lightrun.py / buildrun.py): every file byte for byte, faces.pkl by value.
+
+| Module | Now | Check |
+|---|---|---|
+| roadsight.orient | geobuf.pack + fastlm.c lm_rs_prep, plain Python decisions | 335,604 items and the log identical, 3.37 -> 3.22 s |
+| seenside.orient | geobuf.pack + lm_ss_prep / lm_open_sides; lm.sides.npz through npyio ('<U' text, 0-d scalars) | lists, logs, sides file identical; ~24 -> 22.7 s |
+| lightmap1995.save_collect / key_buf / lookup_buf / load_table_buf | buffer protocol in, fastlm.c lm_key12 / lm_gather / lm_lookup | lm.lm.npz identical; lookup 0.27 -> 0.12 s (not called yet) |
+| bake1995.save_scene, scenefile.save_arrays | lm_albedo (UCRT pow, numpy's pairwise / row-by-row means) | lm.scene identical |
+| sky1995 | its own operations in fastlm.c sky_dirs / sky_tile / sky_fill; build_classic.vivid / dxt1_rgb through a numpy bridge | all 10 game files identical |
+| fastdxt | buffer protocol, dxt1_bytes | all 10 game files identical |
+| layers | plain floats in numpy's per-call orders | pairs and layers identical on 334,229 faces; 237 -> 30 s |
+| texfast, grid, fastlm, m2colour, ... | numpy imported only inside the functions that still use it | - |
+
 ROM stages: `course.use_tex()` sets only the export's folders (course.use() loaded the whole build, and numpy with it,
 just for those). A stage's time includes about 3 s whenever it is the first process to read a freshly written region
 image (the system scans the file); that hits the numpy and the numpy-free version alike.
