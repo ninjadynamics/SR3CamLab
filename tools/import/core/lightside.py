@@ -13,7 +13,6 @@ twice the scenery; user, 2026-10-08: "brute-forcish and dumb ... fix things prop
 
     faces, info = lightside.orient(faces)        # importer faces (material, section, corners, uv); cut-outs and the sea pass through"""
 import os, subprocess, tempfile
-import numpy as np
 BLENDER = __import__('common').BLENDER
 OPEN = 3 / 32.0; FREE_MIN = 1.0; FREE_RATIO = 2.5; SURE_RATIO = 4.0      # 'sure' = the open side has at least 4 times the escaping rays of the other (it used to demand NONE on the other side: one stray ray of 32 made the ground floor of the church 'not sure', and it was lit as its brighter side while the same wall above it was in shade; user, 2026-10-08)
 
@@ -22,6 +21,7 @@ def _scores(V, F, ACT):
     the share of 32 rays that escape from its winding side and from the other, and the mean free path (capped at 100 m) of the two fans.
     Blender took 150 .. 200 s for the 440 000 polygons of a build with baked light; this takes about two."""
     import rays, math
+    import numpy as np
     V = np.asarray(V, np.float64); F = np.asarray(F, np.int64); Q = V[F]; tri = F[:, 2] == F[:, 3]
     T = np.concatenate([Q[:, [0, 1, 3]], Q[~tri][:, [1, 2, 3]]]); sc = rays.Scene(T); K = 32; CAP = 100.0; H = []      # a four-corner polygon is two triangles along corners 1 - 3: that is how the game draws it (meshgen.quads_to_strip) and how Blender split it; along 0 - 2, 8 500 of 49 000 warped polygons scored differently
     for k in range(K):
@@ -37,6 +37,18 @@ def _scores(V, F, ACT):
             out[ii, s] = np.where(ok, (hit < 0).mean(1), 0.0); out[ii, 2 + s] = np.where(ok, np.where(hit < 0, CAP, np.minimum(dist, CAP)).mean(1), 0.0)
     return out
 
+def orient_buf(faces, log=print, tag=''):
+    """NumPy-free orientation; scores are an owned f4(n,4) npyio.Arr.
+
+    Additive entry point for buffer callers. The legacy orient and its ndarray
+    scores are unchanged. Unsupported geometry raises ValueError explicitly.
+    """
+    import sideorient
+    out,info,sc=sideorient.orient(faces,log,open_share=OPEN,free_min=FREE_MIN,free_ratio=FREE_RATIO,sure_ratio=SURE_RATIO)
+    orient_buf.scores=sc
+    return out,info
+
+
 def orient(faces, log=print, tag=''):
     """(fastside.orient makes the decisions of _old_orient below on whole arrays: 5 s where the loops took 20 .. 50; profile 2026-10-08.
     _old_orient stays as the reference and the fallback, and holds the comments that say why each rule is there.)"""
@@ -49,6 +61,7 @@ def orient(faces, log=print, tag=''):
             return r
     return _old_orient(faces, log, tag)
 def _old_orient(faces, log=print, tag=''):
+    import numpy as np
     here = os.path.dirname(os.path.abspath(__file__)); tmp = os.path.join(os.path.dirname(here), 'tmp'); os.makedirs(tmp, exist_ok=True)
     fin = os.path.join(tmp, 'sides_in_%s.npz' % (tag or os.getpid())); fout = os.path.join(tmp, 'sides_out_%s.npy' % (tag or os.getpid()))
     V = []; F = []; ACT = []

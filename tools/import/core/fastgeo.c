@@ -983,3 +983,39 @@ EXPORT void fg_side_reduce(const int *hit,const double *dist,const unsigned char
         scores[4*active[k]+2+side]=(float)fg_side_mean32(values);
     }
 }
+
+/* fastside's Newell sum (not fg_prep's cross sum), x,z,y norm and plane dot.
+   off is produced by checked geobuf.pack; each polygon has at least 3 corners.
+   g rows: winding-y, length, canonical normal xyz, distance/.25, sign, area. */
+EXPORT int fg_side_geometry(const double *x,const i64 *off,i64 n,double *g,
+                           i64 *keys,unsigned char *ties)
+{
+    for(i64 j=0;j<3*off[n];++j) {
+        double y=x[j]*100.0, r=nearbyint(y);
+        if(!isfinite(y) || fabs(r)>1048577.0) return -1;
+        keys[j]=(i64)r; ties[j]=fabs(fabs(y-floor(y))-0.5)<1e-6;
+    }
+    #pragma omp parallel for schedule(static)
+    for(i64 i=0;i<n;++i) {
+        i64 first=off[i],end=off[i+1],k=end-first;
+        double w[3]={0,0,0},c[3]={x[3*first],x[3*first+1],x[3*first+2]};
+        for(i64 j=first;j<end;++j) {
+            const double *a=x+3*j,*b=x+3*(j+1==end?first:j+1);
+            for(int d=0;d<3;++d) {
+                double term=(a[(d+1)%3]-b[(d+1)%3])*(a[(d+2)%3]+b[(d+2)%3]);
+                if(j==first) w[d]=term; else w[d]+=term;
+                if(j!=first) c[d]+=a[d];
+            }
+        }
+        double len=sqrt((w[0]*w[0]+w[2]*w[2])+w[1]*w[1]);
+        double *out=g+8*i; out[0]=w[1];out[1]=len;out[7]=len/2.0;
+        if(len<1e-9) continue;
+        double nn[3]={w[0]/len,w[1]/len,w[2]/len}; int am=0;
+        if(fabs(nn[1])>fabs(nn[am])) am=1;
+        if(fabs(nn[2])>fabs(nn[am])) am=2;
+        double sign=nn[am]>0?1.0:-1.0;out[6]=sign;
+        for(int d=0;d<3;++d) {nn[d]*=sign;out[2+d]=nn[d];c[d]/=k;}
+        out[5]=((c[0]*nn[0]+c[2]*nn[2])+c[1]*nn[1])/0.25;
+    }
+    return 0;
+}
