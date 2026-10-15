@@ -543,4 +543,15 @@ EXPORT int fb_fill(int W, int H, unsigned char *img, unsigned char *got)
     return any;
 }
 
+/* crowd.classic_spots' nearest centre-line point: int(np.argmin(np.hypot(X - x, Z - z))) - hypot is ucrtbase's (np.hypot calls it), the
+   first of equals wins, a NaN distance wins at once (as argmin) */
+static f2_t uhypot = NULL;
+EXPORT i64 lm_nearest_xz(i64 n, const double *X, const double *Z, double x, double z)
+{
+    if (!uhypot) { HMODULE h = GetModuleHandleA("ucrtbase.dll"); if (h) uhypot = (f2_t)(void *)GetProcAddress(h, "hypot"); if (!uhypot) return -1; }
+    i64 best = 0; double bd = INFINITY;
+    for (i64 i = 0; i < n; i++) { double d = uhypot(X[i] - x, Z[i] - z); if (isnan(d)) return i; if (d < bd) { bd = d; best = i; } }
+    return best;
+}
+
 EXPORT int lm_threads(void) { return omp_get_max_threads(); }

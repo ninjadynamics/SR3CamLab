@@ -12,8 +12,8 @@ What is written
   *_gameobj_gfx_dis_data.sbf  : the donor's file with a NEW root chunk: only the model/animation sets whose objects still
       exist, with their object index lists rewritten. Granny chunks are kept.
 Heading: radians, direction the spectator LOOKS at, f = (sin h, 0, cos h) in SR3 x/z."""
-import os, sys, struct, shutil, collections
-import numpy as np
+import os, sys, struct, shutil, collections, math
+from array import array
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import sbfw
 from common import TRACKS, WORK, CLASSIC, track_files
@@ -134,7 +134,7 @@ def build_dis_root(ents):
 def matrix(x, y, z, heading):
     """rows as SEGA stores them: (c, 0, s, 0) (0, 1, 0, 0) (-s, 0, c, 0) (x, y, z, 1). The model looks along local -Z
     (15_spectators.md), so -row2 = (sin h, 0, cos h)."""
-    c, s = -np.cos(heading), np.sin(heading)
+    c, s = -math.cos(heading), math.sin(heading)                     # (np.cos / np.sin: the C runtime's, as math's)
     return (c, 0.0, s, 0.0, 0.0, 1.0, 0.0, 0.0, -s, 0.0, c, 0.0, float(x), float(y), float(z), 1.0)
 
 def donor_files(donor='Desert4'):
@@ -199,7 +199,7 @@ def build_safe(spots, donor='Desert4', park=None):
     g, dz = donor_files(donor); c = g.chunks[-1]; po = parse_objects(c); d = bytearray(c.data); prec = struct.unpack_from('<I', d, 8)[0]
     idx = [i for i, o in enumerate(po['objects']) if o['cls'] == DUMB]
     if len(spots) > len(idx): raise ValueError('%d spots, the donor has %d spectator records' % (len(spots), len(idx)))
-    an = np.array([o['m'][12:15] for o in po['objects'] if o['cls'] in MASTERS]); px, py, pz = park or (an[:, 0].max() + 6.0, an[:, 1].min(), an[:, 2].mean())
+    an = [tuple(o['m'][12:15]) for o in po['objects'] if o['cls'] in MASTERS]; px, py, pz = park or (max(a[0] for a in an) + 6.0, min(a[1] for a in an), _pw([a[2] for a in an]) / len(an))      # an[:, 2].mean(): pairwise
     for k, i in enumerate(idx):
         if k < len(spots): m = matrix(*spots[k])
         else: j = k - len(spots); m = matrix(px + 1.5 * (j // 10), py, pz + 1.5 * (j % 10 - 4.5), 0.0)
@@ -221,6 +221,23 @@ def apply(trk, spots, donor='Desert4', **kw):
     return info
 
 # ---------------------------------------------------------------- 1995 crowd
+def _pw(v):
+    """numpy's pairwise sum (rtbake/rt_bake_game5.py pwsum)"""
+    n = len(v)
+    if n < 8:
+        t = 0.0
+        for x in v: t += x
+        return t
+    if n <= 128:
+        r = list(v[:8]); e = n - n % 8
+        for i in range(8, e, 8):
+            for j in range(8): r[j] += v[i + j]
+        t = ((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7]))
+        for x in v[e:]: t += x
+        return t
+    h = n // 2; h -= h % 8
+    return _pw(v[:h]) + _pw(v[h:])
+
 def classic_table(course='1'):
     """records of the 1995 trackside-object table(s): dict(angle, pos (game x, y, z), section, kind, model, flag).
     kind 4 = one spectator sprite (22 models = objects 235..278 in pairs)."""
@@ -233,7 +250,8 @@ def classic_table(course='1'):
     return out
 
 def fit_offset(cen, course='1', zs=-1.0):
-    """(ox, oz) of SR3 = (x_obj + ox, y, zs * z_obj + oz), recovered from a built track's centre line and the course csv"""
+    """(ox, oz) of SR3 = (x_obj + ox, y, zs * z_obj + oz), recovered from a built track's centre line and the course csv (python crowd.py only)"""
+    import numpy as np
     d = os.path.join(CLASSIC, 'courses', 'src', SRC_DIRS[str(course)])
     C = np.loadtxt(os.path.join(d, 'src_course%s_centreline.csv' % course), delimiter=',', comments='#'); Q = np.stack([C[:, 0], zs * C[:, 2]], 1)
     S = np.asarray(cen)[:, [0, 2]]; off = (S.min(0) + S.max(0)) / 2 - (Q.min(0) + Q.max(0)) / 2
@@ -247,16 +265,21 @@ def classic_spots(course, cen, ox, oz, zs=-1.0, lat=None, lo=None, hi=None, marg
     cen: n x 3 centre line (SR3). With lat / lo / hi (trackdeform.road_frame of the built road) a spectator standing inside
     the drivable strip is moved sideways to its edge + margin (height kept, never below the road edge there).
     lift: the 1995 sprites sit 9 cm (median) under the 1995 ground polygons; the feet are raised by that much."""
-    cen = np.asarray(cen, float); out = []; moved = 0
+    # (numpy-free since 2026-10-15, kb 31: the inputs read through the buffer protocol; the nearest centre-line point is fastlm.c's
+    # lm_nearest_xz = int(np.argmin(np.hypot(cen[:, 0] - x, cen[:, 2] - z))); (p - cen[j]) @ lat[j] adds in the order numpy's dot took
+    # for row j of the (n, 3) lat array: (p0 + p2) + p1 when the row is 16-byte aligned (j even), (p0 + p1) + p2 when not)
+    import fastlm, roadsight
+    C = [tuple(float(v) for v in c) for c in roadsight.rows(cen)]; X = array('d', [c[0] for c in C]); Z = array('d', [c[2] for c in C]); out = []; moved = 0
+    LT = [tuple(float(v) for v in q) for q in roadsight.rows(lat)] if lat is not None else None; LO = roadsight.rows(lo) if lo is not None else None; HI = roadsight.rows(hi) if hi is not None else None
     for r in classic_table(course):
         if r['kind'] not in kinds: continue
-        gx, gy, gz = r['pos']; p = np.array([gx + ox, gy + lift, -zs * gz + oz])         # OBJ z = -game z ; SR3 z = zs * OBJ z + oz
-        j = int(np.argmin(np.hypot(cen[:, 0] - p[0], cen[:, 2] - p[2])))
-        if lat is not None:
-            l = lat[j]; s = (p - cen[j]) @ l
-            if lo[j] - margin < s < hi[j] + margin and abs(p[1] - cen[j, 1]) < 2.5:
-                t = hi[j] + margin if s >= 0 else lo[j] - margin; p = p + l * (t - s); p[1] = max(p[1], cen[j, 1]); moved += 1
-        to = cen[j] - p; out.append((float(p[0]), float(p[1]), float(p[2]), float(np.arctan2(to[0], to[2]))))
+        gx, gy, gz = r['pos']; p = [gx + ox, gy + lift, -zs * gz + oz]                   # OBJ z = -game z ; SR3 z = zs * OBJ z + oz
+        j = int(fastlm.lib().lm_nearest_xz(len(C), X.buffer_info()[0], Z.buffer_info()[0], p[0], p[2])); c = C[j]
+        if LT is not None:
+            l = LT[j]; v = (p[0] - c[0], p[1] - c[1], p[2] - c[2]); s = (v[0] * l[0] + v[2] * l[2]) + v[1] * l[1] if j % 2 == 0 else (v[0] * l[0] + v[1] * l[1]) + v[2] * l[2]
+            if LO[j] - margin < s < HI[j] + margin and abs(p[1] - c[1]) < 2.5:
+                t = HI[j] + margin if s >= 0 else LO[j] - margin; p = [p[k] + l[k] * (t - s) for k in range(3)]; p[1] = max(p[1], c[1]); moved += 1
+        to = (c[0] - p[0], c[1] - p[1], c[2] - p[2]); out.append((float(p[0]), float(p[1]), float(p[2]), math.atan2(to[0], to[2])))
     classic_spots.moved = moved
     return out
 
