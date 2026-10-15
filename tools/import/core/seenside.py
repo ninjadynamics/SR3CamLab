@@ -30,7 +30,21 @@ OPEN_MIN = 0.06
 _HEMI = np.array([(np.sqrt((i + 0.5) / 24) * np.cos(i * 2.399963), np.sqrt((i + 0.5) / 24) * np.sin(i * 2.399963), np.sqrt(max(0.0, 1 - (i + 0.5) / 24))) for i in range(24)])
 
 def _open_sides(sc, pts, nrm, lift=0.05):
-    """share of each polygon's rays that reach the sky, for its winding side and for its other side (pts: points on the polygons, nrm: unit normals)"""
+    """share of each polygon's rays that reach the sky, for its winding side and for its other side (pts: points on the polygons, nrm: unit normals).
+    The 24 directions of a point go to the rays in one batch (12 casts instead of 288: the same rays, the same arithmetic element by element,
+    the hits counted as whole numbers as before; _open_sides_old is the loop it replaces, kept for the comparison)"""
+    ax = np.where((np.abs(nrm[:, 1]) < 0.9)[:, None], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]); t = np.cross(nrm, ax); t /= np.maximum(np.linalg.norm(t, axis=1), 1e-12)[:, None]; b = np.cross(nrm, t)
+    res = []; n = len(nrm); H = _HEMI[:, :, None, None]
+    for sgn in (1.0, -1.0):
+        n_ = nrm * sgn; D = H[:, 0] * t[None] + H[:, 1] * b[None] + H[:, 2] * n_[None]       # (24, n, 3): h0 t + h1 b + h2 n, as the loop made each d
+        up = D[:, :, 1] > 0.02; Dr = np.ascontiguousarray(D.reshape(-1, 3)); esc = np.zeros(n, np.int64); m = 0
+        for P in pts:
+            o = P + n_ * lift; O = np.ascontiguousarray(np.broadcast_to(o[None], (len(_HEMI), n, 3)).reshape(-1, 3))
+            hit, _, _ = sc.cast(O, Dr, 4000.0, how=3); esc += ((hit.reshape(len(_HEMI), n) < 0) & up).sum(0); m += len(_HEMI)
+        res.append(esc.astype(np.float64) / m)
+    return res[0], res[1]
+
+def _open_sides_old(sc, pts, nrm, lift=0.05):
     ax = np.where((np.abs(nrm[:, 1]) < 0.9)[:, None], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]); t = np.cross(nrm, ax); t /= np.maximum(np.linalg.norm(t, axis=1), 1e-12)[:, None]; b = np.cross(nrm, t)
     res = []
     for sgn in (1.0, -1.0):

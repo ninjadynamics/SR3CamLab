@@ -89,3 +89,19 @@ job with its whole process tree within 2 s when the game starts. Checked with a 
 An R4 build made on 16 threads of the efficiency cores judged one polygon of 371 580 differently from its collecting pass (made on every
 core) and 23 polygons came out without a light map. UNKNOWN why; not seen between passes run the same way. The fingerprint in the
 seen-side file now reports such a build; "not found 0" in the build log remains the thing to read.
+
+## 2026-10-15: the stack (stack.py), x86-64-v3 builds
+| Stage | before | now |
+|---|---|---|
+| light (the first importer pass) | 88 .. 90 | 77 |
+| rt (bake + compose) | 206 .. 211 | 206 |
+| build (the second pass) | 62 .. 64 | 56 |
+| whole chain (light + rt + build) | 358 .. 366 | 338 |
+- `round1995._bends` (41 calls a pass, 8.4 s under the profiler): its cross products, norms and three-term sums in C (fastgeo.c fg_bends,
+  numpy's order: the sums run left to right), arccos and degrees left to numpy. 10x faster; on 1.5 million random edges the angles are
+  bit-identical, on the real faces the rounding's output and info are identical; the rounding 13.3 s -> 6.6 s a pass.
+- `seenside._open_sides`: the 24 sky directions of a point in one batch of rays (12 casts instead of 288), the hits counted as whole
+  numbers as before: identical on a random scene, 7.5x faster.
+- The track's seven files written, read back and checked side by side (zlib lets go of the interpreter).
+Every one checked by the whole chain: v15's game files byte for byte. Not taken: the sealing's edge test and similar small loops go
+through numpy's BLAS (matrix x vector), whose summation order C cannot be sure to follow, so a port could change bytes.
