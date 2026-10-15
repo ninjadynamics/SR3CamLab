@@ -46,10 +46,14 @@ A full chain on an empty data folder, every Python process logging the modules i
   2026-10-15).
 - `A @ s` also adds each row's sum to y = 0 (dgemv with beta 0), so a row whose sum is -0.0 comes out +0.0
   (2 of 408,164 normals @ sun on Mountain). A port writes `0.0 + ((p0 + p2) + p1)`.
-- A 1-D sum (`np.sum`, the sum inside `np.mean` of a column, of a strided view, and `mean(0)` of an (n, 2) array, column
-  by column) is pairwise: below 8 elements one after the other from 0; up to 128 eight running sums added as
+- A sum along the axis that is innermost in memory (`np.sum` / `np.mean` of a 1-D array or of a strided column view) is
+  pairwise: below 8 elements one after the other from 0; up to 128 eight running sums added as
   `((r0 + r1) + (r2 + r3)) + ((r4 + r5) + (r6 + r7))`, then the rest one by one; above that the two halves, cut at a
   multiple of 8; the result added to 0. Measured 100% on 300 arrays per size from 5 to 1,000.
+- A sum along an OUTER axis (`mean(0)` of a C-ordered (n, 3) array) adds one row after the other from 0 (400 of 400,
+  float32). Which one applies follows the memory layout, not the axis number: `v[:, [0, 2]]` (fancy indexing) comes out
+  column-first, so its `mean(0)` is pairwise (the bake's tree axes), while `np.concatenate(...).mean(0)` is sequential
+  (m2_collision's centre line).
 - `np.cos` / `np.sin` of float64 arrays are the C runtime's (ucrtbase.dll; numpy's SVML loops need AVX-512, which this
   PC lacks): the same bits as Python's `math.cos`. A C port calls ucrtbase's own `cos` / `sin` through GetProcAddress,
   since gcc's or mingw's could differ. `np.hypot` is ucrtbase's `hypot` too; Python's `math.hypot` differs in 17% of
@@ -77,6 +81,12 @@ arrays back through the unpickler's `find_class`. On the real 92 MB `faces.pkl`:
 |---|---|---|---|
 | `rtbake\rt_compose_game.py` | numpy, 8 pages at a time through float32 temporaries: 6.1 s warm (8.9 s cold) | `rtbake\rtcompose.c` (`rtc_road`, `rtc_pages` one page per thread, `rtc_key`) + npyio / scenefile: 0.6 s warm (3.5 s cold) | the pages file byte for byte numpy's (277 MB), every table member identical, the same log line, numpy never loaded |
 | `rtbake\rt_bake_game5.py` | numpy around the C rays: 197.7 s on Mountain R4 (scene ready 4 s, cars 2 s, texel maths 1.3 s, store 9.4 s) | `rtbake\rtg5prep.c` (the scene's triangles, the once-edges under wall feet, normals and sun products, the cars' pages, the rectangles and their lattices, per batch the texels, fan turns, facing, other side and store) + plain Python (trees, skirts, buildings, page packing) + npyio / scenefile / nfpickle: 178.1 s (3 s, 1 s, 0.2 s, 0.2 s; the rays are the same C) | raw.npy byte for byte numpy's (646 MB), every member of pack.npz and carshade.npz identical (the deflated one too), every section's arrays equal numpy's at 11 checkpoints, the ray-bench dump equal in all 41 items, the same log lines, numpy blocked and never loaded |
+
+| `src\tracks\rom\rom_import.py` and its 11 stages | numpy in 9 stages and in rom_import itself (regions ran in-process): 36 s | m2_build, m2xlat / m2colour (tables as bytes, npyio), m2_collision (float32 sums emulated), src_all / classic_export / classic_tex / m2tex (pages and tiles as bytes, `bytes.translate` for nibbles and colours, the page fit in exact integer sums), m2_gameplay / m2_game / m2_surface, gates1995, derived_tiles, src_leftovers; plain Python, no C needed: 30 s | all 708 files of the step byte for byte numpy's, numpy blocked in every stage (a sitecustomize on PYTHONPATH); the build-facing numpy functions (`load_pages`, `tile`, `tile_rgb`, `usable`, `palette`, `lumaram`, `table`) return the same arrays as before for all 12 pages and 130 tiles |
+
+ROM stages: `course.use_tex()` sets only the export's folders (course.use() loaded the whole build, and numpy with it,
+just for those). A stage's time includes about 3 s whenever it is the first process to read a freshly written region
+image (the system scans the file); that hits the numpy and the numpy-free version alike.
 
 The bake reads the material classes straight from `retex`'s CSV and takes `PAGE = 2048` by value: `retex.py` and
 `lightmap1995.py` still import numpy. The two `.npz` files differ from numpy's only in their zip timestamps (numpy

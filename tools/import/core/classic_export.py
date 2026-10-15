@@ -4,8 +4,10 @@ table row: the 16-byte table entries are {UV address, header address} of object 
 ... i.e. object k = (oba_k, obc_k, tpa_{k-1}, tha_{k-1}). Proof: the UV list of row k-1 is exactly 8 words per quad +
 6 per triangle of object k long, for every object checked.)
     python classic_export.py        -> ../classic_tex/course1/src_course1_hi.obj, .mtl
-Geometry and texture rules: MAME model2_v.cpp (geo_parse_np_ns, model2_3d_process_polygon). Axes of the OBJ: (x, y, -gameZ)."""
-import os, sys, numpy as np
+Geometry and texture rules: MAME model2_v.cpp (geo_parse_np_ns, model2_3d_process_polygon). Axes of the OBJ: (x, y, -gameZ).
+Without numpy since 2026-10-15 (kb 31): the region images are memoryviews, a corner a tuple of floats; the few products numpy made are
+written out in its order (r4, cross, dot below). The files are byte for byte the numpy version's."""
+import os, sys
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 from common import TMP, WORK; M2 = os.path.join(TMP, 'm2')
 OUT = os.path.join(WORK, 'classic_tex', 'course1')
@@ -14,9 +16,17 @@ COURSES = {'1': (1259, 1318)}                                         # set per 
 COURSE = '1'
 
 def load():
-    main = np.fromfile(os.path.join(M2, 'main_data.bin'), '<u4'); poly = np.fromfile(os.path.join(M2, 'polygons.bin'), '<u4')
-    tex16 = np.fromfile(os.path.join(M2, 'textures.bin'), '<u2')
-    return main, poly, poly.view('<f4'), tex16
+    """(main, poly, polyf, tex16): the region images as memoryviews of u32, u32, float32 (the same bytes), u16
+    (the numpy version: np.fromfile(..., '<u4'), poly.view('<f4'), np.fromfile(..., '<u2'))"""
+    rd = lambda f: open(os.path.join(M2, f), 'rb').read(); pb = rd('polygons.bin')
+    return memoryview(rd('main_data.bin')).cast('I'), memoryview(pb).cast('I'), memoryview(pb).cast('f'), memoryview(rd('textures.bin')).cast('H')
+
+def r4(x):
+    """np.round(x, 4) of a float: rint(x * 10000.0) / 10000.0, as numpy does it (Python's round(x, 4) rounds the decimal value instead)"""
+    return round(x * 10000.0) / 10000.0
+def cross(a, b): return (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])      # np.cross, each product rounded
+def dot(a, b): return (a[0] * b[0] + a[2] * b[2]) + a[1] * b[1]     # np.dot of two fresh 3-vectors: OpenBLAS's (p0 + p2) + p1 (kb 31)
+def sub(a, b): return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
 
 def table(main, n=1508):
     i = OBJTAB // 4; return [[int(x) for x in main[i + 4 * k:i + 4 * k + 4]] for k in range(n)]
@@ -24,12 +34,12 @@ def table(main, n=1508):
 def decode(k, tab, poly, polyf, tex16):
     """polygons of object k: list of dict(verts [3|4 xyz, game axes], uv [(u, v) in texels], hdr[4], attr, normal)"""
     oba, obc = tab[k][0], tab[k][1]; tp, th = tab[k - 1][2], tab[k - 1][3]
-    a = oba & 0x7FFFFF; p0 = polyf[a:a + 3].astype(float); p1 = polyf[a + 3:a + 6].astype(float); a += 6; out = []
+    a = oba & 0x7FFFFF; p0 = tuple(polyf[a:a + 3]); p1 = tuple(polyf[a + 3:a + 6]); a += 6; out = []
     for n in range(obc):
         attr = int(poly[a])
         if (attr & 3) == 0: break
-        quad = attr & 1; nrm = polyf[a + 1:a + 4].astype(float); q0 = polyf[a + 4:a + 7].astype(float)
-        q1 = polyf[a + 7:a + 10].astype(float) if quad else q0
+        quad = attr & 1; nrm = tuple(polyf[a + 1:a + 4]); q0 = tuple(polyf[a + 4:a + 7])
+        q1 = tuple(polyf[a + 7:a + 10]) if quad else q0
         nv = 4 if quad else 3
         uv = [(int(tex16[tp + 2 * i + 1]) / 8.0, int(tex16[tp + 2 * i]) / 8.0) for i in range(nv)]    # stored v, u ; 13.3 fixed point
         tp += 2 * nv
@@ -69,20 +79,20 @@ def export(course=None):
             name, info = material(p['hdr'])
             if name not in mats: mats[name] = info
             if name != cur: fl.append('usemtl ' + name); cur = name
-            P = np.array([(x, y, -z) for x, y, z in p['verts']]); idx = []
+            P = [(x, y, -z) for x, y, z in p['verts']]; idx = []
             tw, th = (info['w'], info['h']) if info else (1, 1)
             for i in range(len(P)):
-                key = tuple(np.round(P[i], 4)); vi = vmap.get(key)
+                key = tuple(r4(c) for c in P[i]); vi = vmap.get(key)
                 if vi is None: vi = nv + len(vl) + 1; vmap[key] = vi; vl.append('v %.4f %.4f %.4f' % tuple(P[i]))
                 u, v = p['uv'][i]
                 if info and info['mx']: u = u if int(u // tw) % 2 == 0 else (2 * tw * (int(u // tw) // 2 + 1) - u)   # mirror -> fold back
                 if info and info['my']: v = v if int(v // th) % 2 == 0 else (2 * th * (int(v // th) // 2 + 1) - v)
                 tl.append('vt %.5f %.5f' % (u / tw, 1.0 - v / th)); idx.append((vi, nvt + len(tl)))
-            g = np.cross(P[1] - P[0], P[2] - P[0]); hn = -np.array([p['normal'][0], p['normal'][1], -p['normal'][2]])
-            if np.dot(g, hn) < 0: idx = idx[::-1]
+            g = cross(sub(P[1], P[0]), sub(P[2], P[0])); hn = (-p['normal'][0], -p['normal'][1], p['normal'][2])      # -np.array([n0, n1, -n2])
+            if dot(g, hn) < 0: idx = idx[::-1]
             fl.append('f ' + ' '.join('%d/%d' % t for t in idx)); nf += 1
-            uu = np.array(p['uv'])
-            if info and (np.ptp(uu[:, 0]) < 0.5 or np.ptp(uu[:, 1]) < 0.5): ndeg += 1
+            us = [q[0] for q in p['uv']]; vs = [q[1] for q in p['uv']]
+            if info and (max(us) - min(us) < 0.5 or max(vs) - min(vs) < 0.5): ndeg += 1      # np.ptp(uu[:, 0]) < 0.5 ...
         fo.write('\n'.join(vl + tl + fl) + '\n'); nv += len(vl); nvt += len(tl)
     fo.close()
     with open(os.path.join(OUT, base + '.mtl'), 'w') as fm:

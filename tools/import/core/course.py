@@ -4,18 +4,26 @@
     label_overrides {tile index: class}, textures {class: [track, id hex]}, art {...} (all-SR3 choices, see allsr3.py)
 use(game, course) points every module at that course's files; nothing else in the code names a course."""
 import os, json, collections
-import numpy as np
 from common import *
 CFG = {}
 
-def use(game, course):
-    import classic_export, classic_tex, build_classic as BC, retex, preview_obj, allsr3
+def use_tex(game, course):
+    """the part of use() the ROM export needs: classic_export / classic_tex pointed at the course's folder (SEGA Rally Championship
+    courses only). Imports neither the build nor numpy, so the ROM import's export stage runs without them."""
+    import classic_export, classic_tex
     cfg = json.load(open(os.path.join(courses_dir(game), '%s_%s.json' % (game, course)))); CFG.clear(); CFG.update(cfg); CFG['game'] = game; CFG['course'] = str(course); c = str(course)
-    if game != 'src': return use_export(game, c, cfg)
     out = os.path.join(WORK, 'classic_tex', 'course' + c)
     classic_export.OUT = out; classic_export.COURSE = c; classic_export.COURSES = {c: tuple(cfg['objects'])}
     classic_tex.BLOCK = int(cfg['texel_block'], 16) if 'texel_block' in cfg else None
     classic_tex.OUT = out; classic_tex.PAGEFILE = os.path.join(out, 'pages.json')
+    return cfg, c, out
+
+def use(game, course):
+    import build_classic as BC, retex, preview_obj, allsr3
+    if game != 'src':
+        cfg = json.load(open(os.path.join(courses_dir(game), '%s_%s.json' % (game, course)))); CFG.clear(); CFG.update(cfg); CFG['game'] = game; CFG['course'] = str(course)
+        return use_export(game, str(course), cfg)
+    cfg, c, out = use_tex(game, course)
     cl = os.path.join(CLASSIC, 'obj')
     BC.CSV = os.path.join(cl, cfg.get('centreline', 'src_course%s_centreline.csv' % c)); BC.COL = os.path.join(cl, cfg.get('collision', 'src_course%s_collision.obj' % c))
     BC.HI = os.path.join(out, 'src_course%s_hi.obj' % c); BC.XFORM = os.path.join(TMP, 'classic_xform.json' if c == '1' else 'classic_xform_%s.json' % c); preview_obj.XFORM = BC.XFORM
@@ -48,6 +56,7 @@ def use_export(game, c, cfg):
 
 def tile_stats(faces):
     """per tile: area, share of lying faces, mean upright face height"""
+    import numpy as np                                                # (only the build's first pass labels tiles, and it has numpy)
     st = collections.defaultdict(lambda: [0.0, 0.0, 0.0, 0.0])
     for name, sec, P, UV in faces:
         P = np.array(P); n = np.cross(P[1] - P[0], P[2] - P[0]); a = 0.5 * np.linalg.norm(n)

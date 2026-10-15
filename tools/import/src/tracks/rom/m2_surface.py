@@ -1,12 +1,15 @@
-"""Which texture lies under each collision attribute type: nearest visual face (hi OBJ) to each collision polygon centre."""
-import numpy as np, collections, glob, os, pickle, sys
+"""Which texture lies under each collision attribute type: nearest visual face (hi OBJ) to each collision polygon centre.
+load_coll is numpy-free (2026-10-15, kb 31: m2_gameplay uses it); the survey below (python m2_surface.py) still computes with numpy."""
+import collections, glob, os, pickle, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'core')); import common   # tools/import/settings.json
 class cKDTree:
     def __init__(self, C): self.C = C
     def query(self, p):
+        import numpy as np
         d = np.abs(self.C - p).sum(1); i = int(d.argmin()); return float(np.linalg.norm(self.C[i] - p)), i
 from PIL import Image, ImageDraw
 def load_visual(p):
+    import numpy as np
     V = []; C = []; M = []; cur = None
     for ln in open(p):
         if ln.startswith('v '): V.append([float(x) for x in ln.split()[1:4]])
@@ -15,20 +18,22 @@ def load_visual(p):
             idx = [int(t.split('/')[0]) - 1 for t in ln.split()[1:]]; C.append(np.mean([V[i] for i in idx], 0)); M.append(cur)
     return np.array(C), M
 def load_coll(p):
+    """[(attribute word, [[x, y, z] per corner])] of a collision OBJ"""
     V = []; out = []; cur = None
     for ln in open(p):
         if ln.startswith('o attr_'): cur = int(ln[7:15], 16)
         elif ln.startswith('v '): V.append([float(x) for x in ln.split()[1:]])
-        elif ln.startswith('f '): out.append((cur, np.array([V[int(x) - 1] for x in ln.split()[1:]])))
+        elif ln.startswith('f '): out.append((cur, [V[int(x) - 1] for x in ln.split()[1:]]))
     return out
 if __name__ == '__main__':
+    import numpy as np
     res = {}; sheet = Image.new('RGB', (4 * 3 * 132 + 60, 9 * 132 + 20), (30, 30, 30)); dr = ImageDraw.Draw(sheet)
     for ci, (n, nm) in enumerate(((1, 'mountain'), (2, 'desert'), (3, 'lakeside'), (4, 'forest'))):
         d = glob.glob(os.path.join(common.CLASSIC, 'courses', 'src', 'course%d_*' % n))[0]; C, M = load_visual(os.path.join(d, 'src_course%d_hi.obj' % n)); tree = cKDTree(C)
         by = collections.defaultdict(collections.Counter)
         for attr, Pp in load_coll(os.path.join(common.CLASSIC, 'obj', 'src_course%d_collision.obj' % n)):
             if attr & 0x800000: continue
-            dist, i = tree.query(Pp.mean(0))
+            dist, i = tree.query(np.array(Pp).mean(0))
             if dist < 6: by[(attr >> 16) & 15][M[i]] += 1
         res[nm] = {t: c.most_common(4) for t, c in by.items()}
         for t in sorted(by):

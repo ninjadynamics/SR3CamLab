@@ -2,9 +2,10 @@
     <tile>_dk        the tile at DARK of its brightness, rounded down (roadfill1995 rule T3; gapfill_gen's forest floor)
     sea.tile         course JSON "sea": the tile sea.from scaled per channel by sea.scale, rounded down
 They go where the importer looks: <classic>/courses/<game>/<course>/textures and <work>/classic_tex/course<N>/textures.
-    python derived_tiles.py <game> <course>"""
+    python derived_tiles.py <game> <course>
+Without numpy since 2026-10-15 (kb 31): a tile's channel values go through bytes.translate tables, int(v * scale) clipped to 0 .. 255,
+which is what numpy's (px * DARK).clip(0, 255).astype(np.uint8) gave for each value; the tiles are byte for byte the numpy version's."""
 import os, sys, re, glob, json
-import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import *
 DARK = 0.32                                                           # = roadfill1995.DARK = gapfill_gen.FOREST_DARK
@@ -19,26 +20,33 @@ def named(cfg):
 def make(game, course, log=print):
     import course as C
     from PIL import Image
-    cfg = C.use(game, course); van = os.path.join(CLASSIC, 'courses', game, cfg.get('gameplay', ''), 'textures')
+    if game == 'src': C.use_tex(game, course); cfg = dict(C.CFG)          # (the course's folders only: neither the build nor numpy)
+    else: cfg = C.use(game, course)
+    van = os.path.join(CLASSIC, 'courses', game, cfg.get('gameplay', ''), 'textures')
     dst = [van, os.path.join(WORK, 'classic_tex', 'course%s' % cfg['course'], 'textures')]
-    def put(name, rgb):
+    def put(name, img):
         for d in dst:
             os.makedirs(d, exist_ok=True); p = os.path.join(d, name + '.png')
-            if not os.path.exists(p): Image.fromarray(rgb).save(p)
+            if not os.path.exists(p): img.save(p)
     def vanilla(tile):
         p = os.path.join(van, tile + '.png')
-        return np.asarray(Image.open(p).convert('RGB')).astype(float) if os.path.exists(p) else None
+        return Image.open(p).convert('RGB') if os.path.exists(p) else None
+    def scaled(im, scale):
+        """each channel c: int(v * scale[c]) clipped to 0 .. 255 (px.astype(float) * scale, .clip(0, 255).astype(np.uint8))"""
+        b = im.tobytes(); out = bytearray(len(b))
+        for c in range(3): out[c::3] = b[c::3].translate(bytes(min(max(int(v * scale[c]), 0), 255) for v in range(256)))
+        return Image.frombytes('RGB', im.size, bytes(out))
     made = []
     for n in sorted(named(cfg)):
         if n.endswith('_dk') and not all(os.path.exists(os.path.join(d, n + '.png')) for d in dst):
             px = vanilla(n[:-3])
             if px is None: log('   %s: no tile %s to darken' % (n, n[:-3])); continue
-            put(n, (px * DARK).clip(0, 255).astype(np.uint8)); made.append(n)
+            put(n, scaled(px, (DARK,) * 3)); made.append(n)
     sea = cfg.get('sea') or {}
     if sea.get('from') and not all(os.path.exists(os.path.join(d, sea['tile'] + '.png')) for d in dst):
         px = vanilla(sea['from'])
         if px is None: log('   sea: no tile %s' % sea['from'])
-        else: put(sea['tile'], (px * np.asarray(sea['scale'], float)).clip(0, 255).astype(np.uint8)); made.append(sea['tile'])
+        else: sc_ = sea['scale']; put(sea['tile'], scaled(px, [float(sc_)] * 3 if isinstance(sc_, (int, float)) else [float(v) for v in sc_])); made.append(sea['tile'])      # (a number or one per channel, as numpy broadcast it)
     log('%s %s: %d derived tiles made%s' % (game, course, len(made), ''.join('\n   ' + m for m in made)))
     return made
 

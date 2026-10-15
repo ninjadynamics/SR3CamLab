@@ -1,8 +1,10 @@
 """SEGA Rally Championship: all four courses -> OBJ + MTL + coloured tiles (same rules as the Mountain work:
 classic_export.decode / material, classic_tex page fitting, m2colour). Sky / backdrop objects are exported as a
 separate OBJ (<course>_sky.obj) because they are +-100 km polygons.
-    python src_all.py [course numbers]     -> <classic>/courses/src/course<N>_<name>/"""
-import os, sys, json, numpy as np
+    python src_all.py [course numbers]     -> <classic>/courses/src/course<N>_<name>/
+Without numpy since 2026-10-15 (kb 31): pages and tiles are bytes (classic_tex.page_bytes / sheet_bytes / tile_bytes / to_image), corners
+tuples; the files are byte for byte the numpy version's."""
+import os, sys, json
 from PIL import Image, ImageDraw
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'core'))
 import common, classic_export as ce, classic_tex as ct, m2colour
@@ -20,17 +22,17 @@ def write_obj(path, objs, D, mats, tag):
         for p in ce.decode(k, tab, poly, polyf, tex16):
             name, info = ce.material(p['hdr']); mats.setdefault(name, info); used[name] = info
             if name != cur: fl.append('usemtl ' + name); cur = name
-            Pt = np.array([(x, y, -z) for x, y, z in p['verts']]); idx = []
+            Pt = [(x, y, -z) for x, y, z in p['verts']]; idx = []
             tw, th = (info['w'], info['h']) if info else (1, 1)
             for i in range(len(Pt)):
-                key = tuple(np.round(Pt[i], 4)); vi = vmap.get(key)
+                key = tuple(ce.r4(c) for c in Pt[i]); vi = vmap.get(key)
                 if vi is None: vi = nv + len(vl) + 1; vmap[key] = vi; vl.append('v %.4f %.4f %.4f' % tuple(Pt[i]))
                 u, v = p['uv'][i]
                 if info and info['mx']: u = u if int(u // tw) % 2 == 0 else (2 * tw * (int(u // tw) // 2 + 1) - u)
                 if info and info['my']: v = v if int(v // th) % 2 == 0 else (2 * th * (int(v // th) // 2 + 1) - v)
                 tl.append('vt %.5f %.5f' % (u / tw, 1.0 - v / th)); idx.append((vi, nvt + len(tl)))
-            g = np.cross(Pt[1] - Pt[0], Pt[2] - Pt[0]); hn = -np.array([p['normal'][0], p['normal'][1], -p['normal'][2]])
-            if np.dot(g, hn) < 0: idx = idx[::-1]
+            g = ce.cross(ce.sub(Pt[1], Pt[0]), ce.sub(Pt[2], Pt[0])); hn = (-p['normal'][0], -p['normal'][1], p['normal'][2])      # -np.array([n0, n1, -n2])
+            if ce.dot(g, hn) < 0: idx = idx[::-1]
             fl.append('f ' + ' '.join('%d/%d' % t for t in idx)); nf += 1
         fo.write('\n'.join(vl + tl + fl) + '\n'); nv += len(vl); nvt += len(tl)
     fo.close()
@@ -41,7 +43,7 @@ def write_obj(path, objs, D, mats, tag):
                 fm.write('map_Kd textures/%s.png\n' % name)
                 if info['alpha']: fm.write('map_d textures/%s.png\n' % name)
             else:
-                pal = m2colour.palette(); cb = int(name[4:], 16); c = pal[cb] / 255.0 if cb < len(pal) else (0.5, 0.5, 0.5)
+                pal = m2colour.palette_bytes(); cb = int(name[4:], 16); c = tuple(v / 255.0 for v in pal[3 * cb:3 * cb + 3]) if cb < len(pal) // 3 else (0.5, 0.5, 0.5)
                 fm.seek(fm.tell()); fm.write('Kd %.3f %.3f %.3f\n' % tuple(c))
     return nf, nv, used
 # Banner boards that are NOT inside a course's object block (world coordinates, sheet 0 tile x1280 y0 256x32):
@@ -53,12 +55,12 @@ def props(n):
     C = COURSES[n]; out = os.path.join(ROOT, 'course%d_%s' % (n, C['name'])); os.makedirs(os.path.join(out, 'textures'), exist_ok=True)
     main, poly, polyf, tex16 = ce.load(); D = (main, poly, polyf, tex16, ce.table(main)); mats = {}
     r = write_obj(os.path.join(out, 'src_course%d_props.obj' % n), PROPS[n], D, mats, 'course %d (%s), banner boards outside the course block' % (n, C['name']))
-    pg = ct.all_pages(); pages = json.load(open(os.path.join(out, 'pages.json'))) if os.path.exists(os.path.join(out, 'pages.json')) else {}
+    pg = ct.page_bytes(); pages = json.load(open(os.path.join(out, 'pages.json'))) if os.path.exists(os.path.join(out, 'pages.json')) else {}
     auto = {(0, 0): 0x200000, (0, 1): 0x280000}
     for k, o in pages.items(): auto[tuple(int(x) for x in k.split(','))] = o
     for name, m in mats.items():
         if not m: continue
-        sh = np.hstack([pg[auto[(m['sheet'], 0)]], pg[auto[(m['sheet'], 1)]]]); t = sh[m['y']:m['y'] + m['h'], m['x']:m['x'] + m['w']]
+        sh = ct.sheet_bytes(pg[auto[(m['sheet'], 0)]], pg[auto[(m['sheet'], 1)]]); t = ct.tile_bytes(sh, 2048, m, clip=True)      # np.hstack, sh[y:y + h, x:x + w]
         ct.to_image(t, m['alpha'], m).save(os.path.join(out, 'textures', name + '.png'))
     print('course %d %s: props %d faces, materials %s' % (n, C['name'], r[0], list(mats)))
     return r
@@ -69,16 +71,16 @@ def run(n):
     r2 = write_obj(os.path.join(out, base + '_sky.obj'), C['sky'], D, mats, 'course %d (%s), sky and backdrop objects' % (n, C['name']))
     r3 = write_obj(os.path.join(out, base + '_low.obj'), range(C['low'][0], C['low'][1] + 1), D, mats, 'course %d (%s), low detail' % (n, C['name']))
     json.dump(mats, open(os.path.join(out, 'materials.json'), 'w'), indent=0)
-    pg = ct.all_pages(); rects, res = ct.fit_pages(mats, pg)
+    pg = ct.page_bytes(); rects, res = ct.fit_pages(mats, pg)
     for key, sc in res.items(): print('  course %d sheet %d half %d: %d rectangles, best pages %s' % (n, key[0], key[1], len(rects[key]), [('%07x' % o, round(s, 2)) for s, o in sc[:3]]))
     # a sheet is 2048 x 1024 texels = one contiguous 1 MB block of the ROM (two 512 KB halves, x < 1024 first).
     # Sheet 1 = the course's block, taken from the fit of its first half; sheet 0 = the common block at 0x200000.
     base = res[(1, 0)][0][1]; auto = {(1, 0): base, (1, 1): base + 0x80000, (0, 0): 0x200000, (0, 1): 0x280000}
     json.dump({'%d,%d' % k: o for k, o in auto.items()}, open(os.path.join(out, 'pages.json'), 'w'))
-    sheets = {s: np.hstack([pg[auto[(s, 0)]], pg[auto[(s, 1)]]]) for s in (0, 1)}
+    sheets = {s: ct.sheet_bytes(pg[auto[(s, 0)]], pg[auto[(s, 1)]]) for s in (0, 1)}      # np.hstack: 2048 x 1024 texels
     for s in (0, 1):
         if not any(m and m['sheet'] == s for m in mats.values()): continue
-        im = Image.fromarray((sheets[s] * 17).astype(np.uint8)).convert('RGB'); dr = ImageDraw.Draw(im)
+        im = Image.frombytes('L', (2048, 1024), sheets[s].translate(ct.X17)).convert('RGB'); dr = ImageDraw.Draw(im)
         for m in mats.values():
             if m and m['sheet'] == s: dr.rectangle([m['x'], m['y'], m['x'] + m['w'] - 1, m['y'] + m['h'] - 1], outline=(255, 0, 0))
         im.save(os.path.join(out, 'sheets', 'sheet%d_rom%07x_2048x1024_rects.png' % (s, auto[(s, 0)])))
@@ -86,8 +88,8 @@ def run(n):
     cnt = miss = 0
     for name, m in mats.items():
         if not m: continue
-        t = sheets[m['sheet']][m['y']:m['y'] + m['h'], m['x']:m['x'] + m['w']]
-        if t.shape != (m['h'], m['w']): miss += 1; continue
+        t = ct.tile_bytes(sheets[m['sheet']], 2048, m)
+        if t is None: miss += 1; continue
         ct.to_image(t, m['alpha'], m).save(os.path.join(out, 'textures', name + '.png')); cnt += 1
     print('course %d %s: hi %d faces, sky %d faces, low %d faces; %d materials, %d tiles written, %d missing' % (n, C['name'], r1[0], r2[0], r3[0], len(mats), cnt, miss))
     print('   sky materials:', {k: (v and (v['cb'], v['luma'])) for k, v in r2[2].items()})

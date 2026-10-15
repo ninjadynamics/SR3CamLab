@@ -4,14 +4,14 @@
 Reads the region images (m2_build.py) and the sound program epr-17890.30 from your srallyc.zip; the sample file names come from
 <classic>/music/src_samples/index.csv and the old speech-recognition guesses from src_speech_candidates.csv when they are there."""
 import struct, csv, json, os, re
-import numpy as np
 import sys, zipfile
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'core')); import common   # tools/import/settings.json
 OUT = os.path.join(common.CLASSIC, 'sr2_gameplay', 'src') + '/'; os.makedirs(OUT, exist_ok=True)
 MUSIC = os.path.join(common.CLASSIC, 'music') + '/'
 d = open(os.path.join(common.TMP, 'm2', 'maincpu.bin'), 'rb').read(); O = 0x59F000      # RAM address = file offset + O
 u = lambda a: struct.unpack_from('<I', d, a - O)[0]; s = lambda a: struct.unpack_from('<i', d, a - O)[0]
-_z = zipfile.ZipFile(common.rom_zip('srallyc')); snd = np.frombuffer(_z.read(next(n for n in _z.namelist() if n.startswith('epr-17890'))), np.uint8).reshape(-1, 2)[:, ::-1].tobytes()   # byte-swapped 68000 image, mapped at 0x600000
+_z = zipfile.ZipFile(common.rom_zip('srallyc')); _s = _z.read(next(n for n in _z.namelist() if n.startswith('epr-17890')))
+snd = bytearray(len(_s)); snd[0::2] = _s[1::2]; snd[1::2] = _s[0::2]; snd = bytes(snd)       # byte-swapped 68000 image, mapped at 0x600000 (numpy: .reshape(-1, 2)[:, ::-1].tobytes())
 NREQ = 189; CODES = 0x5C3CE0; NAMES = 0x5C48C0
 names = []
 for i in range(NREQ):

@@ -1,15 +1,18 @@
-"""SEGA Rally Championship gameplay tables: section tables (main data) and pace-note tables (program ROM)."""
-import numpy as np, struct, os, sys
+"""SEGA Rally Championship gameplay tables: section tables (main data) and pace-note tables (program ROM).
+Without numpy since 2026-10-15 (kb 31): sections() gives nested lists (numpy's arrays' values: float32 as Python floats); only the
+diagnostics below (python m2_game.py) still compute with numpy."""
+import struct, os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'core')); import common   # tools/import/settings.json
 MAIN = os.path.join(common.TMP, 'm2', 'main_data.bin'); PROG = os.path.join(common.TMP, 'm2', 'maincpu.bin')
 SECT = {1: 0x0, 2: 0x3e00, 3: 0x7c00, 4: 0xba00}          # course (collision block order): 1 Mountain 2 Desert 3 Lake Side 4 Forest
 NOTES = [0x40470, 0x40500, 0x405a0, 0x40690]
-_d = np.fromfile(MAIN, '<u4'); _f = _d.view('<f4')
+_raw = open(MAIN, 'rb').read(); _d = memoryview(_raw).cast('I'); _f = memoryview(_raw).cast('f')      # np.fromfile(MAIN, '<u4'), .view('<f4')
 def sections(c):
+    """gate[n][2][3] two boundary points (y = 0) per section, quad[n][3] {4 | object index, point indices}, dirs[n][2] (cos, sin) of its heading"""
     o = SECT[c] // 4; n = int(_d[o]); p = [int(x) - 0x02000000 for x in _d[o + 1:o + 4]]
-    gate = _f[p[0] // 4:p[0] // 4 + 6 * n].reshape(n, 2, 3).astype(float)       # two boundary points (y = 0) per section
-    quad = _d[p[1] // 4:p[1] // 4 + 3 * n].reshape(n, 3)                         # {4 | object index, point indices}
-    dirs = _f[p[2] // 4:p[2] // 4 + 2 * n].reshape(n, 2).astype(float)           # (cos, sin) of the section's heading
+    g = _f[p[0] // 4:p[0] // 4 + 6 * n].tolist(); gate = [[g[6 * i:6 * i + 3], g[6 * i + 3:6 * i + 6]] for i in range(n)]
+    q = _d[p[1] // 4:p[1] // 4 + 3 * n].tolist(); quad = [q[3 * i:3 * i + 3] for i in range(n)]
+    r = _f[p[2] // 4:p[2] // 4 + 2 * n].tolist(); dirs = [r[2 * i:2 * i + 2] for i in range(n)]
     return gate, quad, dirs
 def notes(k):
     raw = open(PROG, 'rb').read(); o = NOTES[k]; out = []
@@ -19,7 +22,8 @@ def notes(k):
         out.append((s, a, b)); o += 12
     return out
 if __name__ == '__main__':
-    import collections
+    import collections, numpy as np
+    _sections = sections; sections = lambda c: tuple(np.array(a, float if k != 1 else np.uint32) for k, a in enumerate(_sections(c)))      # (numpy arrays for the diagnostics)
     for c in SECT:
         g, q, dr = sections(c); mid = g.mean(1); ang = np.unwrap(np.arctan2(dr[:, 1], dr[:, 0]))
         step = np.linalg.norm(np.diff(mid, axis=0), axis=1)

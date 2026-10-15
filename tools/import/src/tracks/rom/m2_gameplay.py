@@ -1,11 +1,29 @@
 """SEGA Rally Championship: gameplay.json + top-down plot per course, from the tables documented in ../src/gameplay.md.
 All positions in the axes of the OBJ exports: (x, y, -gameZ).
-    python m2_gameplay.py     -> <classic>/courses/src/course<N>_<name>/gameplay.json + gameplay_plot.png (needs src_all.py and m2_collision.py first)"""
-import numpy as np, struct, json, glob, os, math, sys
+    python m2_gameplay.py     -> <classic>/courses/src/course<N>_<name>/gameplay.json + gameplay_plot.png (needs src_all.py and m2_collision.py first)
+Without numpy since 2026-10-15 (kb 31): the tables are read with struct, the lengths summed as numpy summed them (the lap pairwise, the
+distances one after the other); the files are byte for byte the numpy version's."""
+import struct, json, glob, os, math, sys, itertools
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'core')); import common   # tools/import/settings.json
 from PIL import Image, ImageDraw
 import m2_game as G, m2_surface as S
-PROG = open(G.PROG, 'rb').read(); MAIN = np.fromfile(G.MAIN, np.uint8)
+PROG = open(G.PROG, 'rb').read(); MAIN = open(G.MAIN, 'rb').read()
+def pwsum(v):
+    """np.sum of a 1-D float64 array: numpy's pairwise sum (rtbake/rt_bake_game5.py pwsum)"""
+    n = len(v)
+    if n < 8:
+        s = 0.0
+        for x in v: s += x
+        return s
+    if n <= 128:
+        r = list(v[:8]); e = n - n % 8
+        for i in range(8, e, 8):
+            for j in range(8): r[j] += v[i + j]
+        s = ((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7]))
+        for x in v[e:]: s += x
+        return s
+    h = n // 2; h -= h % 8
+    return pwsum(v[:h]) + pwsum(v[h:])
 GAME_ID = {2: 0, 4: 1, 1: 2, 3: 3}                       # my course number (collision block order) -> the game's course id
 NAME = {1: 'mountain', 2: 'desert', 3: 'lakeside', 4: 'forest'}
 AIREC = {0: 0x8012f0, 1: 0x804bc0, 2: 0x8025e0, 3: 0x8038d0}
@@ -19,9 +37,10 @@ def u32(o, n): return struct.unpack_from('<%dI' % n, PROG, o)
 def obj(p): return [round(float(p[0]), 3), round(float(p[1]), 3), round(-float(p[2]), 3)]
 for c in (1, 2, 3, 4):
     gid = GAME_ID[c]; gate, quad, dirs = G.sections(c); n = len(gate)
-    rec = MAIN[AIREC[gid]:AIREC[gid] + 16 * n].reshape(n, 16); ai = rec[:, :12].copy().view('<f4').reshape(n, 3).astype(float); flag = rec[:, 12]
-    seg = np.linalg.norm(np.diff(np.vstack([ai, ai[:1]]), axis=0), axis=1); dist = np.concatenate([[0], np.cumsum(seg)[:-1]]); lap = float(seg.sum())
-    grid = np.array(fl(0x3db20 + 48 * gid, 12)).reshape(4, 3); rot = fl(0x3dc70 + 12 * gid, 3)
+    ai = [struct.unpack_from('<3f', MAIN, AIREC[gid] + 16 * i) for i in range(n)]; flag = [MAIN[AIREC[gid] + 16 * i + 12] for i in range(n)]      # 16-byte records: x y z (f32), flag
+    seg = [math.sqrt(((b[0] - a[0]) * (b[0] - a[0]) + (b[1] - a[1]) * (b[1] - a[1])) + (b[2] - a[2]) * (b[2] - a[2])) for a, b in zip(ai, ai[1:] + ai[:1])]      # np.linalg.norm(np.diff(np.vstack([ai, ai[:1]]), axis=0), axis=1)
+    dist = [0.0] + list(itertools.accumulate(seg))[:-1]; lap = pwsum(seg)      # np.concatenate([[0], np.cumsum(seg)[:-1]]), seg.sum()
+    g_ = fl(0x3db20 + 48 * gid, 12); grid = [g_[3 * k:3 * k + 3] for k in range(4)]; rot = fl(0x3dc70 + 12 * gid, 3)
     splits = [s for s in u32(0x1e790 + 32 * gid, 8) if s < n]; events = [s for s in u32(0x46010 + 16 * gid, 4) if s < n]
     notes = G.notes(gid); hd = dirs[0]
     out = dict(game='SEGA Rally Championship (Model 2A)', course=NAME[c], export_course_number=c, game_course_id=gid, axes='x, y, -gameZ (same as the OBJ exports); angles: heading vector in these axes',
@@ -33,17 +52,18 @@ for c in (1, 2, 3, 4):
         surfaces=dict(legend={str(k): v for k, v in SURF.items()}, note='collision polygon attribute bits 16-19; bit 23 = side polygon (bank / wall beside the road). See src_course%d_collision.obj groups' % c),
         pace_notes=[dict(section=s, distance_m=round(float(dist[s]), 1), position=obj(ai[s]), voice=a, icon=b, call=ICON.get(b, 'unknown')) for s, a, b in notes],
         ai_line=[dict(section=i, position=obj(ai[i]), distance_m=round(float(dist[i]), 1), speed_zone=int(flag[i] >> 4), variant=int(flag[i] & 15)) for i in range(n)],
-        sections=[dict(left_right=[obj(gate[i, 0]), obj(gate[i, 1])], heading=[round(float(dirs[i, 0]), 4), round(-float(dirs[i, 1]), 4)]) for i in range(n)])
+        sections=[dict(left_right=[obj(gate[i][0]), obj(gate[i][1])], heading=[round(float(dirs[i][0]), 4), round(-float(dirs[i][1]), 4)]) for i in range(n)])
     d = glob.glob(os.path.join(common.CLASSIC, 'courses', 'src', 'course%d_*' % c))[0]; json.dump(out, open(os.path.join(d, 'gameplay.json'), 'w'), indent=1)
     # plot (north = +gameZ up, i.e. the true plan; x right)
-    coll = S.load_coll(os.path.join(common.CLASSIC, 'obj', 'src_course%d_collision.obj' % c)); allp = np.vstack([p for a, p in coll]); mn = allp.min(0); mx = allp.max(0)
+    coll = S.load_coll(os.path.join(common.CLASSIC, 'obj', 'src_course%d_collision.obj' % c)); allp = [q for a, p in coll for q in p]      # np.vstack(...).min(0) / .max(0)
+    mn = [min(q[k] for q in allp) for k in range(3)]; mx = [max(q[k] for q in allp) for k in range(3)]
     W = 1600; sc = (W - 120) / max(mx[0] - mn[0], mx[2] - mn[2]); H = int((mx[2] - mn[2]) * sc) + 160
     def XY(p): return (60 + (p[0] - mn[0]) * sc, 60 + (p[2] - mn[2]) * sc)             # OBJ z = -gameZ grows downwards on the page -> gameZ up
     im = Image.new('RGB', (W, H), (245, 245, 240)); dr = ImageDraw.Draw(im)
     for a, p in coll:
         if a & 0x800000: continue
         dr.polygon([XY(q) for q in p], fill=SCOL.get((a >> 16) & 15, (255, 0, 255)))
-    aio = np.array([obj(p) for p in ai]); dr.line([XY(p) for p in aio] + [XY(aio[0])], fill=(40, 40, 40), width=1)
+    aio = [obj(p) for p in ai]; dr.line([XY(p) for p in aio] + [XY(aio[0])], fill=(40, 40, 40), width=1)
     for s in splits: x, y = XY(aio[s]); dr.rectangle([x - 7, y - 7, x + 7, y + 7], outline=(200, 0, 0), width=3); dr.text((x + 10, y - 16), 'CP s%d' % s, fill=(200, 0, 0))
     for s, a, b in notes: x, y = XY(aio[s]); dr.ellipse([x - 4, y - 4, x + 4, y + 4], fill=(0, 0, 0)); dr.text((x + 6, y + 2), '%d: %s' % (s, ICON.get(b, '?').split(' (')[0]), fill=(0, 0, 0))
     for p in grid: x, y = XY(obj(p)); dr.ellipse([x - 3, y - 3, x + 3, y + 3], fill=(255, 0, 255))

@@ -2,7 +2,6 @@
 see mame/src/mame/sega/model2.cpp ROM_START( srallyc )) straight from your own srallyc.zip (settings 'roms').
     python m2_build.py        -> <work>/tmp/m2/{maincpu, main_data, copro_data, polygons, textures}.bin"""
 import os, sys, zipfile
-import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'core'))
 import common
 
@@ -23,17 +22,21 @@ def find(ch, prefix):
     return c[0]
 
 def load32(ch, pairs, size):
-    buf = np.zeros(size // 2, dtype="<u2")
+    """the region's bytes: each pair of chips interleaved a 16-bit word at a time (lo, hi, lo, hi ...). With numpy this is
+    buf = np.zeros(size // 2, '<u2'); buf[off // 2::2][:len(a)] = a; buf[off // 2 + 1::2][:len(b)] = b (a, b the chips as '<u2');
+    here the same with byte slices of a step of 4 (each word's two bytes), done in C by Python itself, no numpy needed."""
+    buf = bytearray(size)
     for off, lo, hi in pairs:
-        a = np.frombuffer(ch[find(ch, lo)], dtype="<u2"); b = np.frombuffer(ch[find(ch, hi)], dtype="<u2")
-        buf[off // 2: off // 2 + 2 * len(a): 2] = a
-        buf[off // 2 + 1: off // 2 + 1 + 2 * len(b): 2] = b
+        a = ch[find(ch, lo)]; b = ch[find(ch, hi)]
+        for k in (0, 1):
+            buf[off + k: off + k + 2 * len(a): 4] = a[k::2]
+            buf[off + 2 + k: off + 2 + k + 2 * len(b): 4] = b[k::2]
     return buf
 
 def build(out=None, ch=None):
     out = out or os.path.join(common.TMP, 'm2'); os.makedirs(out, exist_ok=True); ch = ch or chips()
     for name, (pairs, size) in REGIONS.items():
-        load32(ch, pairs, size).tofile(os.path.join(out, name + '.bin'))
+        with open(os.path.join(out, name + '.bin'), 'wb') as f: f.write(load32(ch, pairs, size))
     return out
 
 if __name__ == '__main__':

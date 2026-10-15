@@ -47,7 +47,7 @@ def courses_(courses):
 def gameplay(courses):
     run('m2_gameplay.py')
 def export(courses):
-    for n in courses: run('-c', 'import course, classic_tex; course.use("src", "%d"); classic_tex.main()' % n, cwd=CORE)
+    for n in courses: run('-c', 'import course, classic_tex; course.use_tex("src", "%d"); classic_tex.main()' % n, cwd=CORE)      # (use_tex: the export's folders only, not the whole build)
 def gates(courses):
     for n in courses:
         if n == 1: run('gates1995.py', n, cwd=CORE)                     # the gate table is known for Mountain only (gates1995.TABLES)
