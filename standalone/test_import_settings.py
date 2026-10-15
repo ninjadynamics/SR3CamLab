@@ -2,7 +2,7 @@ import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from import_settings import binding, convert, yaml
+from import_settings import binding, convert, yaml, render_import
 
 class ImportTests(unittest.TestCase):
     def axis(self, name, minus=False):
@@ -29,6 +29,23 @@ class ImportTests(unittest.TestCase):
 
     def test_yaml_quotes_paths(self):
         self.assertIn("game_path: 'C:/Bruno''s games/Rally.exe'", yaml({'launch': {'game_path': "C:/Bruno's games/Rally.exe"}}))
+
+    def test_import_preserves_mod_configuration(self):
+        section = "patches: # private suite\n  mod_folder: 'D:/Bruno''s suite'\n  watchdog: off\n  enabled: off\n"
+        old = 'version: 1\n' + section + 'display:\n  width: 640\n'
+        result = render_import({'version': 1, 'display': {'width': 3840}}, old)
+        self.assertIn(section, result)
+        self.assertNotIn('width: 640', result)
+        self.assertEqual(result.count('patches:'), 1)
+
+    def test_fresh_import_configures_watchdog_location(self):
+        result = render_import({'version': 1})
+        self.assertIn('mod_folder:', result)
+        self.assertIn('watchdog: on', result)
+
+    def test_duplicate_mod_sections_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'Duplicate patches'):
+            render_import({'version': 1}, 'patches:\n  watchdog: off\npatches:\n')
 
 if __name__ == '__main__':
     unittest.main()

@@ -7,6 +7,7 @@ import argparse
 import configparser
 import json
 from pathlib import Path
+import re
 import shutil
 import xml.etree.ElementTree as ET
 
@@ -114,6 +115,25 @@ def yaml(data):
             lines.append(f'{section}: {scalar(value)}')
     return '\n'.join(lines) + '\n'
 
+def render_import(data, existing=''):
+    """Keep the suite's scalar patches section outside the TP import's scope."""
+    lines = existing.splitlines(keepends=True)
+    starts = [i for i, line in enumerate(lines)
+              if re.match(r'^patches\s*:\s*(?:#.*)?$', line.rstrip('\r\n'))]
+    if len(starts) > 1:
+        raise ValueError('Duplicate patches sections; existing settings were not changed.')
+    if starts:
+        start = starts[0]
+        end = next((i for i in range(start + 1, len(lines))
+                    if lines[i].strip() and not lines[i][0].isspace()
+                    and not lines[i].startswith('#')), len(lines))
+        section = ''.join(lines[start:end]).rstrip() + '\n'
+    else:
+        suite = Path(__file__).resolve().parent.parent.as_posix().replace("'", "''")
+        section = f"patches:\n  mod_folder: '{suite}'\n  watchdog: on\n"
+    return yaml(data) + '\n' + section
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('profile', type=Path)
@@ -122,11 +142,13 @@ def main():
     p.add_argument('--game-path', default='Rally.exe')
     args = p.parse_args()
     data, fields = convert(args.profile, args.game_ini, args.game_path)
+    rendered = render_import(data, args.output.read_text(encoding='utf-8-sig')
+                             if args.output.exists() else '')
     args.output.parent.mkdir(parents=True, exist_ok=True)
     if args.output.exists():
         shutil.copy2(args.output, args.output.with_suffix('.yaml.before-import'))
     temp = args.output.with_suffix('.yaml.tmp')
-    temp.write_text(yaml(data), encoding='utf-8')
+    temp.write_text(rendered, encoding='utf-8')
     temp.replace(args.output)
     # Preserve the full source profile, including inactive TP-only options, for audit/re-import.
     shutil.copy2(args.profile, args.output.parent / 'teknoparrot-import.xml')
