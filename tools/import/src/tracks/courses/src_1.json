@@ -68,11 +68,17 @@
   "note": "4 cars x (x, y, z) f32; table order in ROM = Desert, Forest, Mountain, Lake Side"
  },
  "gameplay": "course1_mountain",
+ "road_txt": "hide all",
+ "arcade_times": {"lap1": [[50, 21, 23, 34], [50, 18, 20, 30], [50, 15, 17, 26]], "later": [[21, 21, 23, 34], [18, 18, 20, 30], [15, 15, 17, 26]]},
+ "arcade_times_note": "seconds at checkpoint markers 1..4 (easy / normal / hard; lap 1 starts with the time at the line): the times the Mountain builds have carried since step99_mountain_p3 (made by arcade_times.py classic, copied into each build by hand until 2026-10-15). The build writes arcade_times.bin and road.txt itself from these now",
  "texel_block": "0x600000",
  "props_note": "every track needs its pobj files + grass cache: without them the grass set-up (0x506FD0) never runs and the game dies at 0x5DE16C when a wheel touches the road (in-game runs 2026-10-07). 'minimal' is not usable.",
  "cameras": "default",
  "sea": {
   "tile": "tex_sea_blue_64x64_c1DF",
+  "from": "tex_s1_x0512_y0768_64x64_c1DF",
+  "scale": [0.67005, 0.93011, 1.1401],
+  "scale_note": "the sea tile is the 1995 sea-bowl tile (sky object, colour base 0x1DF) scaled per channel and rounded down (derived_tiles.py makes it when it is missing). The script that first made it is lost; these factors were recovered from the two pictures on 2026-10-15 and give it again bit for bit",
   "level": -0.5,
   "cell": 40.0,
   "colour": [

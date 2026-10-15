@@ -64,3 +64,6 @@ blender/
 /tools/handling/stage_*/
 /tools/handling/*.sbf
 /tools/handling/flavor_realism.json
+
+# crash records of Git Bash (a killed shell leaves one in its working folder)
+*.stackdump

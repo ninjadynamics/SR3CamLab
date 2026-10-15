@@ -6,7 +6,9 @@
 #   before anything is copied; each is kept first as Main_release\tracks\_SR3Extras\original\<backup> (never over an
 #   existing backup, never over the files already in that folder);
 # - car files (manifest "files"): copied in; a file already there with other content is first kept as <file>.before_install.
-param([string]$Game = (& python (Join-Path $PSScriptRoot 'common.py') --paths game), [switch]$Force, [string]$Proc = "Rally")
+param([string]$Game = '', [switch]$Force, [string]$Proc = "Rally")
+$py = Join-Path $PSScriptRoot '..\..\python\python.exe'; if (-not (Test-Path -LiteralPath $py)) { $py = 'python' }       # the bundled Python, else yours
+if (-not $Game) { $Game = & $py (Join-Path $PSScriptRoot 'common.py') --paths game }           # tools\import\settings.json
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $m = Get-Content -LiteralPath (Join-Path $here "manifest.json") -Raw | ConvertFrom-Json

@@ -10,7 +10,8 @@ def _settings():
     p = os.environ.get('SR3_SETTINGS') or os.path.join(IMPORT, 'settings.json')
     try: return json.load(open(p, encoding='utf-8-sig'))
     except (OSError, ValueError): return {}
-SETTINGS = _settings()
+SETTINGS = {k: (os.path.normpath(v) if isinstance(v, str) and v and k in ('data_root', 'roms', 'sr3_game', 'blender', 'mame', 'revo_demo_tracks', 'revo_ps3_converted_tracks', 'ps3_usrdir') else v)
+            for k, v in _settings().items()}        # one spelling of every folder, however the file writes it
 def _game():
     """SEGA Rally 3's folder (the one with Rally.exe): settings 'sr3_game', else the launcher's own setup.yaml (PLAY.bat writes it)"""
     if SETTINGS.get('sr3_game'): return SETTINGS['sr3_game']

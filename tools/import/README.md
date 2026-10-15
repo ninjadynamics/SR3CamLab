@@ -6,6 +6,35 @@ numbered patch files, the importer, rounding, the light bake and the install int
 No SEGA data is in this repository. The scripts read your own ROM set and your own copy of SEGA Rally 3, and write
 every extract, build and texture to a data folder outside the repository.
 
+## The stack
+
+`IMPORT.bat` (beside PLAY.bat) opens the stack window: the folders below, a course, and a checklist of the steps, each
+with its own `.blend` export. The same from a command line:
+
+```
+python tools\import\stack.py src 1                                  every step but the install
+python tools\import\stack.py src 1 --steps rom                      only the ROM import
+python tools\import\stack.py src 1 --blend round,rt                 also a .blend after the rounding and of the lit track
+python tools\import\stack.py src 1 --steps install --title "Mountain"
+```
+
+| Step | What it does | Made by |
+|---|---|---|
+| 1. ROM | the 1995 game's geometry, tiles, gameplay data and times from your `srallyc.zip` (about 30 s) | `src\tracks\rom\rom_import.py` |
+| 2. Patch chain | the course's numbered patch files, in order | the importer's first pass |
+| 3. Rounding | natural surfaces rounded outwards (R4 by default) | the importer's first pass (`core\round1995.py`) |
+| 4. Light maps | the polygons to light, laid out on pages | the importer's first pass |
+| 5. Ray tracing | the light baked (C, every worker thread), then composed | `core\rtbake\rt_bake_game5.py`, `rt_compose_game.py` |
+| 6. Game files | SEGA Rally 3's track files in `<data>\work\out\<name>\Desert4` (flat-lit when 4 and 5 are off) | the importer's second pass |
+| 7. Install | into the game as a Classic mode alternative; the same title replaces its earlier copy | `core\install_track.ps1` |
+
+How a course is built (the importer's settings for both passes, the bake quality) is in
+`<game>\tracks\courses\<game>_<course>.recipe.json`. The `.blend` files go to `<data>\work\blend\<name>\`, in the axes of
+the course's OBJ export (those of the Blender patch files); Blender runs beside the next step.
+
+What the stack makes from a new, empty data folder is the installed Mountain build byte for byte (checked 2026-10-15:
+the ROM import, then every step; see `docs\kb\30_import_stack.md`).
+
 ## Layout
 
 | Folder | What |

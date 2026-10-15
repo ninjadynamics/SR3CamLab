@@ -1,0 +1,42 @@
+index,tile,class,sr3_track,sr3_texture_id,note
+0,tex_s1_x0000_y0000_512x128_c1DD_t,tree_wall,,,label from the course JSON
+1,tex_s1_x0000_y0128_256x256_c1DA,rock,Alpine4,e8a80b7c,label from the course JSON
+2,tex_s1_x0000_y0384_256x256_c0E7_t,ivy,,,label from the course JSON
+3,tex_s1_x0000_y0384_256x256_c1E0_t,ivy,,,label from the course JSON
+4,tex_s1_x0000_y0640_256x64_c11D,sign,,,label from the course JSON
+5,tex_s1_x0000_y0704_128x128_c1E0,rock,Alpine4,e8a80b7c,label from the course JSON
+6,tex_s1_x0128_y0704_128x128_c1C4,rock,Alpine4,e8a80b7c,label from the course JSON
+7,tex_s1_x0128_y0832_128x128_c1C4,stone_wall,Lakeside4,7dabd389,label from the course JSON
+8,tex_s1_x0256_y0128_256x256_c0EA,rock,Alpine4,e8a80b7c,label from the course JSON
+9,tex_s1_x0256_y0384_256x256_c1DA,rock,Alpine4,e8a80b7c,label from the course JSON
+10,tex_s1_x0512_y0000_512x64_c059,stone_wall,Lakeside4,7dabd389,label from the course JSON
+11,tex_s1_x0512_y0064_256x256_c1A5_t,tree,,,label from the course JSON
+12,tex_s1_x0512_y0320_256x128_c169_t,fence,,,auto label - check against the contact sheet
+13,tex_s1_x0512_y0320_256x128_c182_t,fence,,,auto label - check against the contact sheet
+14,tex_s1_x0512_y0448_256x256_c097,gravel,Lakeside4,6468d4aa,label from the course JSON
+15,tex_s1_x0512_y0448_256x256_c14C,dirt,Canyon4,1ec88958,auto label - check against the contact sheet
+16,tex_s1_x0512_y0448_256x256_c1FC,dirt,Lakeside4,ed8aec61,label from the course JSON
+17,tex_s1_x0512_y0704_128x128_c1C4,dirt,Lakeside4,ed8aec61,label from the course JSON
+18,tex_s1_x0512_y0832_128x64_c06A_t,fence,,,auto label - check against the contact sheet
+19,tex_s1_x0640_y0704_128x64_c16C,stone_wall,Lakeside4,7dabd389,label from the course JSON
+20,tex_s1_x0768_y0064_256x256_c0C1_t,tree,,,label from the course JSON
+21,tex_s1_x0768_y0320_256x256_c098,rock,Alpine4,e8a80b7c,label from the course JSON
+22,tex_s1_x0768_y0320_256x256_c0D6,rock,Canyon4,53850d6a,auto label - check against the contact sheet
+23,tex_s1_x0768_y0320_256x256_c0E3,rock,Canyon4,53850d6a,auto label - check against the contact sheet
+24,tex_s1_x0768_y0320_256x256_c0F2,rock,Alpine4,e8a80b7c,label from the course JSON
+25,tex_s1_x0768_y0320_256x256_c109,rock,Alpine4,e8a80b7c,label from the course JSON
+26,tex_s1_x0768_y0320_256x256_c1E3,rock,Canyon4,53850d6a,auto label - check against the contact sheet
+27,tex_s1_x0768_y0576_256x256_c1DB_t,tree_wall,,,label from the course JSON
+28,tex_s1_x1536_y0000_256x256_c064,grass,Lakeside4,2ce6d1af,label from the course JSON
+29,tex_s1_x1536_y0000_256x256_c0D7,grass,Lakeside4,d8dcd068,auto label - check against the contact sheet
+30,tex_s1_x1536_y0000_256x256_c0FD,grass,Lakeside4,2ce6d1af,label from the course JSON
+31,tex_s1_x1536_y0000_256x256_c1DC,grass,Lakeside4,2ce6d1af,label from the course JSON
+32,tex_s1_x1536_y0000_256x256_c1E0,grass,Lakeside4,2ce6d1af,label from the course JSON
+33,tex_s1_x1536_y0000_256x256_c1FA,grass,Lakeside4,d8dcd068,auto label - check against the contact sheet
+34,tex_s1_x1536_y0000_256x256_c1FB,grass,Lakeside4,2ce6d1af,label from the course JSON
+35,tex_s1_x1536_y0256_256x256_c1DA,asphalt,Alpine4,02b4772a,auto label - check against the contact sheet
+36,tex_s1_x1792_y0000_256x256_c05A,asphalt,Lakeside4,6025fa42,label from the course JSON
+37,tex_s1_x1792_y0000_256x256_c1DA,asphalt,Lakeside4,6025fa42,label from the course JSON
+38,tex_s1_x1792_y0256_128x256_c1DE,stone_wall,Lakeside4,7dabd389,label from the course JSON
+39,tex_s1_x1920_y0256_128x128_c1DC,flat,,,label from the course JSON
+40,tex_s1_x1920_y0384_128x128_c1DC,flat,,,label from the course JSON

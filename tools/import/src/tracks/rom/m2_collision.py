@@ -4,13 +4,13 @@ Layout found by inspection of the user's ROM (not documented anywhere I found):
   cell : K polygon records of 16 floats (4 xyz corners + 4 floats; for flat 'P' records the 4 floats are an
          unnormalised plane a,b,c,d with a*x+b*y+c*z+d=0), followed by ONE info record of 16 u32:
          K attribute words (low bits = vertex count 3/4, bit 23 = flag seen on off-road quads), rest 0x77777777.
-Exports each course as OBJ grouped by attribute word and a centre-line CSV."""
+Exports each course as OBJ grouped by attribute word and a centre-line CSV.
+    python m2_collision.py    -> <classic>/obj/src_course<N>_collision.obj + src_course<N>_centreline.csv (N = block order: 1 Mountain 2 Desert 3 Lake Side 4 Forest)"""
 import sys, os, numpy as np
 from collections import Counter
-import os as _os, sys as _sys; _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '..', '..', '..', 'core')); import common as _cm   # tools/import/settings.json
-_TMP = _cm.TMP.replace('\\', '/'); _DATA = _cm.DATA.replace('\\', '/')
-O = _TMP + r"/sr_classic/out/m2/"
-OUT = os.path.dirname(os.path.dirname(O.rstrip("/"))) + "/obj/"
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'core')); import common   # tools/import/settings.json
+O = os.path.join(common.TMP, 'm2') + '/'                          # region images (m2_build.py)
+OUT = os.path.join(common.CLASSIC, 'obj') + '/'; os.makedirs(OUT, exist_ok=True)
 c = np.fromfile(O + "copro_data.bin", dtype="<u4")[:0x100000 // 4]
 f = c.view("<f4")
 

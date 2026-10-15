@@ -120,7 +120,7 @@ if __name__ == '__main__':
     names = 'ABCD'
     json.dump(dict(code=blob.hex(), entry=entry, data=data, relocs=relocs, size=len(blob), alloc=ALLOC,
                    surfaces=['%d %s %s%s (%s)' % (i, n, names[k & 3] if k != 0xFF else '-', ' road' if k != 0xFF and k & 0x80 else '', why) for i, (n, k, why) in enumerate(cls)]),
-              open(os.path.join(HERE, 'srcport.json'), 'w'), indent=0)
+              open(os.path.join(HERE, 'srcport.json'), 'w', newline='\n'), indent=0)
     print('SRCPORT %d bytes, entry +0x%X, data +0x%X, %d relocations, %d surface records (%d Tyre_Road)' % (
         len(blob), entry, data, len(relocs), len(cls), sum(1 for _, k, _ in cls if k != 0xFF and k & 0x80)))
     for i, (n, k, why) in enumerate(cls):

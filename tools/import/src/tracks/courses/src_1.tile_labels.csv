@@ -1,0 +1,141 @@
+index,tile,class,sr3_track,sr3_texture_id,note
+0,tex_s1_x0000_y0000_256x256_c0AE,rock,Canyon4,53850d6a,"SR3 texture, 7 m per repeat. Canyon4 sandstone (user choice); the all-SR3 version alternates 53850d6a / 89f2eea0 / c24eb36a by tile"
+1,tex_s1_x0000_y0000_256x256_c0E4,rock,Canyon4,53850d6a,"SR3 texture, 7 m per repeat. Canyon4 sandstone (user choice); the all-SR3 version alternates 53850d6a / 89f2eea0 / c24eb36a by tile"
+2,tex_s1_x0000_y0000_256x256_c0EA,rock,Canyon4,53850d6a,"SR3 texture, 7 m per repeat. Canyon4 sandstone (user choice); the all-SR3 version alternates 53850d6a / 89f2eea0 / c24eb36a by tile"
+3,tex_s1_x0000_y0000_256x256_c0F2,rock,Canyon4,53850d6a,"SR3 texture, 7 m per repeat. Canyon4 sandstone (user choice); the all-SR3 version alternates 53850d6a / 89f2eea0 / c24eb36a by tile"
+4,tex_s1_x0000_y0000_256x256_c101,rock,Canyon4,53850d6a,"SR3 texture, 7 m per repeat. Canyon4 sandstone (user choice); the all-SR3 version alternates 53850d6a / 89f2eea0 / c24eb36a by tile"
+5,tex_s1_x0000_y0000_256x256_c102,rock,Canyon4,53850d6a,"SR3 texture, 7 m per repeat. Canyon4 sandstone (user choice); the all-SR3 version alternates 53850d6a / 89f2eea0 / c24eb36a by tile"
+6,tex_s1_x0000_y0000_256x256_c106,rock,Canyon4,53850d6a,"SR3 texture, 7 m per repeat. Canyon4 sandstone (user choice); the all-SR3 version alternates 53850d6a / 89f2eea0 / c24eb36a by tile"
+7,tex_s1_x0000_y0000_256x256_c1A6,grass,Lakeside4,d8dcd068,"SR3 texture, 4 m per repeat (was rock: the tile is green)"
+8,tex_s1_x0000_y0256_256x256_c0EE,asphalt,Alpine4,02b4772a,"SR3 texture, 3 m per repeat"
+9,tex_s1_x0000_y0512_128x128_c0EB,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+10,tex_s1_x0000_y0512_128x128_c0FE,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+11,tex_s1_x0000_y0512_128x128_c0FF,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+12,tex_s1_x0000_y0640_128x128_c099,house_brick,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+13,tex_s1_x0000_y0640_128x128_c0E2,house_brick,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+14,tex_s1_x0000_y0640_128x128_c0E9,house_brick,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+15,tex_s1_x0000_y0768_128x128_c0F8,stone_wall,Alpine4,24a1910c,"SR3 texture, 3 m per repeat"
+16,tex_s1_x0128_y0512_128x128_c0BE_t,crown,,,mixed: classic cut-out; all-SR3: SR3 cut-out in the same layout
+17,tex_s1_x0128_y0640_128x128_c067,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+18,tex_s1_x0128_y0640_128x128_c0EA,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+19,tex_s1_x0128_y0768_128x64_c0A7,cobbles,Alpine4,fc24c933,"SR3 texture, 3 m per repeat"
+20,tex_s1_x0256_y0128_256x256_c07C,asphalt,Alpine4,02b4772a,"SR3 texture, 3 m per repeat"
+21,tex_s1_x0256_y0128_256x256_c0EE,asphalt,Alpine4,02b4772a,"SR3 texture, 3 m per repeat"
+22,tex_s1_x0256_y0128_256x256_c103,asphalt,Alpine4,02b4772a,"SR3 texture, 3 m per repeat"
+23,tex_s1_x0256_y0448_128x128_c0FC,church,,,mixed: classic tile; all-SR3: SR3 church stone and windows
+24,tex_s1_x0256_y0576_128x128_c0E2,house_stone,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+25,tex_s1_x0256_y0576_128x128_c0E3,house_stone,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+26,tex_s1_x0256_y0576_128x128_c0E4,house_stone,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+27,tex_s1_x0256_y0704_128x128_c0AD,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+28,tex_s1_x0256_y0704_128x128_c10D,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+29,tex_s1_x0256_y0704_128x128_c10E,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+30,tex_s1_x0384_y0384_128x128_c0E1,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+31,tex_s1_x0384_y0384_128x128_c0E2,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+32,tex_s1_x0384_y0384_128x128_c0E7,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+33,tex_s1_x0384_y0384_128x128_c0F2,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+34,tex_s1_x0384_y0384_128x128_c0F7,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+35,tex_s1_x0384_y0640_128x128_c081,dirt,Canyon4,1ec88958,"SR3 texture, 4 m per repeat (sandy verge, was plaster)"
+36,tex_s1_x0384_y0640_128x128_c10D,dirt,Canyon4,1ec88958,"SR3 texture, 4 m per repeat (sandy verge, was plaster)"
+37,tex_s1_x0384_y0768_64x64_c104_t,grass,Lakeside4,d8dcd068,"SR3 texture, 4 m per repeat (was cobbles: the tile is green)"
+38,tex_s1_x0448_y0512_128x128_c0D5_t,crown,,,mixed: classic cut-out; all-SR3: SR3 cut-out in the same layout
+39,tex_s1_x0448_y0768_64x64_c0D6_t,trunk,,,mixed: classic cut-out; all-SR3: SR3 cut-out in the same layout
+40,tex_s1_x0448_y0768_64x64_c0E4_t,trunk,,,mixed: classic cut-out; all-SR3: SR3 cut-out in the same layout
+41,tex_s1_x0448_y0768_64x64_c0E8_t,trunk,,,mixed: classic cut-out; all-SR3: SR3 cut-out in the same layout
+42,tex_s1_x0512_y0256_256x128_c0E3,dirt,Canyon4,1ec88958,"SR3 texture, 4 m per repeat (sandy soil)"
+43,tex_s1_x0512_y0384_128x128_c0E7,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+44,tex_s1_x0512_y0384_128x128_c0F3,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+45,tex_s1_x0512_y0384_128x128_c0F4,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+46,tex_s1_x0512_y0384_128x128_c0F5,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+47,tex_s1_x0512_y0384_128x128_c0F6,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+48,tex_s1_x0512_y0640_128x128_c0AD,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+49,tex_s1_x0512_y0640_128x128_c10D,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+50,tex_s1_x0512_y0640_128x128_c10E,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+51,tex_s1_x0576_y0512_128x128_c0E0,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+52,tex_s1_x0576_y0512_128x128_c0E1,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+53,tex_s1_x0576_y0512_128x128_c0EB,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+54,tex_s1_x0576_y0512_128x128_c0FB,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+55,tex_s1_x0576_y0512_128x128_c111,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+56,tex_s1_x0576_y0768_32x32_c0A7,roof,Alpine4,65f21786,"SR3 texture, 3 m per repeat"
+57,tex_s1_x0576_y0768_32x32_c0CF,roof,Alpine4,65f21786,"SR3 texture, 3 m per repeat"
+58,tex_s1_x0576_y0768_32x32_c0E2,roof,Alpine4,65f21786,"SR3 texture, 3 m per repeat"
+59,tex_s1_x0576_y0768_32x32_c0E5,roof,Alpine4,65f21786,"SR3 texture, 3 m per repeat"
+60,tex_s1_x0576_y0768_32x32_c0E7,roof,Alpine4,65f21786,"SR3 texture, 3 m per repeat"
+61,tex_s1_x0576_y0768_32x32_c0E9,roof,Alpine4,65f21786,"SR3 texture, 3 m per repeat"
+62,tex_s1_x0576_y0768_32x32_c0EA,roof,Alpine4,65f21786,"SR3 texture, 3 m per repeat"
+63,tex_s1_x0576_y0768_32x32_c0EB,roof,Alpine4,65f21786,"SR3 texture, 3 m per repeat"
+64,tex_s1_x0576_y0768_32x32_c0F8,roof,Alpine4,65f21786,"SR3 texture, 3 m per repeat"
+65,tex_s1_x0576_y0768_32x32_c0FF,roof,Alpine4,65f21786,"SR3 texture, 3 m per repeat"
+66,tex_s1_x0576_y0768_32x32_c100,roof,Alpine4,65f21786,"SR3 texture, 3 m per repeat"
+67,tex_s1_x0640_y0384_128x128_c0E7,house_stone,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+68,tex_s1_x0640_y0384_128x128_c0F8,house_stone,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+69,tex_s1_x0640_y0384_128x128_c0F9,house_stone,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+70,tex_s1_x0640_y0640_64x64_c0E4_t,bare,,,mixed: classic cut-out; all-SR3: SR3 cut-out in the same layout
+71,tex_s1_x0640_y0640_64x64_c0EC_t,bare,,,mixed: classic cut-out; all-SR3: SR3 cut-out in the same layout
+72,tex_s1_x0640_y0640_64x64_c109_t,bare,,,mixed: classic cut-out; all-SR3: SR3 cut-out in the same layout
+73,tex_s1_x0640_y0640_64x64_c10B_t,bare,,,mixed: classic cut-out; all-SR3: SR3 cut-out in the same layout
+74,tex_s1_x0640_y0704_128x128_c0AD,house_stone,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+75,tex_s1_x0640_y0704_128x128_c10D,house_stone,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+76,tex_s1_x0640_y0704_128x128_c10E,house_stone,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+77,tex_s1_x0704_y0512_64x64_c0DE,cobbles,Alpine4,fc24c933,SR3 texture (was gravel: showed as grass on the town pavement)
+78,tex_s1_x0704_y0576_128x128_c0AD,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+79,tex_s1_x0704_y0576_128x128_c0E5,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+80,tex_s1_x0704_y0576_128x128_c0E6,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+81,tex_s1_x0704_y0576_128x128_c10D,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+82,tex_s1_x0704_y0576_128x128_c10E,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+83,tex_s1_x0768_y0000_256x64_c0DF,sign,,,mixed: classic tile; all-SR3: SR3 sponsor boards
+84,tex_s1_x0768_y0064_256x256_c0E4,rock,Canyon4,53850d6a,"SR3 texture, 7 m per repeat. Canyon4 sandstone (user choice); the all-SR3 version alternates 53850d6a / 89f2eea0 / c24eb36a by tile"
+85,tex_s1_x0768_y0064_256x256_c0EA,rock,Canyon4,53850d6a,"SR3 texture, 7 m per repeat. Canyon4 sandstone (user choice); the all-SR3 version alternates 53850d6a / 89f2eea0 / c24eb36a by tile"
+86,tex_s1_x0768_y0064_256x256_c0F2,rock,Canyon4,53850d6a,"SR3 texture, 7 m per repeat. Canyon4 sandstone (user choice); the all-SR3 version alternates 53850d6a / 89f2eea0 / c24eb36a by tile"
+87,tex_s1_x0768_y0064_256x256_c101,rock,Canyon4,53850d6a,"SR3 texture, 7 m per repeat. Canyon4 sandstone (user choice); the all-SR3 version alternates 53850d6a / 89f2eea0 / c24eb36a by tile"
+88,tex_s1_x0768_y0064_256x256_c102,rock,Canyon4,53850d6a,"SR3 texture, 7 m per repeat. Canyon4 sandstone (user choice); the all-SR3 version alternates 53850d6a / 89f2eea0 / c24eb36a by tile"
+89,tex_s1_x0768_y0320_128x128_c0ED_t,tree,,,mixed: classic cut-out; all-SR3: SR3 cut-out in the same layout
+90,tex_s1_x0768_y0320_128x128_c10A_t,tree,,,mixed: classic cut-out; all-SR3: SR3 cut-out in the same layout
+91,tex_s1_x0768_y0320_128x128_c110_t,tree,,,mixed: classic cut-out; all-SR3: SR3 cut-out in the same layout
+92,tex_s1_x0768_y0320_128x128_c1A5_t,tree,,,mixed: classic cut-out; all-SR3: SR3 cut-out in the same layout
+93,tex_s1_x0768_y0448_128x128_c0FC,church,,,mixed: classic tile; all-SR3: SR3 church stone and windows
+94,tex_s1_x0768_y0704_128x128_c0AD,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+95,tex_s1_x0768_y0704_128x128_c10D,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+96,tex_s1_x0832_y0576_128x128_c0CF,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+97,tex_s1_x0832_y0576_128x128_c0E7,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+98,tex_s1_x0832_y0576_128x128_c0E8,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+99,tex_s1_x0832_y0576_128x128_c0FD,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+100,tex_s1_x0896_y0448_128x128_c0EB,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+101,tex_s1_x0896_y0448_128x128_c0FE,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+102,tex_s1_x0896_y0448_128x128_c10D,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+103,tex_s1_x0896_y0704_128x128_c0AD,house_stone,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+104,tex_s1_x0896_y0704_128x128_c10D,house_stone,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+105,tex_s1_x0960_y0576_64x128_c10D_t,house_stone,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+106,tex_s1_x0960_y0576_64x128_c10F_t,house_stone,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+107,tex_s1_x1024_y0000_256x256_c0EE,asphalt,Alpine4,02b4772a,"SR3 texture, 3 m per repeat"
+108,tex_s1_x1024_y0256_256x256_c0AE,rock,Canyon4,53850d6a,"SR3 texture, 7 m per repeat. Canyon4 sandstone (user choice); the all-SR3 version alternates 53850d6a / 89f2eea0 / c24eb36a by tile"
+109,tex_s1_x1280_y0000_256x256_c0EE,asphalt,Alpine4,02b4772a,"SR3 texture, 3 m per repeat"
+110,tex_s1_x1280_y0256_256x256_c0D6,rock,Canyon4,53850d6a,"SR3 texture, 7 m per repeat. Canyon4 sandstone (user choice); the all-SR3 version alternates 53850d6a / 89f2eea0 / c24eb36a by tile"
+111,tex_s1_x1536_y0000_128x256_c06A,cobbles,Alpine4,fc24c933,"SR3 texture, 3 m per repeat"
+112,tex_s1_x1536_y0000_128x256_c105,cobbles,Alpine4,fc24c933,"SR3 texture, 3 m per repeat"
+113,tex_s1_x1536_y0000_128x256_c10C,cobbles,Alpine4,fc24c933,"SR3 texture, 3 m per repeat"
+114,tex_s1_x1536_y0256_256x256_c0C2_t,tree_wall,,,upright boards get the SR3 tree row Alpine4 484f0734; other faces keep the classic texture
+115,tex_s1_x1664_y0000_256x256_c1A6_t,ivy,,,mixed: classic cut-out; all-SR3: SR3 cut-out in the same layout
+116,tex_s1_x1664_y0000_256x256_c1D6_t,ivy,,,mixed: classic cut-out; all-SR3: SR3 cut-out in the same layout
+117,tex_s1_x1792_y0256_256x128_c058_t,fence,,,guard rail. mixed: classic tile; all-SR3: classic silhouette filled with SR3 galvanised metal
+118,tex_s1_x1792_y0384_128x128_c099,arcade,,,"mixed: classic tile; all-SR3: SR3 stone, arched doors"
+119,tex_s1_x1792_y0384_128x128_c0E9,arcade,,,"mixed: classic tile; all-SR3: SR3 stone, arched doors"
+120,tex_s1_x1792_y0384_128x128_c0EB,arcade,,,"mixed: classic tile; all-SR3: SR3 stone, arched doors"
+121,tex_s1_x1920_y0000_64x128_c0A7_t,lamp,,,mixed: classic tile; all-SR3: classic silhouette filled with SR3 metal
+122,tex_s1_x1920_y0128_128x128_c0C2_t,crown,,,mixed: classic cut-out; all-SR3: SR3 cut-out in the same layout
+123,tex_s1_x1920_y0128_128x128_c0D5_t,crown,,,mixed: classic cut-out; all-SR3: SR3 cut-out in the same layout
+124,tex_s1_x1920_y0128_128x128_c107_t,crown,,,mixed: classic cut-out; all-SR3: SR3 cut-out in the same layout
+125,tex_s1_x1920_y0128_128x128_c108_t,crown,,,mixed: classic cut-out; all-SR3: SR3 cut-out in the same layout
+126,tex_s1_x1920_y0384_128x128_c0E2,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+127,tex_s1_x1920_y0384_128x128_c0EA,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+128,tex_s1_x1920_y0384_128x128_c0FA,house_plaster,,,mixed version keeps the classic tile; all-SR3 version: composed SR3 facade bays
+129,tex_s1_x1984_y0000_64x128_c0FC,church,,,mixed: classic tile; all-SR3: SR3 church stone and windows
+130,tex_s1_x1280_y0256_256x256_c0D6_dk,rock,,,dark forest floor made by gapfill_gen from tex_s1_x1280_y0256_256x256_c0D6
+131,tex_s1_x0000_y0000_256x256_c101_dk,rock,,,dark forest floor made by gapfill_gen from tex_s1_x0000_y0000_256x256_c101
+132,tex_s1_x0000_y0000_256x256_c106_dk,rock,,,dark forest floor made by gapfill_gen from tex_s1_x0000_y0000_256x256_c106
+133,tex_s1_x0000_y0000_256x256_c0AE_dk,rock,,,dark forest floor made by gapfill_gen from tex_s1_x0000_y0000_256x256_c0AE
+134,tex_s1_x0768_y0064_256x256_c101_dk,rock,,,dark forest floor made by gapfill_gen from tex_s1_x0768_y0064_256x256_c101
+135,tex_s1_x0000_y0000_256x256_c1A6_dk,grass,,,dark forest floor made by gapfill_gen from tex_s1_x0000_y0000_256x256_c1A6
+136,tex_s1_x0000_y0000_256x256_c0E4_dk,rock,,,dark forest floor made by gapfill_gen from tex_s1_x0000_y0000_256x256_c0E4
+137,tex_s1_x0000_y0000_256x256_c0F2_dk,rock,,,dark forest floor made by gapfill_gen from tex_s1_x0000_y0000_256x256_c0F2
+138,tex_s1_x0000_y0000_256x256_c102_dk,rock,,,dark forest floor made by gapfill_gen from tex_s1_x0000_y0000_256x256_c102
+139,tex_s1_x0000_y0000_256x256_c0EA_dk,rock,,,dark forest floor made by gapfill_gen from tex_s1_x0000_y0000_256x256_c0EA

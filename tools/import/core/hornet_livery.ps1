@@ -23,7 +23,8 @@
 
 $HornetLiveryTable = Join-Path $PSScriptRoot "hornet_liveries.json"
 if (-not (Get-Variable -Name HornetLiveryStore -ErrorAction SilentlyContinue)) { $HornetLiveryStore = $env:SR3_HORNET_LIVERIES }
-$HornetLiveryGame = & python (Join-Path $PSScriptRoot 'common.py') --paths game     # tools\import\settings.json
+$py = Join-Path $PSScriptRoot '..\..\python\python.exe'; if (-not (Test-Path -LiteralPath $py)) { $py = 'python' }       # the bundled Python, else yours
+$HornetLiveryGame = & $py (Join-Path $PSScriptRoot 'common.py') --paths game     # tools\import\settings.json
 
 function Get-HornetLiverySha([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }

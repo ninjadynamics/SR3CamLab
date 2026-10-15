@@ -1,0 +1,187 @@
+index,tile,class,sr3_track,sr3_texture_id,note
+0,tex_s1_x0000_y0000_256x256_c0A8,sand,Desert4,ca48d483,auto label - check against the contact sheet
+1,tex_s1_x0000_y0000_256x256_c0AD,sand,Desert4,ca48d483,auto label - check against the contact sheet
+2,tex_s1_x0000_y0000_256x256_c21A,sand,Desert4,4427b0a6,label from the course JSON
+3,tex_s1_x0000_y0256_256x256_c0B9,dirt,Canyon4,1ec88958,auto label - check against the contact sheet
+4,tex_s1_x0000_y0256_256x256_c0BA,dirt,Canyon4,1ec88958,auto label - check against the contact sheet
+5,tex_s1_x0000_y0256_256x256_c0BB,dirt,Canyon4,1ec88958,auto label - check against the contact sheet
+6,tex_s1_x0000_y0768_128x64_c0C5_t,bush,,,label from the course JSON
+7,tex_s1_x0000_y0768_128x64_c0C9_t,bush,,,label from the course JSON
+8,tex_s1_x0128_y0768_128x32_c13C,sign,,,label from the course JSON
+9,tex_s1_x0256_y0000_256x256_c0AA,grass,Lakeside4,d8dcd068,auto label - check against the contact sheet
+10,tex_s1_x0256_y0000_256x256_c0B6,grass,Lakeside4,d8dcd068,auto label - check against the contact sheet
+11,tex_s1_x0256_y0000_256x256_c0BC,grass,Lakeside4,d8dcd068,auto label - check against the contact sheet
+12,tex_s1_x0256_y0000_256x256_c142,grass,Desert4,3eab748d,label from the course JSON
+13,tex_s1_x0256_y0000_256x256_c161,grass,Lakeside4,d8dcd068,auto label - check against the contact sheet
+14,tex_s1_x0256_y0000_256x256_c1C3,dirt,Canyon4,1ec88958,label from the course JSON
+15,tex_s1_x0256_y0000_256x256_c1F5,grass,Desert4,3eab748d,label from the course JSON
+16,tex_s1_x0256_y0256_256x256_c217,dirt,Canyon4,1ec88958,auto label - check against the contact sheet
+17,tex_s1_x0256_y0768_128x128_c07F,brick_wall,Lakeside4,9ad7a350,label from the course JSON
+18,tex_s1_x0256_y0768_128x128_c0AC,brick_wall,Lakeside4,9ad7a350,label from the course JSON
+19,tex_s1_x0256_y0768_128x128_c0DE,brick_wall,Lakeside4,9ad7a350,label from the course JSON
+20,tex_s1_x0256_y0768_128x128_c105,brick_wall,Lakeside4,9ad7a350,label from the course JSON
+21,tex_s1_x0256_y0768_128x128_c132,brick_wall,Lakeside4,9ad7a350,label from the course JSON
+22,tex_s1_x0256_y0768_128x128_c16C,brick_wall,Lakeside4,9ad7a350,label from the course JSON
+23,tex_s1_x0256_y0768_128x128_c1B0,brick_wall,Lakeside4,9ad7a350,label from the course JSON
+24,tex_s1_x0352_y0896_32x32_c177_t,lamp,,,label from the course JSON
+25,tex_s1_x0384_y0832_64x64_c132_t,lamp,,,label from the course JSON
+26,tex_s1_x0384_y0896_32x32_c007,window,,,label from the course JSON
+27,tex_s1_x0384_y0896_32x32_c16E,window,,,label from the course JSON
+28,tex_s1_x0448_y0832_64x32_c007_t,window,,,label from the course JSON
+29,tex_s1_x0448_y0832_64x32_c081_t,window,,,label from the course JSON
+30,tex_s1_x0448_y0832_64x32_c0C8_t,window,,,label from the course JSON
+31,tex_s1_x0448_y0832_64x32_c0F3_t,window,,,label from the course JSON
+32,tex_s1_x0448_y0832_64x32_c116_t,window,,,label from the course JSON
+33,tex_s1_x0448_y0832_64x32_c136_t,window,,,label from the course JSON
+34,tex_s1_x0448_y0832_64x32_c176_t,window,,,label from the course JSON
+35,tex_s1_x0448_y0832_64x32_c181_t,window,,,label from the course JSON
+36,tex_s1_x0448_y0832_64x32_c186_t,window,,,label from the course JSON
+37,tex_s1_x0448_y0832_64x32_c187_t,window,,,label from the course JSON
+38,tex_s1_x0448_y0832_64x32_c18A_t,window,,,label from the course JSON
+39,tex_s1_x0448_y0832_64x32_c18C_t,window,,,label from the course JSON
+40,tex_s1_x0448_y0832_64x32_c1B5_t,window,,,label from the course JSON
+41,tex_s1_x0448_y0832_64x32_c1B9_t,window,,,label from the course JSON
+42,tex_s1_x0448_y0832_64x32_c1C4_t,window,,,label from the course JSON
+43,tex_s1_x0448_y0832_64x32_c1CE_t,window,,,label from the course JSON
+44,tex_s1_x0448_y0864_64x32_c13C,sign,,,label from the course JSON
+45,tex_s1_x0512_y0000_256x256_c0C2_t,bush,,,label from the course JSON
+46,tex_s1_x0512_y0000_256x256_c0CA_t,bush,,,label from the course JSON
+47,tex_s1_x0512_y0000_256x256_c0CD_t,bush,,,label from the course JSON
+48,tex_s1_x0512_y0000_256x256_c1AB_t,bush,,,label from the course JSON
+49,tex_s1_x0512_y0000_256x256_c1AD_t,bush,,,label from the course JSON
+50,tex_s1_x0512_y0256_128x256_c0BD,rock,Desert4,a92a9e76,label from the course JSON
+51,tex_s1_x0512_y0512_128x128_c056,gravel,Alpine4,66f0ba6f,label from the course JSON
+52,tex_s1_x0512_y0512_128x128_c1C3,dirt,Canyon4,1ec88958,label from the course JSON
+53,tex_s1_x0512_y0640_128x64_c0C0_t,tree_wall,,,label from the course JSON
+54,tex_s1_x0512_y0640_128x64_c0D7_t,tree_wall,,,label from the course JSON
+55,tex_s1_x0512_y0704_128x128_c06A,plaster_wall,,,label from the course JSON
+56,tex_s1_x0512_y0704_128x128_c0E9,plaster_wall,,,label from the course JSON
+57,tex_s1_x0512_y0704_128x128_c162,plaster_wall,,,label from the course JSON
+58,tex_s1_x0512_y0704_128x128_c169,plaster_wall,,,label from the course JSON
+59,tex_s1_x0512_y0704_128x128_c16A,plaster_wall,,,label from the course JSON
+60,tex_s1_x0512_y0704_128x128_c16B,plaster_wall,,,label from the course JSON
+61,tex_s1_x0512_y0704_128x128_c16C,plaster_wall,,,label from the course JSON
+62,tex_s1_x0512_y0704_128x128_c188,plaster_wall,,,label from the course JSON
+63,tex_s1_x0512_y0704_128x128_c189,plaster_wall,,,label from the course JSON
+64,tex_s1_x0512_y0704_128x128_c18B,plaster_wall,,,label from the course JSON
+65,tex_s1_x0512_y0704_128x128_c18C,grass,Lakeside4,d8dcd068,auto label - check against the contact sheet
+66,tex_s1_x0512_y0704_128x128_c18D,grass,Lakeside4,d8dcd068,auto label - check against the contact sheet
+67,tex_s1_x0512_y0704_128x128_c1BD,plaster_wall,,,label from the course JSON
+68,tex_s1_x0512_y0704_128x128_c1CD,plaster_wall,,,label from the course JSON
+69,tex_s1_x0512_y0832_64x64_c159,window,,,label from the course JSON
+70,tex_s1_x0512_y0832_64x64_c16D,window,,,label from the course JSON
+71,tex_s1_x0512_y0832_64x64_c180,window,,,label from the course JSON
+72,tex_s1_x0512_y0896_32x32_c06A,door,,,label from the course JSON
+73,tex_s1_x0512_y0896_32x32_c106,door,,,label from the course JSON
+74,tex_s1_x0512_y0896_32x32_c16C,door,,,label from the course JSON
+75,tex_s1_x0512_y0896_32x32_c16D,door,,,label from the course JSON
+76,tex_s1_x0512_y0896_32x32_c1BF,door,,,label from the course JSON
+77,tex_s1_x0512_y0896_32x32_c1CD,door,,,label from the course JSON
+78,tex_s1_x0576_y0832_64x64_c18A_t,window,,,label from the course JSON
+79,tex_s1_x0576_y0832_64x64_c1BC_t,window,,,label from the course JSON
+80,tex_s1_x0640_y0256_128x256_c128_t,tree_wall,,,label from the course JSON
+81,tex_s1_x0640_y0512_128x64_c146_t,tree_wall,,,label from the course JSON
+82,tex_s1_x0640_y0576_128x128_c14B_t,bare,,,label from the course JSON
+83,tex_s1_x0640_y0576_128x128_c18B_t,bare,,,label from the course JSON
+84,tex_s1_x0640_y0704_128x64_c0C1_t,bush,,,label from the course JSON
+85,tex_s1_x0640_y0704_128x64_c0C4_t,bush,,,label from the course JSON
+86,tex_s1_x0640_y0768_128x32_c13C,sign,,,label from the course JSON
+87,tex_s1_x0640_y0864_64x64_c174,plaster_wall,,,label from the course JSON
+88,tex_s1_x0640_y0864_64x64_c17B,plaster_wall,,,label from the course JSON
+89,tex_s1_x0640_y0864_64x64_c17C,plaster_wall,,,label from the course JSON
+90,tex_s1_x0640_y0864_64x64_c17D,plaster_wall,,,label from the course JSON
+91,tex_s1_x0640_y0864_64x64_c1CC,plaster_wall,,,label from the course JSON
+92,tex_s1_x0768_y0000_128x256_c0C8_t,bare,,,label from the course JSON
+93,tex_s1_x0768_y0000_128x256_c10B_t,bare,,,label from the course JSON
+94,tex_s1_x0768_y0256_128x128_c0DB,plaster_wall,,,label from the course JSON
+95,tex_s1_x0768_y0256_128x128_c1C6,plaster_wall,,,label from the course JSON
+96,tex_s1_x0768_y0640_128x128_c07F,brick_wall,Lakeside4,9ad7a350,label from the course JSON
+97,tex_s1_x0768_y0640_128x128_c0F5,brick_wall,Lakeside4,9ad7a350,label from the course JSON
+98,tex_s1_x0768_y0640_128x128_c13D,brick_wall,Lakeside4,9ad7a350,label from the course JSON
+99,tex_s1_x0768_y0640_128x128_c172,brick_wall,Lakeside4,9ad7a350,label from the course JSON
+100,tex_s1_x0768_y0640_128x128_c173,brick_wall,Lakeside4,9ad7a350,label from the course JSON
+101,tex_s1_x0768_y0640_128x128_c182,brick_wall,Lakeside4,9ad7a350,label from the course JSON
+102,tex_s1_x0768_y0640_128x128_c1BD,brick_wall,Lakeside4,9ad7a350,label from the course JSON
+103,tex_s1_x0768_y0640_128x128_c1C1,brick_wall,Lakeside4,9ad7a350,label from the course JSON
+104,tex_s1_x0768_y0640_128x128_c1C7,brick_wall,Lakeside4,9ad7a350,label from the course JSON
+105,tex_s1_x0832_y0896_32x32_c007_t,fence,,,auto label - check against the contact sheet
+106,tex_s1_x0832_y0896_32x32_c059_t,fence,,,auto label - check against the contact sheet
+107,tex_s1_x0896_y0000_256x128_c0D8_t,bush,,,label from the course JSON
+108,tex_s1_x0896_y0000_256x128_c1AC_t,bush,,,label from the course JSON
+109,tex_s1_x0896_y0000_256x128_c1AD_t,bush,,,label from the course JSON
+110,tex_s1_x0896_y0000_256x128_c1AE_t,bush,,,label from the course JSON
+111,tex_s1_x0896_y0128_256x256_c14E,dirt,Canyon4,1ec88958,label from the course JSON
+112,tex_s1_x0896_y0128_256x256_c18B,dirt,Canyon4,1ec88958,label from the course JSON
+113,tex_s1_x0896_y0128_256x256_c216,dirt,Canyon4,1ec88958,label from the course JSON
+114,tex_s1_x0896_y0128_256x256_c217,dirt,Canyon4,1ec88958,label from the course JSON
+115,tex_s1_x0896_y0640_128x128_c048,plaster_wall,,,label from the course JSON
+116,tex_s1_x0896_y0640_128x128_c07F,plaster_wall,,,label from the course JSON
+117,tex_s1_x0896_y0640_128x128_c131,plaster_wall,,,label from the course JSON
+118,tex_s1_x0896_y0640_128x128_c159,plaster_wall,,,label from the course JSON
+119,tex_s1_x0896_y0640_128x128_c168,plaster_wall,,,label from the course JSON
+120,tex_s1_x0896_y0640_128x128_c16F,plaster_wall,,,label from the course JSON
+121,tex_s1_x0896_y0640_128x128_c170,plaster_wall,,,label from the course JSON
+122,tex_s1_x0896_y0640_128x128_c171,plaster_wall,,,label from the course JSON
+123,tex_s1_x0896_y0640_128x128_c172,plaster_wall,,,label from the course JSON
+124,tex_s1_x0896_y0640_128x128_c176,plaster_wall,,,label from the course JSON
+125,tex_s1_x0896_y0640_128x128_c179,plaster_wall,,,label from the course JSON
+126,tex_s1_x0896_y0640_128x128_c180,plaster_wall,,,label from the course JSON
+127,tex_s1_x0896_y0640_128x128_c181,plaster_wall,,,label from the course JSON
+128,tex_s1_x0896_y0640_128x128_c182,plaster_wall,,,label from the course JSON
+129,tex_s1_x0896_y0640_128x128_c183,plaster_wall,,,label from the course JSON
+130,tex_s1_x0896_y0640_128x128_c185,plaster_wall,,,label from the course JSON
+131,tex_s1_x0896_y0640_128x128_c1AF,plaster_wall,,,label from the course JSON
+132,tex_s1_x0896_y0640_128x128_c1B0,plaster_wall,,,label from the course JSON
+133,tex_s1_x0896_y0640_128x128_c1B1,plaster_wall,,,label from the course JSON
+134,tex_s1_x0896_y0640_128x128_c1B2,plaster_wall,,,label from the course JSON
+135,tex_s1_x0896_y0640_128x128_c1B3,plaster_wall,,,label from the course JSON
+136,tex_s1_x0896_y0640_128x128_c1B4,plaster_wall,,,label from the course JSON
+137,tex_s1_x0896_y0640_128x128_c1B7,plaster_wall,,,label from the course JSON
+138,tex_s1_x0896_y0640_128x128_c1B8,plaster_wall,,,label from the course JSON
+139,tex_s1_x0896_y0640_128x128_c1BA,plaster_wall,,,label from the course JSON
+140,tex_s1_x0896_y0640_128x128_c1BE,plaster_wall,,,label from the course JSON
+141,tex_s1_x0896_y0640_128x128_c1C0,plaster_wall,,,label from the course JSON
+142,tex_s1_x0896_y0640_128x128_c1C2,plaster_wall,,,label from the course JSON
+143,tex_s1_x0896_y0640_128x128_c1C8,plaster_wall,,,label from the course JSON
+144,tex_s1_x0896_y0640_128x128_c1CA,plaster_wall,,,label from the course JSON
+145,tex_s1_x0896_y0640_128x128_c1CB,plaster_wall,,,label from the course JSON
+146,tex_s1_x1024_y0384_128x128_c0C1_t,bush,,,label from the course JSON
+147,tex_s1_x1024_y0384_128x128_c0C2_t,bush,,,label from the course JSON
+148,tex_s1_x1024_y0384_128x128_c0C3_t,bush,,,label from the course JSON
+149,tex_s1_x1024_y0384_128x128_c0C6_t,bush,,,label from the course JSON
+150,tex_s1_x1152_y0000_256x256_c0C3_t,tree,,,label from the course JSON
+151,tex_s1_x1152_y0000_256x256_c0CB_t,tree,,,label from the course JSON
+152,tex_s1_x1152_y0000_256x256_c143_t,tree,,,label from the course JSON
+153,tex_s1_x1152_y0256_256x256_c219,dirt,Canyon4,1ec88958,auto label - check against the contact sheet
+154,tex_s1_x1408_y0000_256x256_c055,gravel,Alpine4,66f0ba6f,label from the course JSON
+155,tex_s1_x1408_y0000_256x256_c145,grass,Desert4,3eab748d,label from the course JSON
+156,tex_s1_x1408_y0256_256x64_c142,grass,Lakeside4,d8dcd068,auto label - check against the contact sheet
+157,tex_s1_x1408_y0448_128x64_c0BC_t,bush,,,label from the course JSON
+158,tex_s1_x1408_y0448_128x64_c0C7_t,bush,,,label from the course JSON
+159,tex_s1_x1408_y0448_128x64_c12C_t,bush,,,label from the course JSON
+160,tex_s1_x1408_y0448_128x64_c14A_t,bush,,,label from the course JSON
+161,tex_s1_x1536_y0448_128x32_c13C,sign,,,label from the course JSON
+162,tex_s1_x1536_y0480_128x32_c15A,sign,,,label from the course JSON
+163,tex_s1_x1664_y0000_256x256_c0BD,dirt,Canyon4,1ec88958,auto label - check against the contact sheet
+164,tex_s1_x1664_y0000_256x256_c0CF,dirt,Canyon4,1ec88958,auto label - check against the contact sheet
+165,tex_s1_x1664_y0000_256x256_c0DA,sand,Desert4,ca48d483,auto label - check against the contact sheet
+166,tex_s1_x1664_y0000_256x256_c106,dirt,Canyon4,1ec88958,auto label - check against the contact sheet
+167,tex_s1_x1664_y0000_256x256_c213,sand,Desert4,ca48d483,auto label - check against the contact sheet
+168,tex_s1_x1664_y0000_256x256_c214,sand,Desert4,ca48d483,auto label - check against the contact sheet
+169,tex_s1_x1664_y0000_256x256_c215,sand,Desert4,ca48d483,auto label - check against the contact sheet
+170,tex_s1_x1664_y0000_256x256_c216,dirt,Canyon4,1ec88958,auto label - check against the contact sheet
+171,tex_s1_x1664_y0256_256x128_c14A_t,bush,,,label from the course JSON
+172,tex_s1_x1920_y0000_128x256_c218_t,fence,,,auto label - check against the contact sheet
+173,tex_s1_x1920_y0256_128x128_c09B_t,wood,Lakeside4,0fdd1c75,label from the course JSON
+174,tex_s1_x1920_y0256_128x128_c0CC_t,wood,Lakeside4,0fdd1c75,label from the course JSON
+175,tex_s1_x1920_y0256_128x128_c173_t,wood,Lakeside4,0fdd1c75,label from the course JSON
+176,tex_s1_x1920_y0256_128x128_c177_t,wood,Lakeside4,0fdd1c75,label from the course JSON
+177,tex_s1_x1920_y0256_128x128_c17A_t,wood,Lakeside4,0fdd1c75,label from the course JSON
+178,tex_s1_x1920_y0256_128x128_c17F_t,wood,Lakeside4,0fdd1c75,label from the course JSON
+179,tex_s1_x1920_y0256_128x128_c180_t,wood,Lakeside4,0fdd1c75,label from the course JSON
+180,tex_s1_x1920_y0256_128x128_c184_t,wood,Lakeside4,0fdd1c75,label from the course JSON
+181,tex_s1_x1920_y0256_128x128_c1BB_t,wood,Lakeside4,0fdd1c75,label from the course JSON
+182,tex_s1_x1920_y0256_128x128_c1C5_t,wood,Lakeside4,0fdd1c75,label from the course JSON
+183,tex_s1_x1920_y0256_128x128_c1C9_t,wood,Lakeside4,0fdd1c75,label from the course JSON
+184,tex_s1_x1920_y0384_128x128_c0CB_t,bush,,,label from the course JSON
+185,tex_s1_x1920_y0384_128x128_c129_t,bush,,,label from the course JSON

@@ -26,6 +26,6 @@ def main():
     out = {'format': 'sr3lab course patch', 'version': 3, 'course': course, 'base': {'course_export_sha1': (sorted(sha) or [None])[0], 'needs': [int(x) for x in a.needs.split(',') if x]},
            'made_by': 'stage_patch.py: ' + (a.note or 'patches built one on the other, joined as stages'), 'stages_from': srcs,
            'space': st[0].get('space') if 'space' in st[0] else None, 'stages': st}
-    json.dump(out, open(a.out, 'w')); print('%s: %d stages, %.1f MB; %s' % (a.out, len(st), os.path.getsize(a.out) / 1e6, ' | '.join(srcs)))
+    json.dump(out, open(a.out, 'w', newline='\n')); print('%s: %d stages, %.1f MB; %s' % (a.out, len(st), os.path.getsize(a.out) / 1e6, ' | '.join(srcs)))
 
 if __name__ == '__main__': main()

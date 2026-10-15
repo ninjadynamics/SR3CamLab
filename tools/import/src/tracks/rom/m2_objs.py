@@ -1,9 +1,9 @@
 """Model 2 srallyc: object table in main_data (@0x864B48, 16-byte entries {oba, obc, tpa, tha})
 and polygon ROM strip decoder (format per MAME model2_v.cpp geo_parse_np_ns / model2_3d_process_polygon)."""
 import numpy as np
-import os as _os, sys as _sys; _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '..', '..', '..', 'core')); import common as _cm   # tools/import/settings.json
-_TMP = _cm.TMP.replace('\\', '/'); _DATA = _cm.DATA.replace('\\', '/')
-O = _TMP + r"/sr_classic/out/m2/"
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'core')); import common   # tools/import/settings.json
+O = os.path.join(common.TMP, 'm2') + '/'                          # region images (m2_build.py)
 main = np.fromfile(O + "main_data.bin", dtype="<u4")
 poly = np.fromfile(O + "polygons.bin", dtype="<u4")
 polyf = poly.view("<f4")

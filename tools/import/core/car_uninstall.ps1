@@ -6,7 +6,9 @@
 #   the installed one and the backup is the file the staging was built from; the backup is removed after;
 # - car files: removed only when they are still the staged ones (-Force removes them anyway); a <file>.before_install
 #   kept by the install is put back.
-param([string]$Game = (& python (Join-Path $PSScriptRoot 'common.py') --paths game), [switch]$Force, [string]$Proc = "Rally")
+param([string]$Game = '', [switch]$Force, [string]$Proc = "Rally")
+$py = Join-Path $PSScriptRoot '..\..\python\python.exe'; if (-not (Test-Path -LiteralPath $py)) { $py = 'python' }       # the bundled Python, else yours
+if (-not $Game) { $Game = & $py (Join-Path $PSScriptRoot 'common.py') --paths game }           # tools\import\settings.json
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $m = Get-Content -LiteralPath (Join-Path $here "manifest.json") -Raw | ConvertFrom-Json

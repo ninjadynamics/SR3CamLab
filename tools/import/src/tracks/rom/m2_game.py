@@ -1,6 +1,7 @@
 """SEGA Rally Championship gameplay tables: section tables (main data) and pace-note tables (program ROM)."""
-import numpy as np, struct
-MAIN = '../tmp/m2/main_data.bin'; PROG = '../tmp/m2/maincpu.bin'
+import numpy as np, struct, os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'core')); import common   # tools/import/settings.json
+MAIN = os.path.join(common.TMP, 'm2', 'main_data.bin'); PROG = os.path.join(common.TMP, 'm2', 'maincpu.bin')
 SECT = {1: 0x0, 2: 0x3e00, 3: 0x7c00, 4: 0xba00}          # course (collision block order): 1 Mountain 2 Desert 3 Lake Side 4 Forest
 NOTES = [0x40470, 0x40500, 0x405a0, 0x40690]
 _d = np.fromfile(MAIN, '<u4'); _f = _d.view('<f4')

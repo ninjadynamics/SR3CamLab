@@ -1,16 +1,17 @@
-"""SEGA Rally Championship (Model 2A) leftovers -> ../src/
+"""SEGA Rally Championship (Model 2A) leftovers -> <classic>/sr2_gameplay/src/
  (a) sound request names (main program sound-test table) -> request code -> MIDI key -> PCM sample; labelled pace notes
- (b) checkpoint sections, time added, initial time, laps."""
+ (b) checkpoint sections, time added, initial time, laps.
+Reads the region images (m2_build.py) and the sound program epr-17890.30 from your srallyc.zip; the sample file names come from
+<classic>/music/src_samples/index.csv and the old speech-recognition guesses from src_speech_candidates.csv when they are there."""
 import struct, csv, json, os, re
 import numpy as np
-import os as _os, sys as _sys; _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '..', '..', '..', 'core')); import common as _cm   # tools/import/settings.json
-_TMP = _cm.TMP.replace('\\', '/'); _DATA = _cm.DATA.replace('\\', '/')
-T = _DATA + r"/"
-B = _TMP + r"/"
-OUT = B + "sr2_gameplay/src/"; os.makedirs(OUT, exist_ok=True)
-d = open(T + "work/tmp/m2/maincpu.bin", "rb").read(); O = 0x59F000      # RAM address = file offset + O
+import sys, zipfile
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'core')); import common   # tools/import/settings.json
+OUT = os.path.join(common.CLASSIC, 'sr2_gameplay', 'src') + '/'; os.makedirs(OUT, exist_ok=True)
+MUSIC = os.path.join(common.CLASSIC, 'music') + '/'
+d = open(os.path.join(common.TMP, 'm2', 'maincpu.bin'), 'rb').read(); O = 0x59F000      # RAM address = file offset + O
 u = lambda a: struct.unpack_from('<I', d, a - O)[0]; s = lambda a: struct.unpack_from('<i', d, a - O)[0]
-snd = np.fromfile(B + "sr_classic/roms/srallyc/epr-17890.30", np.uint8).reshape(-1, 2)[:, ::-1].tobytes()   # byte-swapped 68000 image, mapped at 0x600000
+_z = zipfile.ZipFile(common.rom_zip('srallyc')); snd = np.frombuffer(_z.read(next(n for n in _z.namelist() if n.startswith('epr-17890'))), np.uint8).reshape(-1, 2)[:, ::-1].tobytes()   # byte-swapped 68000 image, mapped at 0x600000
 NREQ = 189; CODES = 0x5C3CE0; NAMES = 0x5C48C0
 names = []
 for i in range(NREQ):
@@ -34,9 +35,9 @@ KEYMAP = 0x8FF6
 def slot(key): return struct.unpack_from('>H', snd, KEYMAP + 8 * key)[0]
 T4_FIRST_SLOT = 17 + 50 + 37 + 20
 files = {}
-for r in csv.DictReader(open(T + "classic/music/src_samples/index.csv")):
+for r in (csv.DictReader(open(MUSIC + "src_samples/index.csv")) if os.path.exists(MUSIC + "src_samples/index.csv") else ()):
     if r['table'] == '4': files[int(r['sample_no'])] = r
-stt = {int(r['sample_no']): r for r in csv.DictReader(open(T + "classic/music/src_speech_candidates.csv"))}
+stt = {int(r['sample_no']): r for r in csv.DictReader(open(MUSIC + "src_speech_candidates.csv"))} if os.path.exists(MUSIC + "src_speech_candidates.csv") else {}
 rows = []; lab = {}
 for i in range(NREQ):
     c = codes[i]; row = dict(request=i, name=names[i], code=c.hex(), midi='', sample_table4='', file='')

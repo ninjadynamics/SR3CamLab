@@ -1,11 +1,12 @@
 """SEGA Rally Championship: all four courses -> OBJ + MTL + coloured tiles (same rules as the Mountain work:
 classic_export.decode / material, classic_tex page fitting, m2colour). Sky / backdrop objects are exported as a
 separate OBJ (<course>_sky.obj) because they are +-100 km polygons.
-    python src_all.py [course numbers]     -> ../src/course<N>_<name>/"""
+    python src_all.py [course numbers]     -> <classic>/courses/src/course<N>_<name>/"""
 import os, sys, json, numpy as np
 from PIL import Image, ImageDraw
-import classic_export as ce, classic_tex as ct, m2colour
-HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.join(HERE, '..', 'src')
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'core'))
+import common, classic_export as ce, classic_tex as ct, m2colour
+HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.join(common.CLASSIC, 'courses', 'src')
 COURSES = {1: dict(name='mountain', hi=(1259, 1318), sky=(1257, 1258), low=(1319, 1378)),
            2: dict(name='desert', hi=(937, 996), sky=(997, 998, 999), low=(1000, 1059)),
            3: dict(name='lakeside', hi=(1379, 1438), sky=(1439, 1440), low=(1441, 1500)),

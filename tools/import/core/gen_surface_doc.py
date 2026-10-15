@@ -83,5 +83,5 @@ o.append('per-environment variants). Group membership found: floor/ceiling ids o
 o.append('(a76a4869), Tropical (2d1caef9), Canyon (7d91807d) are all in group 0; Stadium walls e2671eda in group 20, 3ac3a983 in')
 o.append('group 6; Lakeside walls 5648af3a in group 5. The group -> name pairing was not pinned down (UNKNOWN); the builder')
 o.append('simply reuses the slot\'s own most common wall id and floor id.')
-open(os.path.join(REPO, 'docs', 'kb', '10_surfaces.md'), 'w').write('\n'.join(o) + '\n')
+open(os.path.join(REPO, 'docs', 'kb', '10_surfaces.md'), 'w', newline='\n').write('\n'.join(o) + '\n')
 print('written', len(o), 'lines')

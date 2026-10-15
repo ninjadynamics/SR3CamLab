@@ -1,6 +1,8 @@
 """SEGA Rally Championship: gameplay.json + top-down plot per course, from the tables documented in ../src/gameplay.md.
-All positions in the axes of the OBJ exports: (x, y, -gameZ)."""
-import numpy as np, struct, json, glob, os, math
+All positions in the axes of the OBJ exports: (x, y, -gameZ).
+    python m2_gameplay.py     -> <classic>/courses/src/course<N>_<name>/gameplay.json + gameplay_plot.png (needs src_all.py and m2_collision.py first)"""
+import numpy as np, struct, json, glob, os, math, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'core')); import common   # tools/import/settings.json
 from PIL import Image, ImageDraw
 import m2_game as G, m2_surface as S
 PROG = open(G.PROG, 'rb').read(); MAIN = np.fromfile(G.MAIN, np.uint8)
@@ -32,9 +34,9 @@ for c in (1, 2, 3, 4):
         pace_notes=[dict(section=s, distance_m=round(float(dist[s]), 1), position=obj(ai[s]), voice=a, icon=b, call=ICON.get(b, 'unknown')) for s, a, b in notes],
         ai_line=[dict(section=i, position=obj(ai[i]), distance_m=round(float(dist[i]), 1), speed_zone=int(flag[i] >> 4), variant=int(flag[i] & 15)) for i in range(n)],
         sections=[dict(left_right=[obj(gate[i, 0]), obj(gate[i, 1])], heading=[round(float(dirs[i, 0]), 4), round(-float(dirs[i, 1]), 4)]) for i in range(n)])
-    d = glob.glob('../src/course%d_*' % c)[0]; json.dump(out, open(os.path.join(d, 'gameplay.json'), 'w'), indent=1)
+    d = glob.glob(os.path.join(common.CLASSIC, 'courses', 'src', 'course%d_*' % c))[0]; json.dump(out, open(os.path.join(d, 'gameplay.json'), 'w'), indent=1)
     # plot (north = +gameZ up, i.e. the true plan; x right)
-    coll = S.load_coll(os.path.join(d, 'src_course%d_collision.obj' % c)); allp = np.vstack([p for a, p in coll]); mn = allp.min(0); mx = allp.max(0)
+    coll = S.load_coll(os.path.join(common.CLASSIC, 'obj', 'src_course%d_collision.obj' % c)); allp = np.vstack([p for a, p in coll]); mn = allp.min(0); mx = allp.max(0)
     W = 1600; sc = (W - 120) / max(mx[0] - mn[0], mx[2] - mn[2]); H = int((mx[2] - mn[2]) * sc) + 160
     def XY(p): return (60 + (p[0] - mn[0]) * sc, 60 + (p[2] - mn[2]) * sc)             # OBJ z = -gameZ grows downwards on the page -> gameZ up
     im = Image.new('RGB', (W, H), (245, 245, 240)); dr = ImageDraw.Draw(im)

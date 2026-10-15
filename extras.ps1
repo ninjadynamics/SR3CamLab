@@ -1152,6 +1152,8 @@ function Test-HandlingBuilt([string]$tracks, [string]$key) {
     return [bool]@(Get-ChildItem -LiteralPath (Join-Path (Get-GameDir $tracks) "Main_release\car$($v.Digit)") -Filter '*_data.sbf' -ErrorAction SilentlyContinue).Count
 }
 function Find-Python {
+    $b = Join-Path $PSScriptRoot 'tools\python\python.exe'           # the one the release zip brings (nothing to install)
+    if (Test-Path -LiteralPath $b) { return $b }
     foreach ($n in 'python', 'py') { $c = Get-Command $n -ErrorAction SilentlyContinue; if ($c) { return $c.Source } }
     return $null
 }

@@ -1,6 +1,6 @@
 # Puts built classic courses into the game as alternatives of the Classic mode's track (Desert4).
 . (Join-Path $PSScriptRoot '..\..\..\..\extras.ps1') -NoWindow        # SR3 Extras' functions, no window
-$tracks, $out = & python (Join-Path $PSScriptRoot '..\common.py') --paths tracks out          # from tools\import\settings.json
+$tracks, $out = & (Find-Python) (Join-Path $PSScriptRoot '..\common.py') --paths tracks out          # from tools\import\settings.json
 $set = @(@('step99_mountain_rt_a_desert4', 'Mountain RT'), @('step99_mountain_rt_b_desert4', 'Mountain RT soft'), @('step99_mountain_rt_c_desert4', 'Mountain RT (cars unshaded)'))
 $list = @(); $k = 0
 foreach ($e in $set) {

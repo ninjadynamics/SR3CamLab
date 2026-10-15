@@ -2,7 +2,7 @@
 # VIDEO = the Classic card frontend\PC\Videos\classic_<VIDEO>.wmv, e.g. MTN)
 # Puts built classic courses into the game as alternatives of the Classic mode's track (Desert4).
 . (Join-Path $PSScriptRoot '..\..\..\..\extras.ps1') -NoWindow        # SR3 Extras' functions, no window
-$tracks, $out = & python (Join-Path $PSScriptRoot '..\common.py') --paths tracks out          # from tools\import\settings.json
+$tracks, $out = & (Find-Python) (Join-Path $PSScriptRoot '..\common.py') --paths tracks out          # from tools\import\settings.json
 $set = @($args | ForEach-Object { ,@($_ -split '\|', 3) })      # arguments: 'step folder|title|video' ...
 $list = @(); $k = 0
 foreach ($e in $set) {
