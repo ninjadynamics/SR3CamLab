@@ -51,10 +51,10 @@ try {
     $modRoot = Split-Path -Parent $PSScriptRoot
     $source = Join-Path $modRoot 'watchdog.cs'
     # Keep the same address list and timeout as the PS route. Parse constants;
-    # never dot-source patches.ps1, which would attach mods as a side effect.
+    # never dot-source sr3mods.ps1, which would attach mods as a side effect.
     $tokens = $null; $errors = $null
-    $ast = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $modRoot 'patches.ps1'), [ref]$tokens, [ref]$errors)
-    if ($errors.Count) { throw 'Cannot read watchdog settings from patches.ps1: parser errors.' }
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $modRoot 'sr3mods.ps1'), [ref]$tokens, [ref]$errors)
+    if ($errors.Count) { throw 'Cannot read watchdog settings from sr3mods.ps1: parser errors.' }
     $config = @{}
     foreach ($name in @('FreezeSeconds','GameWindowVA','WatchdogValues')) {
         $assignments = @($ast.FindAll({ param($node)

@@ -55,9 +55,12 @@ static int spawn_host(HANDLE game, const char *launch, const char *yaml, const c
     HANDLE write = INVALID_HANDLE_VALUE, input = INVALID_HANDLE_VALUE, mutex;
     SECURITY_ATTRIBUTES sa = {sizeof sa, NULL, TRUE};
     STARTUPINFOEXW si; PROCESS_INFORMATION pi; SIZE_T attr_size = 0;
-    BOOL wow = FALSE; HANDLE inherit[2]; int i, initialized = 0;
+    HANDLE inherit[2]; int i, initialized = 0;
     if (cap) error[0] = 0;
-    if (host && WaitForSingleObject(host, 0) == WAIT_TIMEOUT) return 1;
+    if (host && WaitForSingleObject(host, 0) == WAIT_TIMEOUT) {
+        if (!launch) return 1;
+        snprintf(error, cap, "The previous watchdog launch is still running or finishing its report. Try again shortly."); return 0;
+    }
     close_host(); memset(&si, 0, sizeof si); memset(&pi, 0, sizeof pi);
     if (!wide(mod, root, 1024) || !((root[0] && root[1] == L':') || (root[0] == L'\\' && root[1] == L'\\'))) goto fail;
     stamp.QuadPart = 0;
@@ -77,12 +80,12 @@ static int spawn_host(HANDLE game, const char *launch, const char *yaml, const c
             CloseHandle(mutex);
         }
     }
-    swprintf(script, 1200, L"%ls\\standalone\\watch.ps1", root);
+    swprintf(script, 1200, L"%ls\\standalone\\watchdog.ps1", root);
     swprintf(crash, 1200, L"%ls\\crash", root);
     if (GetFileAttributesW(script) == INVALID_FILE_ATTRIBUTES) { failure = ERROR_FILE_NOT_FOUND; goto fail; }
     if (!CreateDirectoryW(crash, NULL) && GetLastError() != ERROR_ALREADY_EXISTS) goto fail;
-    if (!GetWindowsDirectoryW(ps, 1024) || !IsWow64Process(GetCurrentProcess(), &wow)) goto fail;
-    wcscat(ps, wow ? L"\\Sysnative\\WindowsPowerShell\\v1.0\\powershell.exe" : L"\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+    swprintf(ps, 1200, L"%ls\\standalone\\watchdog.exe", root);
+    if (GetFileAttributesW(ps) == INVALID_FILE_ATTRIBUTES) { failure = ERROR_FILE_NOT_FOUND; goto fail; }
     for (i = 0; i < 100; ++i) {
         swprintf(path, 1400, L"%ls\\watch-host-%lu-%lu-%lu-%d.log", crash, pid, GetCurrentProcessId(), GetTickCount(), i);
         write = CreateFileW(path, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, &sa, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -98,8 +101,8 @@ static int spawn_host(HANDLE game, const char *launch, const char *yaml, const c
     initialized = 1; inherit[0] = write; inherit[1] = input;
     if (!UpdateProcThreadAttribute(si.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inherit, sizeof inherit, NULL, NULL)) goto fail;
     snprintf(numbers, sizeof numbers, "%llu", (unsigned long long)stamp.QuadPart); wide(numbers, wn, 128);
-    if (launch) swprintf(cmd, 8192, L"\"%ls\" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"%ls\" -LaunchExe \"%ls\" -SettingsPath \"%ls\" -CrashDirectory \"%ls\"", ps, script, exe, settings, crash);
-    else swprintf(cmd, 8192, L"\"%ls\" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"%ls\" -ProcessId %lu -ExpectedExePath \"%ls\" -ExpectedStartFileTime %ls -CrashDirectory \"%ls\"", ps, script, pid, exe, wn, crash);
+    if (launch) swprintf(cmd, 8192, L"\"%ls\" --script \"%ls\" -LaunchExe \"%ls\" -SettingsPath \"%ls\" -CrashDirectory \"%ls\"", ps, script, exe, settings, crash);
+    else swprintf(cmd, 8192, L"\"%ls\" --script \"%ls\" -ProcessId %lu -ExpectedExePath \"%ls\" -ExpectedStartFileTime %ls -CrashDirectory \"%ls\"", ps, script, pid, exe, wn, crash);
     si.StartupInfo.cb = sizeof si; si.StartupInfo.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
     si.StartupInfo.wShowWindow = SW_HIDE; si.StartupInfo.hStdInput = input;
     si.StartupInfo.hStdOutput = write; si.StartupInfo.hStdError = write;
