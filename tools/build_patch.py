@@ -1,5 +1,5 @@
 """Builds the chase camera patch (the code cave at 0x673C80 and the hooks) and writes patch.json.
-patch.ps1's $Patches table holds these bytes (the cave tunables are filled in per profile).
+patches.ps1's $Patches table holds these bytes (the cave tunables are filled in per profile).
 Needs keystone-engine and capstone; set SR3_EXE (see sr3.py)."""
 import struct, json, hashlib, os
 from keystone import Ks, KS_ARCH_X86, KS_MODE_32
@@ -194,7 +194,7 @@ def P(va_or_off, new, desc, is_off=False):
     patches.append((o, orig, new, desc))
 
 # 1) .text VirtualSize 0x272C80 -> 0x273000 so the cave (already in the file) is guaranteed mapped.
-#    Only for an on-disk patch (abandoned: TeknoParrot rejects a modified Rally.exe); patch.ps1 skips it,
+#    Only for an on-disk patch (abandoned: TeknoParrot rejects a modified Rally.exe); patches.ps1 skips it,
 #    the cave is mapped in memory anyway because pages are 4 KB.
 pe = struct.unpack_from('<I', data, 0x3C)[0]
 sec0 = pe + 4 + 20 + struct.unpack_from('<H', data, pe + 4 + 16)[0]

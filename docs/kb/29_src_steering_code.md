@@ -263,7 +263,7 @@ hidden car's set.
 
 SR3's side (Rally.exe 3.8.4.1, static reading 2026-10-15, VERIFIED (code) unless marked):
 - The hook: CVehicle (RTTI, vtable 0x678864) slot 5 = 0x45C820 is the vehicle step (thiscall, one float: dt). It is
-  reached only through the vtable (no direct call), and patch.ps1 points the entry 0x678878 to the port, which calls
+  reached only through the vtable (no direct call), and patches.ps1 points the entry 0x678878 to the port, which calls
   0x45C820 itself. The step works in sub-steps (count from 0x45C6B0). At its end it puts the body's position (+0x88) and
   orientation (+0xA4, 0x45A7E0) back as they were, so the pose is moved afterwards from the velocities, by the collision
   code. The port runs between the two, which is why SR3's walls stay SR3's. CVehicleSimple (0x678A10, slot 5 0x45D410)
@@ -297,7 +297,7 @@ vtable 0x6ED0C8). Computer cars only with ai = 1 (see below). Nothing in the air
 recovery, but the steering filter and the body slip keep running there, as in SRC. SRC's state (the filter, the body slip, the load
 transfer) starts afresh when the car moves more than 20 m between two steps (a new race, the car put back on the road).
 
-Checked on the emulated CPU, the blob as patch.ps1 relocates it, the game's own setters (tools\srcport_emu.py, 26 checks):
+Checked on the emulated CPU, the blob as patches.ps1 relocates it, the game's own setters (tools\srcport_emu.py, 26 checks):
 - The chain itself (axle centres, one SRC frame per step): yaw rate and body slip the same as srcmodel.py to 1e-7 rad /
   frame at 100 / 140 / 180 / 230 km/h and 10 to 80 counts.
 - As it runs in the game (4 wheels, SR3 steps of 1 / 60 s), steady turns, stick right, speed held (SRC km/h; yaw rate
@@ -332,8 +332,8 @@ angle instead would have given the AI 4-5 times less yaw per value than it expec
 whether the AI then keeps its line needs one race (its path, mean speed, resets).
 
 Files (repository): tools\srcport.c (the port, C, built with clang for i686), tools\build_srcport.py (build, surface
-table, --embed into patch.ps1), tools\srcmodel.py (the reference model), tools\srcport_emu.py, tools\srcport_mocktest.ps1;
-patch.ps1 Install-SrcPort / Remove-SrcPort (in Set-Handling when the SRC flavor is built; -Off removes it). The data block
+table, --embed into patches.ps1), tools\srcmodel.py (the reference model), tools\srcport_emu.py, tools\srcport_mocktest.ps1;
+patches.ps1 Install-SrcPort / Remove-SrcPort (in Set-Handling when the SRC flavor is built; -Off removes it). The data block
 (blob + $SrcPortData, 0x23E0 in this build): +8 mode (0 off, 1 observe, 2 on), +0xC ai, +0x10 57.5, +0x14 95, offsets and sign switches,
 +0x4C ai_gain, +0x50 the surface classes, +0xD0 counters, +0xDC last_err (1 not SRC files, 2 air, 3 hit recovery), +0xE0 eight per-car states, +0x1E0
 -> a ring of 256 player steps x 40 floats (stick, filter, slips, forces, torque, load transfer, D, SR3's own yaw rate and

@@ -1,4 +1,4 @@
-"""Car-select cards for cars the game has no video for (in-memory patch for patch.ps1; proposal, 2026-10-14).
+"""Car-select cards for cars the game has no video for (in-memory patch for patches.ps1; proposal, 2026-10-14).
 
 How the game picks a card (Rally.exe, read in the code):
   0x61BCE0 builds "CARSLIDE_" + upper(car folder) + "_GRAVEL_1"; the card widget (0x6271C0) then looks that name up twice:

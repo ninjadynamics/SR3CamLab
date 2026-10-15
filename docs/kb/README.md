@@ -140,7 +140,7 @@ Rows added after the tracks were driven in game (2026-10-06 .. 08):
 | Lighting sets (49 floats x 2) | seven ranges VERIFIED by patching and in-game runs | import_classic.py | 16_lighting_shadows_lightmaps.md |
 | Light maps | what a light map does VERIFIED in game | lightmap1995.py | 16_lighting_shadows_lightmaps.md |
 | Start / finish gate object (3 states) | VERIFIED (code); replacement not yet confirmed in game | finishgate.py | 15_spectators.md |
-| Checkpoint seconds per track | VERIFIED (code + in game) | arcade_times.py + patch.ps1 | 03_master_xdata_route.md, 20 |
+| Checkpoint seconds per track | VERIFIED (code + in game) | arcade_times.py + patches.ps1 | 03_master_xdata_route.md, 20 |
 | SRC gameplay tables | VERIFIED (ROM + geometry) | import_classic.py | 18_src_1995_rom_data.md |
 | SR2 gameplay tables | VERIFIED (ROM + code) | classic/sr2_sr3_import (static only, not rebuilt) | 19_sega_rally_2.md |
 

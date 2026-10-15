@@ -1,7 +1,7 @@
 # 20 - The launcher's in-memory patches of Rally.exe: addresses, what each does, why
 
 SEGA Rally 3 arcade, `Rally.exe` 3.8.4.1 (32-bit, image base 0x400000). The launcher is `SR3CamLab\PLAY.bat`, which runs
-`SR3CamLab\patch.ps1`. Sources for this file: the comments of `patch.ps1`, `SR3CamLab\FINDINGS.md`, and the owner's
+`SR3CamLab\patches.ps1`. Sources for this file: the comments of `patches.ps1`, `SR3CamLab\FINDINGS.md`, and the owner's
 persistent notes. Menus, the track list in memory and the stage-card videos are in
 [game-runtime-and-frontend.md](game-runtime-and-frontend.md); how tracks are installed and chosen is in
 [21_track_install_and_switching.md](21_track_install_and_switching.md).
@@ -24,7 +24,7 @@ disassembly; "in game" = the owner saw it on the cabinet; LIKELY; UNKNOWN.
   as the shadow parameters can only be read from the running process. Which description of the file is right is recorded
   as open (OPEN_QUESTIONS.md).
 
-## 2. Start-up sequence of `patch.ps1`
+## 2. Start-up sequence of `patches.ps1`
 1. Start the game through TeknoParrot (`TeknoParrotUi.exe --profile=<profile>.xml`); paths come from `setup.yaml`, filled by
    `setup.ps1` (finds TeknoParrot, reads `UserProfiles\*.xml` for a profile whose `<GamePath>` is `Rally.exe`, checks the
    exe's MD5 and the game's DLLs).
@@ -343,10 +343,10 @@ Each picture gets a tEXt chunk right after IHDR (keyword `SR3Lab`, one line of J
 (+0x178) at +0x478. VERIFIED in game 2026-10-14: for each camera of the list (Game: Chase, Bumper, Bonnet; the four CamLab
 slots; Debug: far chase, cockpit, driver's-seat cockpit, wheel, car rotate, free, car free) the matrix's eye and forward
 equal the drawn camera's own interpolated eye and look direction (state + 0x30 / + 0x6C) to the printed digits, FOV 72 / 60
-/ 87 as set; the PNGs read back in Python with a correct CRC. Code: `Get-ShotInfo`, `Add-PngText` (patch.ps1).
+/ 87 as set; the PNGs read back in Python with a correct CRC. Code: `Get-ShotInfo`, `Add-PngText` (patches.ps1).
 
 ## 11b. Watchdog: crashes and freezes recorded as they happen
-`watchdog.cs` (C#, loaded by patch.ps1 with Add-Type; `-NoWatchdog` leaves it out) attaches to the game as a debugger
+`watchdog.cs` (C#, loaded by patches.ps1 with Add-Type; `-NoWatchdog` leaves it out) attaches to the game as a debugger
 after the camera patch is in, passes every exception on to the game (DBG_EXCEPTION_NOT_HANDLED; only the two attach
 break-ins are taken), never uses debug registers (data breakpoints made the game exit, 09) and never kills the game on
 detach (DebugSetProcessKillOnExit FALSE). A second-chance exception, a window that does not answer WM_NULL for 10 s

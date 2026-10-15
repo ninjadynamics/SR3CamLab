@@ -2,7 +2,7 @@
 
 Game: SEGA Rally 3 arcade, Rally.exe v3.8.4.1 (32-bit, image base 0x400000, file offset = VA - 0x400000
 for the strings and code quoted here). The exe on disk is never modified (TeknoParrot checks it);
-everything below is done by patching the running process (`SR3CamLab\patch.ps1`).
+everything below is done by patching the running process (`SR3CamLab\patches.ps1`).
 
 Status tags: CONFIRMED = seen working in the game by the user; STATIC = read from disassembly,
 not yet exercised; OFFLINE = only run against the emulator / fake-game tests.
@@ -109,7 +109,7 @@ render thread every frame, which is what makes game-thread-only work possible (v
 loading and reopening, selector query, text drawing). Track-switcher fields: LOADVIDEOS
 0x2264, PHINT 0x2268 (second popup line), HILITE 0x226C, REOPEN 0x2270, REOPENPATH 0x2274;
 scratch strings at 0x2400 (popup text), 0x2500 (video path), 0x2600.. (announcer names),
-0x2700.. (sound names). `patch.ps1` function `Watch-Tracks` drives it from outside (15 ms
+0x2700.. (sound names). `patches.ps1` function `Watch-Tracks` drives it from outside (15 ms
 loop); `tools\switch_mocktest.ps1` runs that loop against a scripted fake game.
 
 ## Other handy addresses

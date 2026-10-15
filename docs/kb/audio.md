@@ -305,7 +305,7 @@ What stands in the way, and the way round it:
 - Hence: the tunes are APPENDED to `EnglishStreamData.stm` after SEGA's last stream (192-byte block + samples each, the way
   the game's own streams lie), and the launcher turns the in-memory record of stream 20 (Hyper Conditioned Reflex) to a
   tune - data offset, byte count, loop start, loop flag - only while a course that owns one is the chosen track of the
-  Classic slot, and puts SEGA's values back for every other track (`patch.ps1`, `Set-CourseTune`, next to the per-track
+  Classic slot, and puts SEGA's values back for every other track (`patches.ps1`, `Set-CourseTune`, next to the per-track
   checkpoint times which work the same way). The event, its name and its routing stay SEGA's. On disk only the end of one
   file is added to; `Rally.exe`, the header file and the sound bank are untouched.
 - NOT RUN in the game. What could still go wrong there: the game minding a longer stream file (nothing in the code read

@@ -34,12 +34,12 @@ This replaces the earlier naming (suite "UltimateSR3", app "SR3Ultimate").
 ```
 SR3Lab\
   SR3Lab.exe            the anchor: settings, sources, tracks on / off, launch buttons
-  PLAY.bat              starts the game with every in-memory mod (runs scripts\patch.ps1)
+  PLAY.bat              starts the game with every in-memory mod (runs scripts\patches.ps1)
   README.md
   camlab\               camlab.exe, profiles.yaml, defaults.yaml
   texlab\               texlab.exe, projects\
   scripts\              everything that does work without a window:
-                          patch.ps1, setup.ps1             (launcher, in-memory patches)
+                          patches.ps1, setup.ps1             (launcher, in-memory patches)
                           the importer, converters, audio tools (see "Standalone scripts")
   src\                  C sources of the three programs, shared ui code, build.bat
   docs\                 plans and user documentation
@@ -80,7 +80,7 @@ What exists today and what it needs:
 
 | Piece | Today | Needs to become |
 |---|---|---|
-| Launcher and in-memory patches | PowerShell (`patch.ps1`, `setup.ps1`) | stays PowerShell: ships with Windows, readable, already standalone |
+| Launcher and in-memory patches | PowerShell (`patches.ps1`, `setup.ps1`) | stays PowerShell: ships with Windows, readable, already standalone |
 | Settings app logic | PowerShell + C# compiled at run time (`extras.ps1`, `menuart.cs`, `ps3conv.cs`, `revofix.cs`) | UI moves to `SR3Lab.exe`; the converters become command-line tools in `scripts\` |
 | Classic course importer | about 40 Python files using numpy and Pillow, in the repo since 2026-10-15 (`tools\import\`) | a standalone tool |
 | ROM extraction (Model 2, Model 3) | Python, outside the repo | a standalone tool |

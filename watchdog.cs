@@ -1,4 +1,4 @@
-// SR3CamLab's crash and freeze watchdog. patch.ps1 (Start-Watchdog) loads it while the game runs; tools\watchdog_test.ps1
+// SR3CamLab's crash and freeze watchdog. patches.ps1 (Start-Watchdog) loads it while the game runs; tools\watchdog_test.ps1
 // runs it against small stand-in programs. It attaches to the game as a debugger, as the crash logger that used to be
 // started by hand did, and only watches: every exception goes back to the game as it would without a debugger
 // (DBG_EXCEPTION_NOT_HANDLED; only the break-in of the attach itself is taken), and when this process ends Windows

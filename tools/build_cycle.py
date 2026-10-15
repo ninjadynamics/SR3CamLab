@@ -1,7 +1,7 @@
 """Builds the 'camera cycle + name popup + free-camera controls' block for SEGA Rally 3
 (Rally.exe v3.8.4.1).
 
-The block is allocated by patch.ps1 inside the running game (VirtualAllocEx) and is
+The block is allocated by patches.ps1 inside the running game (VirtualAllocEx) and is
 position-independent: code finds its own base with call/pop. Layout (offsets from base):
 
   0x000  data (settings, state, strings, per-slot names, colours and camera parameters)
@@ -9,11 +9,11 @@ position-independent: code finds its own base with call/pop. Layout (offsets fro
   0x2000 game cameras (names, list entries, offsets, extras, colours) and the driver-seat
          copy of the cockpit cam's eye
   0x2280 smoothing and blend: settings, then their state (zero in a new block, never copied from an older one)
-  0x2400 scratch strings of the track switcher (patch.ps1)
+  0x2400 scratch strings of the track switcher (patches.ps1)
   0x2800 second code area: constants (0x70 bytes), then the smoothing of the steerable cameras' mouse and keys
          and the blend between cameras (BLEND, the third hook)
 
-Hooks (5-byte call rel32, written by patch.ps1):
+Hooks (5-byte call rel32, written by patches.ps1):
   0x591C4D  mov eax,[0x7ED10C]  (just before EndScene/Present)  -> call DRAW
   0x591B01  call 0x591220       (frees D3D resources before Reset) -> call LOST
   0x5C948C  call 0x5F1690       (the cameras' state of this drawn frame) -> call BLEND, which calls it first
@@ -37,7 +37,7 @@ Game facts used (found in the disassembly):
   Menu videos (stage and car cards): table of 18 x (name, file, per-language flag, handle) at
              0x728630; 0x621600 loads every entry whose handle is -1 (except LOADING_TEXTURE),
              0x61C2C0 looks a video up by name and returns the table's handle. The track switcher
-             in patch.ps1 points an entry at another file, sets its handle to -1 and LOADVIDEOS
+             in patches.ps1 points an entry at another file, sets its handle to -1 and LOADVIDEOS
              to 1; the block then calls 0x621600 on the game's own thread, once.
              The game has 20 video objects (0x16C bytes each at 0xAD2F90) and uses 18, and never
              frees one. REOPEN = handle + 1 has the block close that object's video (stop the
@@ -50,7 +50,7 @@ Game facts used (found in the disassembly):
   MODESEL:   the same question for "ID_SELECTOR_MODESELECT" (0x6E5E14): what the first menu
              (Championship / Quick Race / Classic) is on, -1 when there is none.
   CARSEL:    the same for the car select "ID_SELECTOR_CARSELECT" (lookup2 hash 0x6EACE04A, given as is): the highlighted
-             car's id (its library id: the highlighted entry's data, 0x606510 as the confirm does; 0x606490 gives its place), -1 when there is none (patch.ps1, the handling keys).
+             car's id (its library id: the highlighted entry's data, 0x606510 as the confirm does; 0x606490 gives its place), -1 when there is none (patches.ps1, the handling keys).
   PHINT: when not 0, the text of the popup's second line (instead of the built-in hint).
   [0xA65794] PVS off: the scene manager's visibility refresh (0x500EA0) marks every node
              visible instead of using the camera's BSP leaf. The PVS is built for eyes near
@@ -136,7 +136,7 @@ D = dict(MAGIC=0x00, FONT=0x08, FONTH=0x0C, FRAMES=0x10, SHOWFRAMES=0x14, SIZE=0
          GAMENAMES=0x2000, ORIG=0x2180, CAMOFF=0x21B0, EXTRA=0x21E0, CAMCOLOR=0x2210,
          MIRROR=0x2240, SAVEDPTR=0x2258, PATCHIDX=0x225C, NGAME=0x2260, LOADVIDEOS=0x2264, PHINT=0x2268,
          HILITE=0x226C, REOPEN=0x2270, REOPENPATH=0x2274, MODESEL=0x2278, CARSEL=0x227C,
-         # settings (seconds, written by patch.ps1): mouse and key smoothing of the steerable cameras, blend time
+         # settings (seconds, written by patches.ps1): mouse and key smoothing of the steerable cameras, blend time
          K_LOOKTAU=0x2280, K_MOVETAU=0x2284, K_BLEND=0x2288,
          # smoothing: mouse movement not handed out yet (x, y pixels), smoothed keys (free cams forward, sideways,
          # up; car rotate zoom), this update's mouse part (x, y), the keys' share of this update, x87 scratch

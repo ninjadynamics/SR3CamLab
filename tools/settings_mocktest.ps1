@@ -1,6 +1,6 @@
-# Runs patch.ps1's reading of the two settings "mouseSmoothing" and "cameraBlend" (file, switch, defaults, limits) on
+# Runs patches.ps1's reading of the two settings "mouseSmoothing" and "cameraBlend" (file, switch, defaults, limits) on
 # made-up profile files, without a game: the script is cut before its launch part, as cycle_mocktest.ps1 does.
-$src = Get-Content (Join-Path $PSScriptRoot '..\patch.ps1') -Raw
+$src = Get-Content (Join-Path $PSScriptRoot '..\patches.ps1') -Raw
 $cut = $src.IndexOf('# ---- launch (unless')
 $body = $src.Substring(0, $cut).Replace('. (Join-Path $PSScriptRoot ''setup.ps1'')', ". '" + (Join-Path $PSScriptRoot '..\setup.ps1') + "'")
 $body += "`n'{0} {1}' -f `$lookSmooth.ToString([Globalization.CultureInfo]::InvariantCulture), `$blendSec.ToString([Globalization.CultureInfo]::InvariantCulture)`n"

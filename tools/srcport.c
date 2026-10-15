@@ -5,7 +5,7 @@
    surface and suspension state. SR3 keeps the speed along the car (engine, brakes, the SRC files' torque and gears),
    the vertical motion, pitch and roll, walls and the air.
 
-   Built by tools\build_srcport.py (clang, i686, freestanding) into a blob that patch.ps1 puts in memory; the hook is
+   Built by tools\build_srcport.py (clang, i686, freestanding) into a blob that patches.ps1 puts in memory; the hook is
    CVehicle's vtable 0x678864 slot 5 (entry 0x678878 = 0x45C820, the vehicle step, thiscall, one float: dt in s).
 
    SR3 objects (static reading of Rally.exe, 2026-10-15; docs\kb\28_handling_flavors.md):

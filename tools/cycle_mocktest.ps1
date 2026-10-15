@@ -1,6 +1,6 @@
-# Runs patch.ps1's camera-cycle install/update/remove against a fake in-memory game.
+# Runs patches.ps1's camera-cycle install/update/remove against a fake in-memory game.
 param([string]$Profile = 'Daytona')
-$src = Get-Content (Join-Path $PSScriptRoot '..\patch.ps1') -Raw
+$src = Get-Content (Join-Path $PSScriptRoot '..\patches.ps1') -Raw
 $cut = $src.IndexOf('# ---- launch (unless')
 $body = $src.Substring(0, $cut).Replace('[Sr3Mem]::Alloc', '[MockMem]::Alloc').Replace('[Sr3Mem]::Write', '[MockMem]::Write').Replace('[Sr3Mem]::Read', '[MockMem]::Read').Replace('. (Join-Path $PSScriptRoot ''setup.ps1'')', ". '" + (Join-Path $PSScriptRoot '..\setup.ps1') + "'")
 $body += @'

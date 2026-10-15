@@ -1,4 +1,4 @@
-"""Builds the car-list routine of patch.ps1 (Set-CarLists): every car of the arcade's car library in every car select.
+"""Builds the car-list routine of patches.ps1 (Set-CarLists): every car of the arcade's car library in every car select.
 
 The game fills its car selector from the car library ([[0xB2A850] + 4] + 8, a linked list made from
 ArcadeDatabase\\arcadedatabase_xdata.sbf; node +4 car id, +0x10 Classic flag, +0x14 bonus flag, +0x40 name) with one of three
@@ -7,10 +7,10 @@ routines, each taking edi = the selector:
     0x6006F0  cars with the Classic flag (Classic: ST205, Delta)
     0x600740  cars with the bonus flag   (the secret-car page: Bowler, Enduro)
 Each clears the selector (vtable +0x58) and adds a car with AddEntry (vtable +0x54: name, car id, -1, 0, 0). The routine
-built here does the same for one class and then adds every other car, so each mode lists its own cars first. patch.ps1
+built here does the same for one class and then adds every other car, so each mode lists its own cars first. patches.ps1
 puts a jump to it at the start of 0x600790 and 0x6006F0 (the secret-car page keeps its two). The selector holds up to 38
 entries (0x5464D0 refuses more), the library has no fixed size.
-The code is position independent (only the game's own absolute addresses), so it runs wherever patch.ps1 allocates it.
+The code is position independent (only the game's own absolute addresses), so it runs wherever patches.ps1 allocates it.
     python build_carlist.py        prints the bytes as hex and the disassembly"""
 from keystone import Ks, KS_ARCH_X86, KS_MODE_32
 ASM = """

@@ -61,7 +61,7 @@ def classic(game, crs):
           (cfg['name'], nmark, name, [t[0] for t in times], [t[1] for t in times], out))
 
 def track_bin(times, path, log=print, slot='Desert4'):
-    """arcade_times.bin of a track folder (patch.ps1 Set-ArcadeTimes): the slot's 0xC60 bytes of the database ([mode 0..2]
+    """arcade_times.bin of a track folder (patches.ps1 Set-ArcadeTimes): the slot's 0xC60 bytes of the database ([mode 0..2]
     [laps setting 0..2] x 0x160), taken from the game's own file, with the mode 0 records replaced by
     times = {"lap1": [[s1, s2, ..] easy, normal, hard], "later": [[..], [..], [..]]}: seconds at checkpoint marker 1, 2, ..
     (lap 1's first value = the time at the start). Laps settings 0..2 = 2, 3, 4 laps."""

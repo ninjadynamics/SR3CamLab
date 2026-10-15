@@ -18,7 +18,7 @@ rf = lambda a: struct.unpack('<f', u.mem_read(a, 4))[0]
 wf = lambda a, v: u.mem_write(a, struct.pack('<f', v))
 cstr = lambda a: bytes(u.mem_read(a, 64)).split(b'\0')[0].decode()
 
-# ---- the block, as patch.ps1 writes it
+# ---- the block, as patches.ps1 writes it
 blk = bytearray(0x2264)
 def put(o, b): blk[o:o + len(b)] = b
 def s32(o, v): put(o, struct.pack('<i', v))

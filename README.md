@@ -39,7 +39,7 @@ show "Windows protected your PC" for `camlab.exe` (click **More info → Run any
 because they come from the internet and aren't signed by a company; PLAY.bat clears the mark
 on its first run. Some antivirus programs distrust any tool that changes another program's
 memory, which is how this mod works without touching your game files. If yours blocks or
-removes `patch.ps1`, allow the `SR3CamLab` folder.
+removes `patches.ps1`, allow the `SR3CamLab` folder.
 
 ## Requirements
 
@@ -55,9 +55,9 @@ next to `TeknoParrotUi.exe`, but anywhere works:
 ```
 SR3CamLab\
 ├── PLAY.bat          start the game with the mod
-├── patch.ps1         the live patcher
+├── patches.ps1         the live patcher
 ├── setup.ps1         finds TeknoParrot and the game (the setup window)
-├── watchdog.cs       records crashes and freezes while you play (patch.ps1 loads it)
+├── watchdog.cs       records crashes and freezes while you play (patches.ps1 loads it)
 ├── profiles.yaml     your camera profiles (the game and CamLab share them)
 ├── defaults.yaml     factory profiles (don't edit)
 └── camlab.exe        the tuning app (from the release, or build it: see CAMLAB.md)
@@ -107,9 +107,9 @@ in half a second (`cameraBlend`), and its name shows for 2 seconds:
 **Switching live** while the game runs (from the `SR3CamLab` folder):
 
 ```
-powershell -ExecutionPolicy Bypass -File patch.ps1 Daytona -NoLaunch -DelaySeconds 0
-powershell -ExecutionPolicy Bypass -File patch.ps1 -List
-powershell -ExecutionPolicy Bypass -File patch.ps1 -Off -NoLaunch
+powershell -ExecutionPolicy Bypass -File patches.ps1 Daytona -NoLaunch -DelaySeconds 0
+powershell -ExecutionPolicy Bypass -File patches.ps1 -List
+powershell -ExecutionPolicy Bypass -File patches.ps1 -Off -NoLaunch
 ```
 
 **About `-Cores`:** the game keeps every video it plays loaded, and Windows' video decoder

@@ -32,7 +32,7 @@ def check(what, ok, detail=''):
 
 # the game's bytes the hook and its reading of the game rest on
 print('== Rally.exe:', len(image), 'bytes')
-check('0x5C948C is "call 0x5F1690" (e8ff810200), the bytes patch.ps1 expects', image[0x1C948C:0x1C9491].hex() == 'e8ff810200', image[0x1C948C:0x1C9491].hex())
+check('0x5C948C is "call 0x5F1690" (e8ff810200), the bytes patches.ps1 expects', image[0x1C948C:0x1C9491].hex() == 'e8ff810200', image[0x1C948C:0x1C9491].hex())
 check('0x5F1690 ends in "ret 4" (c20400) at 0x5F178E and starts with the state test "mov eax,[0x7ECE10]"', image[0x1F178E:0x1F1791].hex() == 'c20400' and image[0x1F1690:0x1F1695].hex() == 'a110ce7e00')
 slot23 = {0x6EB808: 0x54, 0x6EB8B8: 0x54, 0x6EBD00: 8, 0x6EBD78: 8, 0x6EBDF0: 8, 0x6EBC88: 8, 0x6EBB30: 0x64, 0x6ECB98: 8, 0x6ECC88: 8}
 ok = True
@@ -131,7 +131,7 @@ check('state 0x30: the real routine returns at once (no interpolation: 0x413990 
 # ---- the smoothing in front of the game's own updates of the steerable cameras
 print('== free cam: the wrapper, then the game\'s update 0x5F3FE0 (to its first D3DX call)')
 blk = {0xEA0: b'user32.dll', 0xEB0: b'GetCursorPos', 0xEC0: b'SetCursorPos', 0xED0: b'GetAsyncKeyState', 0xEF0: b'GetForegroundWindow', 0xF40: b'GetWindowThreadProcessId', 0xF70: b'GetCurrentProcessId'}
-for o, t in blk.items(): u.mem_write(BASE + o, t + b'\0')                         # the block's data, as patch.ps1 writes it
+for o, t in blk.items(): u.mem_write(BASE + o, t + b'\0')                         # the block's data, as patches.ps1 writes it
 wf(BASE + 0xF10, 0.0025, math.pi / 2, 10.0, 1.0); wf(BASE + 0xF90, 1.5706, -1.5706); wf(BASE + 0xFE0, 3.0, 30.0, 0.5, 20.0); wf(BASE + 0xFD0, -0.01)
 w32(0x7EDB74, 1920); w32(0x7EDB78, 1080); mouse = dict(pos=(960, 540), keys=set())
 api = {'GetCursorPos': (1, lambda a: u.mem_write(a[0], struct.pack('<ii', *mouse['pos'])) or 1), 'SetCursorPos': (2, lambda a: mouse.update(pos=(a[0], a[1])) or 1),

@@ -126,7 +126,7 @@ A build is `python import_classic.py src 1 classic --norender --name <step> --se
 
 ### Working rules recorded with the builds
 - Shell heredocs in the working environment mangle backslashes (`\t`, `\0` became real control characters): patch
-  scripts are written as files. A TAB written this way into `patch.ps1` stopped the track switcher for one test run.
+  scripts are written as files. A TAB written this way into `patches.ps1` stopped the track switcher for one test run.
 - `arcade_times.bin` and `shadow.txt` are not written by the importer: they are copied into the step folder by hand
   before installing.
 - A build with given settings takes the same time every run (used by the progress file).
