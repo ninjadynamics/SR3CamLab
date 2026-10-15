@@ -1040,7 +1040,7 @@ static void watch_tracks(void) {
         all_visible = !menu && dir != 's';                                                   /* an added track: every scenery node visible ([0xA65794]) */
         if (all_visible) { int v = gi(0xA65794); if (!pvs_held) { pvs_was = v; pvs_held = 1; } if (v != 1) wi(0xA65794, 1); }
         else if (pvs_held) { wi(0xA65794, pvs_was); pvs_held = 0; }
-        buttons = (int)G->pad(G);
+        buttons = (gi(0x9DBBA4) & 0x7FFF ? 0x10 : 0) | (gi(0x9DBB0C) & 0x7FFF ? 0x1000 : 0);   /* Get-GameButtons: the game's own START (entry 53) and View Change (15) */
         n_acts = step_start(&st, (buttons & 0x10) != 0, (buttons & 0x1000) != 0, menu, G->now(G), acts);
         for (a = 0; a < n_acts; a++) {
             if (acts[a] == A_GRAB) {

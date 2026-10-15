@@ -1,6 +1,6 @@
 /* pc_host: the world outside the game's memory for pc_live, the same for patches.ps1 and both front ends (patches.dll
- * inside the game, sr3mods.exe outside): the clock, the pad, the keys, the window in front, the screen grab.
- *   pad:  XInput pad 0 (xinput1_4.dll, as patches.ps1's Sr3Pad; 1_3 / 9_1_0 where 1_4 is missing), 0 without one.
+ * inside the game, sr3mods.exe outside): the clock, the keys, the window in front, the screen grab. (No pad: START
+ * and View Change are read from the game's own inputs, pc_live.c / Get-GameButtons.)
  *   shot: the whole primary screen through GDI (patches.ps1's CopyFromScreen), PNG by WIC (Windows' own codecs), the
  *         shot's JSON in a tEXt chunk "SR3Lab" after IHDR (Add-PngText). GDI sees the desktop: a game in exclusive
  *         fullscreen can come out black from inside or outside alike (windowed / borderless is fine).
@@ -19,31 +19,30 @@
 
 long long ph_now(GameMem *m) { FILETIME u, l; (void)m; GetSystemTimeAsFileTime(&u); FileTimeToLocalFileTime(&u, &l); return ((long long)l.dwHighDateTime << 32) | l.dwLowDateTime; }
 void ph_sleep(GameMem *m, int ms) { (void)m; Sleep((DWORD)ms); }
-typedef struct { DWORD packet; WORD buttons; BYTE lt, rt; SHORT lx, ly, rx, ry; } XState;
-typedef DWORD (WINAPI *XGet)(DWORD, XState *);
-unsigned ph_pad(GameMem *m) {
-    static XGet get; static int tried; XState s;
-    (void)m;
-    if (!tried) {
-        static const char *const dll[3] = {"xinput1_4.dll", "xinput1_3.dll", "xinput9_1_0.dll"}; int i; tried = 1;
-        for (i = 0; i < 3 && !get; i++) { HMODULE h = LoadLibraryA(dll[i]); if (h) get = (XGet)(void (*)(void))GetProcAddress(h, "XInputGetState"); }
-    }
-    memset(&s, 0, sizeof s);
-    return get && get(0, &s) == 0 ? s.buttons : 0;
-}
 int ph_key(GameMem *m, int vk) { (void)m; return (GetAsyncKeyState(vk) & 0x8000) != 0; }
 unsigned ph_front(GameMem *m) { (void)m; return (unsigned)(uintptr_t)GetForegroundWindow(); }
 
 /* ---------------------------------------------------------------- the screen grab */
-static HBITMAP held; static void *bits; static int gw, gh;
+/* patches.dll sets this to the TeknoParrot-free runtime's sr3rt_grab_backbuffer (Codex's, standalone\capture.c): the
+ * game's own back buffer, which exclusive fullscreen keeps from GDI. 1 = a top-down tight BGRA8 picture the caller frees
+ * with HeapFree(GetProcessHeap(), 0, ..); 0 = none (within 250 ms), and the GDI grab is used. */
+int (__cdecl *ph_grab_hook)(void **bgra, int *w, int *h);
+static HBITMAP held; static void *bits, *hookbits; static int gw, gh;
 static const GUID CLSID_WICImagingFactory_ = {0xcacaf262, 0x9370, 0x4615, {0xa1, 0x3b, 0x9f, 0x55, 0x39, 0xda, 0x4c, 0x0a}};
 static const GUID IID_IWICImagingFactory_ = {0xec5ec8a9, 0xc395, 0x4314, {0x9c, 0x77, 0x54, 0xd7, 0xa9, 0x35, 0xff, 0x70}};
 static const GUID GUID_ContainerFormatPng_ = {0x1b7cfaf4, 0x713f, 0x473c, {0xbb, 0xcd, 0x61, 0x37, 0x42, 0x5f, 0xae, 0xaf}};
 static const GUID GUID_WICPixelFormat32bppBGR_ = {0x6fddc324, 0x4e03, 0x4bfe, {0xb1, 0x85, 0x3d, 0x77, 0x76, 0x8d, 0xc9, 0x0e}};
 static const GUID GUID_WICPixelFormat24bppBGR_ = {0x6fddc324, 0x4e03, 0x4bfe, {0xb1, 0x85, 0x3d, 0x77, 0x76, 0x8d, 0xc9, 0x0c}};
+static void let_go(void) {
+    if (held) DeleteObject(held);
+    if (hookbits) HeapFree(GetProcessHeap(), 0, hookbits);
+    held = NULL; hookbits = bits = NULL;
+}
 static int grab(void) {
-    HDC scr = GetDC(NULL), dc; BITMAPINFO bi; HGDIOBJ old;
-    if (!scr) return 0;
+    HDC scr, dc; BITMAPINFO bi; HGDIOBJ old;
+    let_go();
+    if (ph_grab_hook) { void *b = NULL; int w = 0, h = 0; if (ph_grab_hook(&b, &w, &h) && b && w > 0 && h > 0) { hookbits = bits = b; gw = w; gh = h; return 1; } }
+    if (!(scr = GetDC(NULL))) return 0;
     gw = GetSystemMetrics(SM_CXSCREEN); gh = GetSystemMetrics(SM_CYSCREEN);
     memset(&bi, 0, sizeof bi); bi.bmiHeader.biSize = sizeof bi.bmiHeader; bi.bmiHeader.biWidth = gw; bi.bmiHeader.biHeight = -gh;   /* top-down rows */
     bi.bmiHeader.biPlanes = 1; bi.bmiHeader.biBitCount = 32; bi.bmiHeader.biCompression = BI_RGB;
@@ -59,7 +58,7 @@ static void be32(unsigned char *o, unsigned v) { o[0] = (unsigned char)(v >> 24)
 static int save_png(const char *path, const char *info) {
     IWICImagingFactory *f = NULL; IWICBitmap *bmp = NULL; IWICBitmapEncoder *enc = NULL; IWICBitmapFrameEncode *fr = NULL; IStream *st = NULL;
     HGLOBAL hg; unsigned char *png; SIZE_T n; int ok = 0; HRESULT hr; WICPixelFormatGUID pf = GUID_WICPixelFormat24bppBGR_; HRESULT co = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-    if (!held) return 0;
+    if (!bits) { if (SUCCEEDED(co)) CoUninitialize(); return 0; }
     hr = CoCreateInstance(&CLSID_WICImagingFactory_, NULL, CLSCTX_INPROC_SERVER, &IID_IWICImagingFactory_, (void **)&f);
     if (SUCCEEDED(hr)) hr = IWICImagingFactory_CreateBitmapFromMemory(f, (UINT)gw, (UINT)gh, &GUID_WICPixelFormat32bppBGR_, (UINT)gw * 4, (UINT)gw * 4 * (UINT)gh, (BYTE *)bits, &bmp);
     if (SUCCEEDED(hr)) hr = CreateStreamOnHGlobal(NULL, TRUE, &st);
@@ -107,8 +106,7 @@ static int save_png(const char *path, const char *info) {
 }
 int ph_shot(GameMem *m, int act, const char *path, const char *info) {
     (void)m;
-    if (act == 1) { if (held) DeleteObject(held); held = NULL; return grab(); }
+    if (act == 1) return grab();
     if (act == 2) return save_png(path, info);
-    if (held) DeleteObject(held);
-    held = NULL; return 1;
+    let_go(); return 1;
 }

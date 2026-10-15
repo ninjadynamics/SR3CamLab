@@ -38,6 +38,12 @@ not yet exercised; OFFLINE = only run against the emulator / fake-game tests.
   stages 3. Order in the game: mode -> car -> AT/MT -> stage -> race. Each screen has a
   ~15 s timer (turned off by the launcher since 2026-10-14). Stage select = "3 entries, after having seen 6 or 2". CONFIRMED.
 - [0x9DBB0C] byte != 0 while View Change is held. CONFIRMED.
+- The game's logical inputs: 90 dwords at 0x9DBAD0, one per input, whatever drives it (keyboard, TeknoParrot's
+  mapping, a pad, a wheel): the low 15 bits = held this frame, the previous frame's shifted up by 15, bit 30 = pressed
+  this frame (held: 0x7F80FF). View Change = entry 15 (0x9DBB0C), START = entry 53 (0x9DBBA4), gas = 29, handbrake = 32,
+  the same in the menus and in a race. CONFIRMED (2026-10-15, each held alone with tools\pad.py and the array sampled).
+  The launcher's START screenshot and VIEW CHANGE race exit read entries 53 and 15 since then (patches.ps1
+  Get-GameButtons, pc_live.c); before, they read XInput pad 0 and missed every other input.
 - Highlighted stage card: the game itself asks the selector widget only when a stage is
   confirmed (0x6669C0): `hash = 0x5470D0(ecx = "ID_SELECTOR_TRACKSELECT" @0x6E53FC, push 23)`
   (Jenkins-style string hash, cdecl), then `0x606490` with edi = hash returns the selected

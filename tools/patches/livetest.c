@@ -4,7 +4,8 @@
  *   memory: bytes as written; a read that touches a byte never written fails (an unmapped page);
  *   alloc: 0x20000000, then every 0x10000 further, zeroed (the first is the camera block);
  *   a frame: each 1-byte read of 0x9D6E3C (the menus flag, the loop's first read of a pass) starts the next one: the popup
- *     count at block + 0x10 goes down by one, then the frame's writes, time, pad, keys and window in front; after the last
+ *     count at block + 0x10 goes down by one, then the frame's writes (START and View Change are the game's own inputs
+ *     0x9DBBA4 / 0x9DBB0C among them), time, keys and window in front; after the last
  *     frame the game has "exited" (the read fails, alive() is 0);
  *   the game's part: a 1 written at block + 0x2264 loads every video of the table 0x728630.. that has no handle (-1),
  *     handles from next_handle on; a non-zero value at block + 0x2270 opens video object (value - 1) on the name block +
@@ -45,7 +46,7 @@ static void PutS(unsigned va, const char *s) { mwrite(va, s, (unsigned)strlen(s)
 static int hx(int c) { return c <= '9' ? c - '0' : (c | 32) - 'a' + 10; }
 static int hexb(const char *h, unsigned char *o) { int n = 0; while (h[0] && h[1]) { o[n++] = (unsigned char)(hx(h[0]) << 4 | hx(h[1])); h += 2; } return n; }
 
-static FILE *T; static int TRACE, STEP, NF, NEXTH = 14; static unsigned BASE, NEXTA = 0x20000000u, PAD, FRONT; static long long T0, NOW; static unsigned char KEYS[256];
+static FILE *T; static int TRACE, STEP, NF, NEXTH = 14; static unsigned BASE, NEXTA = 0x20000000u, FRONT; static long long T0, NOW; static unsigned char KEYS[256];
 static Pj *FR;
 static void tline(const char *s) { if (TRACE) { fputs(s, T); fputc('\n', T); } }
 static void to_log(const char *s) { if (TRACE) fprintf(T, "L %s\n", s); }
@@ -58,7 +59,7 @@ static void next_frame(void) {
     const Pj *f = pj_at(FR, STEP++), *k; char l[32];
     if (BASE && I(BASE + 0x10) > 0) PutI(BASE + 0x10, I(BASE + 0x10) - 1);                 /* the block counts the popup's frames down */
     writes(pj_get(f, "set"), 0); writes(pj_get(f, "setb"), BASE);
-    NOW = T0 + (long long)num(pj_get(f, "t")) * 10000; PAD = num(pj_get(f, "pad")); FRONT = num(pj_get(f, "front"));
+    NOW = T0 + (long long)num(pj_get(f, "t")) * 10000; FRONT = num(pj_get(f, "front"));
     memset(KEYS, 0, sizeof KEYS);
     for (k = pj_get(f, "keys") ? pj_get(f, "keys")->kid : NULL; k; k = k->next) KEYS[num(k) & 255] = 1;
     snprintf(l, sizeof l, "F %d", STEP); tline(l);
@@ -93,7 +94,6 @@ static void t_resume(GameMem *m) { (void)m; tline("R"); }
 static int t_alive(GameMem *m) { (void)m; return STEP < NF; }
 static long long t_now(GameMem *m) { (void)m; return NOW; }
 static void t_sleep(GameMem *m, int ms) { (void)m; (void)ms; }
-static unsigned t_pad(GameMem *m) { (void)m; return PAD; }
 static int t_key(GameMem *m, int vk) { (void)m; return KEYS[vk & 255]; }
 static unsigned t_front(GameMem *m) { (void)m; return FRONT; }
 static int t_shot(GameMem *m, int act, const char *path, const char *info) {
@@ -103,7 +103,7 @@ static int t_shot(GameMem *m, int act, const char *path, const char *info) {
     else tline("G close");
     return 1;
 }
-static GameMem fake = {t_read, t_write, t_alloc, t_suspend, t_resume, t_alive, t_now, t_sleep, t_pad, t_key, t_front, t_shot, NULL, NULL};
+static GameMem fake = {t_read, t_write, t_alloc, t_suspend, t_resume, t_alive, t_now, t_sleep, t_key, t_front, t_shot, NULL, NULL};
 
 static int run(int argc, char **argv);
 void __stdcall entry(void) {                            /* (no C runtime start-up: -nostartfiles) the arguments as UTF-8 */

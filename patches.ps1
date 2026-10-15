@@ -850,7 +850,7 @@ function Set-ShaderTest($h, [string]$gameDir, [string]$slot, [string]$dir) {
 # in that time, START was "begin a game" and the picture is dropped. Pictures are at least 2 s apart, and the file name is
 # shown only after the picture was taken, so it is never in it. Step-Start is the decision alone, apart from the game
 # (tools\start_mocktest.ps1 drives it): it returns what to do now, any of 'grab' (take the picture), 'save' (write the held
-# one), 'drop' (forget it), 'exit'. Buttons (TeknoParrot's UserProfiles\SR3.xml): Start = XInput 0x10, View Change = 0x1000.
+# one), 'drop' (forget it), 'exit'. The buttons are the game's own inputs (Get-GameButtons), in XInput's bits: START 0x10, View Change 0x1000.
 $StartHoldSeconds = 1.2
 function New-StartState { return @{ Was = $false; At = [datetime]::MinValue; Armed = $false; VWas = $false; VAt = [datetime]::MinValue; VArmed = $false; Long = $false; Race = $false; WasMenu = $false; HeldAt = $null; ShotAt = [datetime]::MinValue } }
 function Step-Start($s, [bool]$down, [bool]$view, [bool]$menu, [datetime]$now) {
@@ -1073,15 +1073,13 @@ function Wait-GameExit($game) {
 # Runs until the game closes.
 # What the loop asks of the world outside the game's memory, each in a function of its own: the mock tests and the trace
 # lockstep (tools\patches\live_lockstep.py) put fakes in their place, and patchcore (pc_live.c) asks its GameMem the same
-# questions (now, pad, key, front, shot). The pad: XInput pad 0's buttons, 0 without a pad.
+# questions (now, key, front, shot).
 function Initialize-Host {
     Add-Type -AssemblyName System.Drawing, System.Windows.Forms
     if (-not ('Sr3Pad' -as [type])) {
         Add-Type @'
 using System; using System.Runtime.InteropServices;
 public static class Sr3Pad {
-    [StructLayout(LayoutKind.Sequential)] public struct XState { public uint Packet; public ushort Buttons; public byte LT, RT; public short LX, LY, RX, RY; }
-    [DllImport("xinput1_4.dll")] public static extern int XInputGetState(int index, ref XState state);
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
     [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vk);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
@@ -1091,7 +1089,12 @@ public static class Sr3Pad {
     [Sr3Pad]::SetProcessDPIAware() | Out-Null
 }
 function Get-Now { return (Get-Date) }
-function Get-PadButtons { $pad = New-Object Sr3Pad+XState; if ([Sr3Pad]::XInputGetState(0, [ref]$pad) -eq 0) { return [int]$pad.Buttons }; return 0 }
+# START and VIEW CHANGE as the game itself sees them: its logical inputs, a dword each at 0x9DBAD0 + 4 x entry (90 of them;
+# the low 15 bits = held this frame, the previous frame shifted by 15, bit 30 = pressed this frame): START = entry 53
+# (0x9DBBA4), View Change = entry 15 (0x9DBB0C), the same in the menus and in a race (found in the game 2026-10-15; gas is
+# 29, handbrake 32). So a keyboard, TeknoParrot's mapping, a wheel or a test pad all count. Until 2026-10-15 XInput pad 0
+# was read directly, which saw nothing else. Returned in XInput's bits, START 0x10 and View Change 0x1000, for Step-Start.
+function Get-GameButtons($h) { $b = 0; if ((Read-GameInt $h 0x9DBBA4) -band 0x7FFF) { $b = $b -bor 0x10 }; if ((Read-GameInt $h 0x9DBB0C) -band 0x7FFF) { $b = $b -bor 0x1000 }; return $b }
 function Test-KeyDown([int]$vk) { return ([Sr3Pad]::GetAsyncKeyState($vk) -band 0x8000) -ne 0 }
 function Get-FrontWindow { return [long][Sr3Pad]::GetForegroundWindow() }
 function New-ScreenGrab {                                          # the whole primary screen, as it is now
@@ -1224,7 +1227,7 @@ function Watch-Tracks($game, [string]$gameExe) {
                 [Sr3Mem]::Write($h, 0xA65794, ([BitConverter]::GetBytes([int]$pvsWas)), $true); $pvsHeld = $false
             }
             # in a race: START takes a screenshot when it is let go, VIEW CHANGE held leaves the race (Step-Start)
-            $buttons = Get-PadButtons
+            $buttons = Get-GameButtons $h
             $startDown = ($buttons -band 0x10) -ne 0; $viewDown = ($buttons -band 0x1000) -ne 0
             foreach ($act in (Step-Start $start $startDown $viewDown $menu (Get-Now))) {
                 if ($act -eq 'grab') {

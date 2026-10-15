@@ -14,10 +14,9 @@ struct GameMem {
     void (*resume)(GameMem *);
     int (*alive)(GameMem *);                                                        /* the game still running */
     /* the world outside the game's memory, for the live loop (pc_live.c; patches.ps1's Get-Now, Start-Sleep,
-       Get-PadButtons, Test-KeyDown, Get-FrontWindow, New- / Save- / Close-ScreenGrab, Show-WatchdogNews) */
+       Test-KeyDown, Get-FrontWindow, New- / Save- / Close-ScreenGrab, Show-WatchdogNews) */
     long long (*now)(GameMem *);                                                    /* local time, 100 ns ticks since 1601 (a FILETIME) */
     void (*sleep)(GameMem *, int ms);
-    unsigned (*pad)(GameMem *);                                                     /* XInput pad 0's buttons, 0 without a pad */
     int (*key)(GameMem *, int vk);                                                  /* 1 = held */
     unsigned (*front)(GameMem *);                                                   /* the foreground window */
     int (*shot)(GameMem *, int act, const char *path, const char *info);            /* 1 grab the screen, 2 save it as PNG (+ tEXt "SR3Lab" info), 3 let it go; 1 = done */
@@ -43,6 +42,7 @@ const char *pc_source(void);                                            /* the S
 void pc_live(GameMem *m, const PcCfg *c, const char *game_exe);        /* after the cameras: menu timers, car lists, handling, then
                                                                            the track switcher / START / race-exit loop until the game exits */
 /* pc_host.c: the real world for GameMem's now .. shot (both front ends use these; the lockstep test has its own) */
-long long ph_now(GameMem *); void ph_sleep(GameMem *, int ms); unsigned ph_pad(GameMem *); int ph_key(GameMem *, int vk);
+long long ph_now(GameMem *); void ph_sleep(GameMem *, int ms); int ph_key(GameMem *, int vk);
 unsigned ph_front(GameMem *); int ph_shot(GameMem *, int act, const char *path, const char *info);
+extern int (__cdecl *ph_grab_hook)(void **bgra, int *w, int *h);       /* the runtime's back buffer grab (patches.dll), else GDI */
 #define PC_LOADED_FLAG 0x9EB81Cu                   /* non-zero once the game's system data is loaded */

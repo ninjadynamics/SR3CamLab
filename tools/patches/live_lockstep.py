@@ -28,7 +28,9 @@ class Game:
     def putb(self, off, b): self.after.append([off, b.hex()])
     def file(self, rel, data=b'x'): self.files[rel] = data if isinstance(data, bytes) else data.encode('utf-8')
     def frame(self, menu, count, track, view=0, hi=-1, pad=0, keys=(), front=0, mode_val=-1, car_sel=-1, dt=15, set=(), setb=()):
-        s = [[0x9D6E3C, bytes([menu]).hex()], [0x9C442C, i32(count).hex()], [0x30000100, sz(track, 32).hex()], [0x9DBB0C, bytes([0xFF if view else 0]).hex()]] + [[a, b.hex()] for a, b in set]
+        held = lambda on: i32(0x7F80FF if on else 0).hex()                                  # the game's logical input: low 15 bits = held now
+        s = [[0x9D6E3C, bytes([menu]).hex()], [0x9C442C, i32(count).hex()], [0x30000100, sz(track, 32).hex()],
+             [0x9DBB0C, held(view or pad & 0x1000)], [0x9DBBA4, held(pad & 0x10)]] + [[a, b.hex()] for a, b in set]   # View Change (entry 15), START (53)
         sb = [[0x226C, i32(hi).hex()], [0x2278, i32(mode_val).hex()], [0x227C, i32(car_sel).hex()]] + [[a, b.hex()] for a, b in setb]
         self.frames.append(dict(t=self.t, pad=pad, keys=list(keys), front=front, set=s, setb=sb)); self.t += dt
     def json(self): return dict(name=self.name, mem=self.mem, after=self.after, frames=self.frames, next_handle=self.next_handle)
@@ -68,7 +70,7 @@ def base_game(g, cars_lib=True):
         n = 0x32000008; g.put(0x32000000, bytes(8))
         for k in range(11):
             g.put(n, i32(n + 0x80 if k < 10 else 0) + i32(k) + bytes(0x38) + sz('LANG_ID_HORNET' if k == 10 else 'LANG_ID_X%d' % k, 32) + bytes(0x20)); n += 0x80
-    g.put(0xA65794, i32(0)); g.put(0x9DBB0C, i32(0)); g.put(0x9C442C, i32(0))
+    g.put(0xA65794, i32(0)); g.put(0x9DBAD0, bytes(90 * 4)); g.put(0x9C442C, i32(0))
     g.put(0x728CF4, i32(0x10A2C)); g.put(0x9DBDA0, bytes(0x10))
     g.put(0x9F106C, f32(0.001953125, 10.0)); g.put(0x5A5467, bytes([0xE8, 0xF4, 0x84, 0xF6, 0xFF]))
     g.put(0x4EEF70, bytes([0x55, 0x8B, 0xEC, 0x83, 0xE4, 0xF0])); g.put(0x4EE920, bytes([0x83, 0xEC, 0x3C, 0x8B, 0x00, 0x6B]))

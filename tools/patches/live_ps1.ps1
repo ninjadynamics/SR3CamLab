@@ -2,7 +2,7 @@
 # write, suspend / resume, allocation, log line and screen grab to a trace. live_lockstep.py runs livetest.exe (pc_live.c) on
 # the same game and compares the two traces line for line. The fake game is livetest.c's (see there; keep the two alike).
 #   live_ps1.ps1 -Scenario <scenario.json> -GameExe <...\Rally.exe> -ModDir <dir> -Out <trace>
-# The script is cut before its launch part, [Sr3Mem] becomes [MockGame], and the outside world (Get-Now, Get-PadButtons,
+# The script is cut before its launch part, [Sr3Mem] becomes [MockGame], and the outside world (Get-Now,
 # Test-KeyDown, Get-FrontWindow, the screen grab, Log, Start-Sleep) is replaced by functions defined after it. It runs as
 # <ModDir>\live_body.ps1, so $PSScriptRoot (handling.json, ..\Screenshots) is the mod folder, as in a real install.
 param([Parameter(Mandatory = $true)][string]$Scenario, [Parameter(Mandatory = $true)][string]$GameExe, [Parameter(Mandatory = $true)][string]$ModDir, [Parameter(Mandatory = $true)][string]$Out)
@@ -69,7 +69,6 @@ function Skip-Sleep($ms) { }
 function Initialize-Host { }
 $script:MockT0 = New-Object DateTime 2026, 10, 15, 12, 0, 0
 function Get-Now { return $script:MockT0.AddTicks([MockGame]::Now) }
-function Get-PadButtons { return [MockGame]::Pad }
 function Test-KeyDown([int]$vk) { return [MockGame]::Keys.Contains($vk) }
 function Get-FrontWindow { return [MockGame]::Front }
 function New-ScreenGrab { [MockGame]::Line('G grab'); return 'grab' }

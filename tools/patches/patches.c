@@ -1,7 +1,8 @@
 /* patches.dll: patchcore inside the game. Started by the TeknoParrot-free runtime (Codex's standalone\) through
  *     int __cdecl patches_start(const char *utf8_absolute_settings_path)      0 = started, 1 settings, 2 game bytes, 3 internal
  * after its own check of Rally.exe, outside the loader lock, before the first race. It returns at once; a thread of
- * its own waits for the game's data (the non-zero dword at 0x9EB81C, as patches.ps1 waits) and then patches.
+ * its own waits for the game's data (the non-zero dword at 0x9EB81C, as patches.ps1 waits), patches the cameras, and
+ * then runs the live loop (pc_live.c) for as long as the game runs.
  *     int __cdecl patches_plan(const char *utf8_settings_path, const char *out_json)   the plan (lockstep.py)
  *     const char *__cdecl patches_source(void)                                       the patches.ps1 it was built from
  * The game memory here is the game's own: reads and writes are plain copies (a page made writable for the write),
@@ -60,7 +61,7 @@ static void in_resume(GameMem *m) {
     nheld = 0;
 }
 static int in_alive(GameMem *m) { (void)m; return 1; }
-static GameMem inside = {in_read, in_write, in_alloc, in_suspend, in_resume, in_alive, ph_now, ph_sleep, ph_pad, ph_key, ph_front, ph_shot, NULL, NULL};
+static GameMem inside = {in_read, in_write, in_alloc, in_suspend, in_resume, in_alive, ph_now, ph_sleep, ph_key, ph_front, ph_shot, NULL, NULL};
 
 /* ---------------------------------------------------------------- the thread */
 static DWORD WINAPI worker(LPVOID p) {
@@ -70,7 +71,14 @@ static DWORD WINAPI worker(LPVOID p) {
         Sleep(50);
     }
     pc_logf("Game data loaded after %u s.", (unsigned)((GetTickCount() - t0) / 1000));
-    pc_install_cameras(&inside, &cfg);
+    if (!pc_install_cameras(&inside, &cfg)) return 0;
+    {   /* the live loop (pc_live.c) for the rest of the game's life: this thread ends with the process */
+        wchar_t w[1024]; char exe[2048] = ""; HMODULE rt = GetModuleHandleA("dinput8.dll");
+        if (rt) ph_grab_hook = (int (__cdecl *)(void **, int *, int *))(void (*)(void))GetProcAddress(rt, "sr3rt_grab_backbuffer");
+        pc_logf("Screenshots: %s.", ph_grab_hook ? "the game's back buffer (the runtime's sr3rt_grab_backbuffer), the screen if it has none" : "the screen (GDI)");
+        if (GetModuleFileNameW(NULL, w, 1024)) WideCharToMultiByte(CP_UTF8, 0, w, -1, exe, sizeof exe, NULL, NULL);
+        pc_live(&inside, &cfg, exe);
+    }
     return 0;
 }
 
