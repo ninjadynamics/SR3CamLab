@@ -62,6 +62,13 @@ A full chain on an empty data folder, every Python process logging the modules i
   `a + (b - a) * g` below g = 0.5, `b - (b - a) * (1 - g)` from there.
 - `np.random.RandomState(seed).rand()` is Python's `random.random()` once the state is numpy's: both are MT19937 and make
   a 53-bit float from two draws the same way, but numpy seeds with init_genrand, so set it with `random.setstate`.
+- **Why the BLAS orders look odd: numpy's OpenBLAS 0.3.21 does not know this PC's CPU and runs its Prescott (SSE2) kernels**
+  (`openblas_get_corename64_` in numpy's `libopenblas64_` DLL: "Prescott", MAX_THREADS 24). Its ddot, fitted 100% (9,600 random
+  cases n 1 .. 40 with every alignment, 800 long ones up to n 2,000): four 2-lane accumulators, no fused multiply-add; when y is
+  8 bytes off 16 its first product goes into accumulator 0's low lane; then two pairs a round, round robin over the four; a pair
+  left over into accumulator 0, a single product into its low lane; each lane (a0 + a1) + (a2 + a3), then low + high, added to 0.
+  `np.convolve(a, k, 'valid')` is that ddot per output (k copied, aligned): 4,982 of 4,982. `core\npexact.py` (ddot, pwsum) has it.
+  On a PC whose CPU OpenBLAS knows, numpy itself gives other last bits; the ports keep this PC's numbers (v15 was made here).
 - **`np.dot` of two 3-vectors depends on where the second one sits in memory** (OpenBLAS's small kernel): 16-byte
   aligned gives `(p0 + p2) + p1`, 8 bytes off gives `(p0 + p1) + p2`, each 100% (6,000 pairs per alignment class).
   `np.linalg.norm(v)` is `sqrt(v.dot(v))`, so it follows `v`'s alignment. A fresh numpy array is 16-byte aligned; the rows

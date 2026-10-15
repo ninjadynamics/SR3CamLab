@@ -2,14 +2,14 @@
 write the same kind of markers for an imported centre line.
     python pacenotes.py [Track ...]     -> table of markers with the turn they cover, and the thresholds derived
 Marker (0x1C): u16 a, u16 b, u32 0, u16 1, u16 nProps, f32 start, f32 end, f32 small, ptr props ; props = {ptr name, ptr value}."""
-import os, sys, struct, collections, json
-import numpy as np
+import os, sys, struct, collections, json, math
 from common import *
 import sbfw
 
 def cstr(d, o): return d[o:d.index(b'\0', o)].decode('latin1')
 
 def read(track):
+    import numpy as np                                                # (the survey of the arcade tracks: numpy)
     f = sbfw.read_sbf(track_files(os.path.join(TRACKS, track))['master_xdata']); by = f.byid(); r = f.chunks[-1]; c = by[r.u32(0x18)]; d = c.data
     one, ns, nm, ps, pm = struct.unpack_from('<5I', d, 0); pn, npts, pp = struct.unpack_from('<3I', d, ps); P = np.frombuffer(d, '<f4', 3 * npts, pp).reshape(-1, 3).astype(float)
     M = []
@@ -23,6 +23,7 @@ def read(track):
 
 def turn(P, s, e):
     """signed heading change (degrees, + = left seen from above with x right / z up) and tightest radius between lap fractions s..e"""
+    import numpy as np                                                # (the survey of the arcade tracks: numpy)
     n = len(P) - 1; i0 = int(round(s * n)) % n; i1 = int(round(e * n)) % n; idx = [(i0 + k) % n for k in range(((i1 - i0) % n) + 1)]
     if len(idx) < 3: idx = [(i0 - 1) % n, i0, (i0 + 1) % n]
     Q = P[idx][:, [0, 2]]; D = np.diff(Q, axis=0); h = np.unwrap(np.arctan2(D[:, 1], D[:, 0])); dh = np.diff(h); L = np.linalg.norm(D, axis=1)
@@ -68,16 +69,30 @@ def code_for_name(name):
 # arcade tracks: 16 of 19 left-coded and 21 of 21 right-coded markers turn that way over the next 150 m)
 CODES = {1: (3, 9, 7), -1: (5, 11, 8)}                                  # gentle, tighter, hairpin
 def corners(P, lead=60.0, min_turn=22.0):
-    """centre line (1 m steps, closed, driving direction = increasing index) -> [(lap fraction of the note, code, turn deg, min radius)]"""
-    Q = P[:, [0, 2]]; n = len(Q); D = np.roll(Q, -1, 0) - Q; h = np.unwrap(np.arctan2(D[:, 1], D[:, 0]))
-    w = 9; k = np.ones(2 * w + 1) / (2 * w + 1); hs = np.convolve(np.concatenate([h[-w:] - (h[-1] - h[0] + (h[1] - h[0])), h, h[:w] + (h[-1] - h[0] + (h[1] - h[0]))]), k, 'valid')
-    cur = np.gradient(hs)                                              # rad per metre
+    """centre line (1 m steps, closed, driving direction = increasing index) -> [(lap fraction of the note, code, turn deg, min radius)]
+    Without numpy since 2026-10-15 (kb 31), numpy's steps written out:
+      h = np.unwrap(np.arctan2(D[:, 1], D[:, 0])): dd = diff(h); ddmod = (dd + pi) % 2pi - pi, = pi where it came out -pi for dd > 0;
+          correction ddmod - dd where |dd| >= pi, summed one after the other
+      hs = np.convolve(ext, ones(19) / 19, 'valid'): per output numpy's dot (npexact.ddot, the kernel an aligned copy)
+      cur = np.gradient(hs): (f[i + 1] - f[i - 1]) / 2.0 inside, one-sided at the ends"""
+    import roadsight, npexact
+    Q = [(float(r[0]), float(r[2])) for r in roadsight.rows(P)]; n = len(Q)
+    D = [(Q[(i + 1) % n][0] - Q[i][0], Q[(i + 1) % n][1] - Q[i][1]) for i in range(n)]; a = [math.atan2(d[1], d[0]) for d in D]
+    pi = math.pi; per = pi * 2; h = [a[0]]; acc = 0.0
+    for i in range(1, n):
+        dd = a[i] - a[i - 1]; dm = (dd - (-pi)) % per + (-pi)
+        if dm == -pi and dd > 0: dm = pi
+        pc = 0.0 if abs(dd) < pi else dm - dd; acc += pc; h.append(a[i] + acc)
+    w = 9; k = [1.0 / (2 * w + 1)] * (2 * w + 1); sh = h[-1] - h[0] + (h[1] - h[0])
+    ext = [x - sh for x in h[-w:]] + h + [x + sh for x in h[:w]]
+    hs = [npexact.ddot(ext[t:t + 2 * w + 1], k, 0) for t in range(len(ext) - 2 * w)]
+    m = len(hs); cur = [(hs[1] - hs[0]) / 1.0] + [(hs[i + 1] - hs[i - 1]) / 2.0 for i in range(1, m - 1)] + [(hs[-1] - hs[-2]) / 1.0]      # rad per metre
     out = []; i = 0; thr = 1.0 / 90.0                                  # a corner = stretch tighter than 90 m radius
     while i < n:
         if abs(cur[i]) > thr:
-            j = i; sg = np.sign(cur[i])
+            j = i; sg = (cur[i] > 0) - (cur[i] < 0)
             while j < n and cur[j] * sg > thr * 0.5: j += 1
-            tr = float(np.degrees(hs[min(j, n - 1)] - hs[i])); rad = float(1.0 / np.abs(cur[i:j]).max())
+            tr = math.degrees(hs[min(j, n - 1)] - hs[i]); rad = 1.0 / max(abs(c) for c in cur[i:j])
             if abs(tr) >= min_turn:
                 c = CODES[1 if tr > 0 else -1]; code = c[2] if (abs(tr) > 75 or rad < 19) else (c[1] if (abs(tr) > 42 and rad < 34) else c[0])
                 out.append((((i - lead) % n) / n, code, round(tr), round(rad)))
@@ -86,6 +101,7 @@ def corners(P, lead=60.0, min_turn=22.0):
     return out
 
 if __name__ == '__main__':
+    import numpy as np
     allrows = []
     for t in sys.argv[1:] or ['Desert4']:
         rows, direction = table(t); print(t, 'direction', direction, 'markers', len(rows), 'types', collections.Counter((r[0], r[1]) for r in rows))
