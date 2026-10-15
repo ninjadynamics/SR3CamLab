@@ -19,6 +19,36 @@ typedef long long i64;
 
 EXPORT int fg_threads(void) { return omp_get_max_threads(); }
 
+/* meshgen.make_verts_safe: axis=1 norm sums three products left-to-right.
+   Keep the cross and normalization in double, then store each f4 field once.
+   memcpy avoids imposing float alignment or aliasing rules on packed records. */
+EXPORT void fg_mesh_verts_safe(const double *Q, i64 nq, unsigned char *out)
+{
+    const unsigned short uv[4][2] = {{0,0},{32767,0},{32767,32767},{0,32767}};
+    #pragma omp parallel for schedule(static) if(nq > 4096)
+    for (i64 k = 0; k < nq; ++k) {
+        const double *q = Q + 12*k;
+        double t[3], b[3], n[3];
+        for (int a=0; a<3; ++a) { t[a]=q[3+a]-q[a]; b[a]=q[6+a]-q[a]; }
+        n[0]=t[1]*b[2]-t[2]*b[1];
+        n[1]=t[2]*b[0]-t[0]*b[2];
+        n[2]=t[0]*b[1]-t[1]*b[0];
+        double ln=sqrt((n[0]*n[0]+n[1]*n[1])+n[2]*n[2]);
+        double lt=sqrt((t[0]*t[0]+t[1]*t[1])+t[2]*t[2]);
+        for (int a=0; a<3; ++a) {
+            n[a] = ln > 1e-9 ? n[a]/ln : (a==1 ? 1.0 : 0.0);
+            t[a] = lt > 1e-9 ? t[a]/lt : (a==0 ? 1.0 : 0.0);
+        }
+        for (int j=0; j<4; ++j) {
+            float f[10]; unsigned short u[4]={uv[j][0],uv[j][1],16384,16384};
+            for (int a=0; a<3; ++a) { f[a]=(float)q[3*j+a]; f[4+a]=(float)n[a]; f[7+a]=(float)t[a]; }
+            f[3]=1.0f;
+            unsigned char *dst=out+(4*k+j)*48;
+            memcpy(dst,f,40); memcpy(dst+40,u,8);
+        }
+    }
+}
+
 /* Python's  x ** 0.5  is the C runtime's pow(x, 0.5), which is not sqrt(x) to the last bit (2 in 1000 differ). The importer's normals are made
    with ** 0.5, so the same pow is used here: the one of ucrtbase.dll, the runtime python.exe uses. fg_init() looks it up; without it, sqrt. */
 #include <windows.h>
