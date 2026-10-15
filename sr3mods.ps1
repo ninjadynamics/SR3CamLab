@@ -27,6 +27,8 @@
                                       (0 = cut; default: the file's "cameraBlend:", else 0.5)
     -Cores <n>                     -> CPU threads the game may use (default 4; 0 = all). Keeps the
                                       memory its cached videos take low enough to avoid crashes.
+    -TpProfile <name>              -> start the game with another TeknoParrot profile this time (setup.yaml's otherwise;
+                                      SR3Windowed: 1280x720 in a window, which also starts with the monitor off)
     -NoWatchdog                    -> don't watch the game for crashes and freezes (normally each one
                                       is written to the crash folder as it happens: Start-Watchdog)
     -Setup                         -> open the setup window (where TeknoParrot and the game are;
@@ -66,7 +68,7 @@
                            SR3's own framing (the far chase view scales distance/height)
 #>
 param([string]$CameraProfile = '', [switch]$List, [switch]$NoLaunch, [switch]$Canary, [switch]$Off, [int]$DelaySeconds = 20, [string]$ProfilesFile = '', [int]$Overlay = -1, [int]$Cores = 4, [switch]$Setup,
-      [double]$MouseSmoothing = -1, [double]$CameraBlend = -1, [switch]$NoWatchdog)
+      [double]$MouseSmoothing = -1, [double]$CameraBlend = -1, [switch]$NoWatchdog, [string]$TpProfile = '')
 
 # Files from a downloaded zip carry Windows' "from the internet" mark, which makes Windows ask
 # before running PLAY.bat or camlab.exe. Clear it from SR3CamLab's own files (a no-op after the first run).
@@ -1861,8 +1863,9 @@ if (-not $proc) {
     if (Get-Process -Name TeknoParrotUi -ErrorAction SilentlyContinue) {
         Log 'Note: TeknoParrot is already open. If the game does not start, close TeknoParrot and run PLAY.bat again.'
     }
-    Log "Starting SEGA Rally 3 through TeknoParrot (profile '$($gameSetup.profile)')..."
-    Start-Process -FilePath $gameSetup.teknoparrot -ArgumentList "--profile=$($gameSetup.profile).xml" -WorkingDirectory $tpDir
+    $tp = if ($TpProfile) { $TpProfile } else { $gameSetup.profile }                     # -TpProfile: another TeknoParrot profile for this run only (e.g. SR3Windowed, for the monitor off)
+    Log "Starting SEGA Rally 3 through TeknoParrot (profile '$tp')..."
+    Start-Process -FilePath $gameSetup.teknoparrot -ArgumentList "--profile=$tp.xml" -WorkingDirectory $tpDir
     $t0 = Get-Date
     while (-not ($proc = Get-Process -Name Rally -ErrorAction SilentlyContinue | Select-Object -First 1)) {
         if (((Get-Date) - $t0).TotalSeconds -gt 120) {
@@ -1873,7 +1876,6 @@ if (-not $proc) {
         Start-Sleep -Milliseconds 250
     }
 }
-Log "Rally.exe running (pid $($proc.Id)). Waiting for the game to finish booting..."
 # The game caches every video it plays (about 20) in its own DirectShow graph, and Windows' WMV
 # decoder starts a thread per CPU core in each: ~140 MB of the 32-bit game's 4 GB per video on a
 # 32-thread CPU, which ends in "Out of memory for VB" or a white screen. With 4 cores allowed a
@@ -1918,6 +1920,7 @@ if ($useExe) {
     if ($code -ne 0) { throw "sr3mods.exe stopped with exit code $code (the lines above say why: 1 settings, 2 the game's bytes or no game, 3 the game closed or could not be opened)." }
     return
 }
+Log "Rally.exe running (pid $($proc.Id)). Waiting for the game to finish booting..."            # (sr3mods.exe says it itself when it waits)
 $h = [Sr3Mem]::Open($proc.Id)
 try {
     $t0 = Get-Date
