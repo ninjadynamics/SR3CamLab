@@ -47,9 +47,33 @@ rom = the export OBJs; patch / round = the dumps written as OBJ in the course-OB
 `asbuilt_scene.py` (pictures x light maps, the sky dome); build = `preview_obj.py` + `blendpatch\bl_build_to_blend.py`.
 Each runs in a thread beside the next step and Blender packs every picture.
 
-## 5. Not done yet
+## 5. Python and the C compiler (owner, 2026-10-15: docs\ROADMAP.md D3)
 
-The bundled Python (embedded CPython + numpy + Pillow + cffi, the prebuilt DLLs and the MinGW runtime they need) and the
-C ports / threading pass. The DLLs are built with `-march=native` today; a release build must be portable and give the same
-bytes (`rays.c`, `fastdxt.c`, `fastseal.c` are compiled without `-ffp-contract=off`, so FMA contraction must stay as it is:
-`x86-64-v3` keeps FMA on).
+The only binaries SR3Lab ships are Python and a C compiler, in `SR3Lab-<date>-toolchain.zip` (`tools\release.py`), optional:
+setup (`tools\setup_toolchain.ps1`, the window's "Python and gcc...") unpacks it offline into `tools\python` and `tools\mingw`;
+`-Winget` fetches Python 3.11.3, gcc (WinLibs) and the pinned numpy / Pillow instead, and the zip can go. The mod zip itself holds
+no binary (release.py refuses to stage one). The C helpers are compiled on the user's PC on first use from `core\cbuild.py`'s
+table (sources, per-unit flags, the files that name each DLL); `python core\cbuild.py` builds them all and prints the commands.
+
+- `tools\python` is this PC's CPython 3.11.3 (the stdlib zipped, no tests / IDLE / tkinter) with numpy 1.24.3 and Pillow 10.0.1,
+  the versions every build here was made with. `python311._pth` makes it ignore PYTHONPATH / PYTHONHOME; with `._pth` Python
+  also leaves the script's own folder off sys.path and still adds the user's site-packages after `import site`, so
+  `Lib\site-packages\sr3lab_paths.py` (run by a .pth) puts the script's folder first and takes the user's site-packages off.
+  Every script under `tools\` finds core\ itself (it no longer relies on PYTHONPATH or the current folder).
+- `tools\mingw` is the part of WinLibs' gcc 13.2.0 (MinGW-w64 11.0.1, UCRT) that compiling and linking every helper touches:
+  314 files, 74.7 MB of the 1.1 GB install, found with gcc -M (headers), -v (programs), -Wl,--trace (link inputs) and the
+  DLLs those programs load. Shown enough: every helper built with it while PATH held only Windows' own folder.
+- Licences: Python's (PSF), numpy's and Pillow's travel with them; GCC and binutils are GPL 3 (the runtime libraries under the
+  GCC Runtime Library Exception): the toolchain zip names where the complete source is (winlibs.com, gcc.gnu.org,
+  sourceware.org, mingw-w64.org) and carries the licence files. Whether that is enough for redistributing GCC binaries, or the
+  source archives must be offered beside the zip, is the owner's call before a public release.
+- The target: `SR3_MARCH` / settings `march`, 'native' by default; the release check builds for x86-64-v3 (AVX2 + FMA), so that
+  every PC compiles the same code. winget's oldest WinLibs is gcc 14.2: the same bytes from it are not shown.
+- Found by the release check (`release.py --check`: the whole stack in the staged tree, on an empty data folder, PATH = System32,
+  LOCALAPPDATA elsewhere): the `._pth` script-folder and user-site points above; rtbake scripts that imported core through the
+  current folder; `cbuild` building in %TEMP% and moving the DLL across drives (os.replace cannot: the build now happens beside
+  the DLL, and a failed move is an error).
+
+## 6. Not done yet
+
+The C ports / threading pass, and making results independent of the thread count (27, "One run that differed").

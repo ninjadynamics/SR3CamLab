@@ -7,12 +7,20 @@ $Here = $PSScriptRoot; $Repo = (Resolve-Path (Join-Path $Here '..\..')).Path
 $SettingsFile = Join-Path $Here 'settings.json'
 
 function Find-Py {
-    $b = Join-Path $Repo 'tools\python\python.exe'
+    $b = Join-Path $Repo 'tools\python\python.exe'                   # the toolchain zip's
     if (Test-Path -LiteralPath $b) { return $b }
+    if ($S -and $S.python -and (Test-Path -LiteralPath "$($S.python)")) { return "$($S.python)" }      # winget's (setup_toolchain.ps1 -Winget)
     foreach ($n in 'python', 'py') { $c = Get-Command $n -ErrorAction SilentlyContinue; if ($c) { return $c.Source } }
     return $null
 }
-$Py = Find-Py
+function Find-Gcc {
+    foreach ($g in @((Join-Path $Repo 'tools\mingw\bin\gcc.exe'), "$($S.gcc)")) { if ($g -and (Test-Path -LiteralPath $g)) { return $g } }
+    $w = @(Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages\BrechtSanders.WinLibs*\mingw64\bin\gcc.exe') -ErrorAction SilentlyContinue)
+    if ($w.Count) { return $w[0].FullName }
+    $c = Get-Command gcc -ErrorAction SilentlyContinue; if ($c) { return $c.Source }
+    if (Test-Path -LiteralPath 'C:\mingw64\bin\gcc.exe') { return 'C:\mingw64\bin\gcc.exe' }
+    return $null
+}
 
 function Read-Settings {
     $s = @{ data_root = ''; roms = ''; sr3_game = ''; blender = ''; mame = ''; threads = 'all_but_one' }
@@ -26,7 +34,7 @@ function Write-Settings($s) {
     $t = (ConvertTo-Json $o) -replace "`r`n", "`n"
     [IO.File]::WriteAllText($SettingsFile, $t + "`n", (New-Object Text.UTF8Encoding($false)))      # UTF-8 without BOM, LF
 }
-$S = Read-Settings
+$S = Read-Settings; $Py = Find-Py
 
 # ---- the courses the stack can build: a recipe beside the course JSON ----
 $GameNames = @{ src = 'SEGA Rally Championship'; sr2 = 'SEGA Rally 2'; daytona = 'Daytona USA' }
@@ -134,7 +142,10 @@ $lA = Add-Ctl $gA (New-Label 'Then pick "SEGA Rally Championship (1995)" in SR3 
 # run
 $bRun = Add-Ctl $F (New-Object Windows.Forms.Button) 10 614 120 32; $bRun.Text = 'Run'; $bRun.Font = New-Object Drawing.Font('Segoe UI', 10, [Drawing.FontStyle]::Bold)
 $bStop = Add-Ctl $F (New-Object Windows.Forms.Button) 136 614 90 32; $bStop.Text = 'Stop'; $bStop.Enabled = $false
-$lRun = Add-Ctl $F (New-Label '') 236 614 680 32
+$lRun = Add-Ctl $F (New-Label '') 236 614 300 32
+$lTools = Add-Ctl $F (New-Label '') 540 614 230 32
+$bTools = Add-Ctl $F (New-Object Windows.Forms.Button) 775 614 140 32; $bTools.Text = 'Python and gcc...'
+$tip.SetToolTip($bTools, 'SR3Lab''s own Python and C compiler come in the toolchain zip (no internet needed), or winget can fetch them.')
 $Log = Add-Ctl $F (New-Object Windows.Forms.TextBox) 10 652 905 120; $Log.Multiline = $true; $Log.ScrollBars = 'Vertical'; $Log.ReadOnly = $true; $Log.Font = New-Object Drawing.Font('Consolas', 8.5)
 $Log.Anchor = 'Top, Bottom, Left, Right'
 
@@ -165,8 +176,22 @@ public class StackPump {
 }
 '@
 $Q = New-Object 'System.Collections.Concurrent.ConcurrentQueue[string]'; $script:Proc = $null; $script:T0 = $null; $script:OnDone = $null
+function Start-Tool([string]$exe, [string[]]$argv, [string]$cwd, $onDone) {
+    if ($script:Proc -and -not $script:Proc.HasExited) { return }
+    $i = New-Object Diagnostics.ProcessStartInfo; $i.FileName = $exe; $i.WorkingDirectory = $cwd
+    $i.Arguments = ($argv | ForEach-Object { if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ } }) -join ' '
+    $i.UseShellExecute = $false; $i.RedirectStandardOutput = $true; $i.RedirectStandardError = $true; $i.CreateNoWindow = $true
+    $pump = New-Object StackPump($i); $script:Q = $pump.Q; $script:Proc = $pump.P; $script:T0 = Get-Date; $script:OnDone = $onDone; $bRun.Enabled = $false; $bStop.Enabled = $true
+    Add-Log ("> $(Split-Path -Leaf $exe) " + $i.Arguments)
+}
+function Update-Tools {
+    $g = Find-Gcc; $script:Py = Find-Py
+    $lTools.Text = "Python: $(if ($script:Py) { 'ok' } else { 'none' }); gcc: $(if ($g) { 'ok' } else { 'none' })"
+    $lTools.ForeColor = $(if ($script:Py -and $g) { [Drawing.Color]::DarkGreen } else { [Drawing.Color]::DarkRed })
+    $tip.SetToolTip($lTools, "Python: $($script:Py)`ngcc: $g")
+}
 function Start-Py([string[]]$argv, [string]$cwd, $onDone) {
-    if (-not $Py) { [Windows.Forms.MessageBox]::Show('No Python: put the release zip''s tools\python folder in place, or install Python with numpy and Pillow.') | Out-Null; return }
+    if (-not $Py) { [Windows.Forms.MessageBox]::Show('No Python yet: click "Python and gcc..." to unpack the toolchain zip (no internet needed) or fetch them with winget.') | Out-Null; return }
     if ($script:Proc -and -not $script:Proc.HasExited) { return }
     Save-Folders
     $i = New-Object Diagnostics.ProcessStartInfo; $i.FileName = $Py; $i.WorkingDirectory = $cwd
@@ -218,10 +243,18 @@ $bHo.Add_Click({ $h = Hd-Dir; if (Test-Path -LiteralPath $h) { Start-Process exp
 $bHv.Add_Click({ $c = Current; if ($c) { Start-Py @((Join-Path $Here 'core\hd_textures.py'), $c.Game, $c.Course, 'vanilla') (Join-Path $Here 'core') $null } })
 $bAc.Add_Click({ Start-Py @((Join-Path $Repo 'tools\audio\src_audio.py'), 'codriver') (Join-Path $Repo 'tools\audio') $null })
 $bAm.Add_Click({ if (-not $Boxes.mame.Text.Trim()) { [Windows.Forms.MessageBox]::Show('Set MAME in the folders first.') | Out-Null; return }; Start-Py @((Join-Path $Repo 'tools\audio\src_music.py'), 'all') (Join-Path $Repo 'tools\audio') $null })
+$bTools.Add_Click({
+    $m = "SR3Lab's own Python and C compiler are in the toolchain zip that comes with it.`n`nYes: unpack them from the zip (recommended - nothing is downloaded or installed in Windows).`nNo: fetch them with winget instead (python.org's Python, WinLibs' gcc, numpy and Pillow from PyPI); the zip is not needed then.`nCancel: leave things as they are."
+    $a = [Windows.Forms.MessageBox]::Show($m, 'Python and gcc', 'YesNoCancel', 'Question')
+    if ($a -eq 'Cancel') { return }
+    $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $argv = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $Repo 'tools\setup_toolchain.ps1')) + $(if ($a -eq 'No') { @('-Winget') } else { @() })
+    Start-Tool $ps $argv $Repo { param($code) $script:S = Read-Settings; Update-Tools }
+})
 $F.Add_FormClosing({ if ($script:Proc -and -not $script:Proc.HasExited) { & taskkill.exe /T /F /PID $script:Proc.Id | Out-Null } })
 
-Update-Marks; if ($cC.Items.Count) { $cC.SelectedIndex = 0 }
-if (-not $Py) { Add-Log 'No Python found: the release zip brings one in tools\python.' } else { Add-Log "Python: $Py" }
+Update-Marks; Update-Tools; if ($cC.Items.Count) { $cC.SelectedIndex = 0 }
+if (-not $Py) { Add-Log 'No Python yet: "Python and gcc..." sets it up from the toolchain zip, or with winget.' } else { Add-Log "Python: $Py"; Add-Log "gcc: $(Find-Gcc)" }
 if ($env:SR3_WINDOW_SHOT) {                                           # (tests) the window drawn into a picture, never shown
     $F.Opacity = 0; $F.ShowInTaskbar = $false; $F.Show(); [Windows.Forms.Application]::DoEvents()
     $bmp = New-Object Drawing.Bitmap($F.Width, $F.Height); $F.DrawToBitmap($bmp, (New-Object Drawing.Rectangle(0, 0, $F.Width, $F.Height))); $bmp.Save($env:SR3_WINDOW_SHOT); $F.Close(); return

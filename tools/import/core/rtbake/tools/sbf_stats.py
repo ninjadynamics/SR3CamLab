@@ -1,4 +1,5 @@
 """What is in a built track's scenery file, in numbers, for several builds side by side.   python sbf_stats.py <step> [<step> ...]   (from the importer folder)"""
+import os as _os_, sys as _sys_; _sys_.path.insert(0, _os_.path.normpath(_os_.path.join(_os_.path.dirname(_os_.path.abspath(__file__)), '..', '..')))      # tools/import/core
 import sys, os, struct, collections
 import numpy as np
 from common import *

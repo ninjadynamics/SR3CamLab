@@ -16,7 +16,7 @@ must return what that loop returned. The callers keep their old code as _old_<na
 import os, sys, ctypes, subprocess, itertools, collections, atexit
 import numpy as np
 
-HERE = os.path.dirname(os.path.abspath(__file__)); SRC = os.path.join(HERE, 'fastgeo.c'); GCC = r'C:\mingw64\bin\gcc.exe'
+HERE = os.path.dirname(os.path.abspath(__file__)); SRC = os.path.join(HERE, 'fastgeo.c'); import cbuild as _cb; from cbuild import runtime as _runtime
 ON = os.environ.get('SR3_FASTGEO', '1') != '0'
 CHECK = os.environ.get('SR3_FASTGEO_CHECK', '0') == '1'
 REPORT = collections.Counter()                                          # CHECK: 'name: calls' / 'name: DIFFERENT ...'
@@ -36,18 +36,8 @@ _lib = None
 def lib():
     global _lib
     if _lib is None:
-        import hashlib, glob
-        DLL = os.path.join(HERE, 'fastgeo.%s.dll' % hashlib.md5(open(SRC, 'rb').read()).hexdigest()[:8])      # one file per version of the source: a running build keeps its DLL loaded (Windows will not replace it), a build started after an edit gets its own
-        if not os.path.exists(DLL):
-            tmp = DLL + '.%d.tmp' % os.getpid(); r = subprocess.run([GCC, '-O3', '-march=native', '-ffp-contract=off', '-fopenmp', '-shared', '-o', tmp, SRC], capture_output=True, text=True)
-            if r.returncode != 0: raise RuntimeError('fastgeo.c does not compile: ' + r.stderr[-1500:])
-            try: os.replace(tmp, DLL)
-            except OSError: os.remove(tmp)                                # (another build got there first and has it loaded)
-            for old in glob.glob(os.path.join(HERE, 'fastgeo.*.dll')) + [os.path.join(HERE, 'fastgeo.dll')]:      # versions nobody has loaded any more
-                if old != DLL:
-                    try: os.remove(old)
-                    except OSError: pass
-        os.add_dll_directory(os.path.dirname(GCC)); L = ctypes.CDLL(DLL); P = ctypes.c_void_p; LL = ctypes.c_longlong; D = ctypes.c_double; I = ctypes.c_int
+        DLL = _cb.dll('fastgeo')                                  # built on first use (cbuild.py: sources, flags, compiler)
+        _runtime(); L = ctypes.CDLL(DLL); P = ctypes.c_void_p; LL = ctypes.c_longlong; D = ctypes.c_double; I = ctypes.c_int
         L.fg_threads.restype = I; L.fg_init.restype = I; L.fg_init()
         L.fg_prep.argtypes = [P, P, LL, P, P, P, P, P]; L.fg_prep.restype = None
         L.fg_far.argtypes = [P, LL, P, LL, D, P]; L.fg_far.restype = None

@@ -19,6 +19,7 @@ What changed against rt_bake_game.py, and which complaint it answers:
                   each lamp post a thin cylinder: they cast shadows, and take no baked light themselves (the importer flat-lights them).
   fast | slow     fast = 7 sun rays, 16 sky rays (about a fifth of the time): for trying things. slow = 19 / 96: what goes into the game.
 -> <path>.raw.npy, <path>.pack.npz, <path>.side.npz"""
+import os as _os_, sys as _sys_; _sys_.path.insert(0, _os_.path.normpath(_os_.path.join(_os_.path.dirname(_os_.path.abspath(__file__)), '..')))      # tools/import/core
 import sys, pickle, math, time, collections, os, ctypes, subprocess, hashlib
 import numpy as np
 sys.path.insert(0, os.getcwd())
@@ -26,7 +27,7 @@ import lightmap1995 as LM, retex
 PATH, DUMP = sys.argv[1], sys.argv[2]; FAST = (sys.argv[3] if len(sys.argv) > 3 else 'slow') == 'fast'; t0 = time.time()
 OUT = sys.argv[4] if len(sys.argv) > 4 else PATH; STEP = int(os.environ.get('BAKE_STEP', '1')); OFF = int(os.environ.get('BAKE_OFF', '0')); MODE = int(os.environ.get('RTG2_MODE', '1')); TM_ = collections.Counter()
 # ---------------------------------------------------------------- the C side
-HERE = os.path.dirname(os.path.abspath(__file__)); GCC = r'C:\mingw64\bin\gcc.exe'; SRCS = [os.path.join(HERE, f) for f in ('rays.c', 'fastlm_rays.c', 'rtg2_rays.c', 'rtg2.c')]
+HERE = os.path.dirname(os.path.abspath(__file__)); __import__('sys').path.insert(0, os.path.dirname(HERE)); from cbuild import GCC, MARCH, runtime as _runtime; SRCS = [os.path.join(HERE, f) for f in ('rays.c', 'fastlm_rays.c', 'rtg2_rays.c', 'rtg2.c')]
 def _lib():
     h = hashlib.md5()
     for f in SRCS: h.update(open(f, 'rb').read())
@@ -34,8 +35,8 @@ def _lib():
     if not os.path.exists(dll):
         tmp = dll + '.%d.tmp' % os.getpid(); oa = dll + '.%d.a.o' % os.getpid(); ob = dll + '.%d.b.o' % os.getpid()
         try:
-            for cmd in ([GCC, '-O3', '-march=native', '-fopenmp', '-c', '-o', oa, SRCS[2]],                             # rays.c with the flags rays.py gives it
-                        [GCC, '-O3', '-march=native', '-ffp-contract=off', '-fopenmp', '-c', '-o', ob, SRCS[3]],        # numpy's arithmetic: no fused multiply-add
+            for cmd in ([GCC, '-O3', MARCH, '-fopenmp', '-c', '-o', oa, SRCS[2]],                             # rays.c with the flags rays.py gives it
+                        [GCC, '-O3', MARCH, '-ffp-contract=off', '-fopenmp', '-c', '-o', ob, SRCS[3]],        # numpy's arithmetic: no fused multiply-add
                         [GCC, '-shared', '-fopenmp', '-o', tmp, oa, ob]):
                 r = subprocess.run(cmd, capture_output=True, text=True, cwd=HERE)
                 if r.returncode != 0: raise RuntimeError('rtg2 does not compile: ' + r.stderr[-1500:])
@@ -44,7 +45,7 @@ def _lib():
         finally:
             for f in (oa, ob):
                 if os.path.exists(f): os.remove(f)
-    os.add_dll_directory(os.path.dirname(GCC)); L = ctypes.CDLL(dll); Pv = ctypes.c_void_p; LL = ctypes.c_longlong; Dd = ctypes.c_double; Ii = ctypes.c_int
+    _runtime(); L = ctypes.CDLL(dll); Pv = ctypes.c_void_p; LL = ctypes.c_longlong; Dd = ctypes.c_double; Ii = ctypes.c_int
     L.rt_build.restype = Pv; L.rt_build.argtypes = [Pv, Ii]; L.rt_masks.argtypes = [Pv] * 3 + [Ii] + [Pv] * 4; L.rx_open.restype = Pv; L.rx_open.argtypes = [Pv, Ii]; L.rx_depth2.argtypes = [Pv]
     L.rx_cast.argtypes = [Pv, Ii, Pv, Pv, LL, Dd, Pv, Pv, Pv]
     L.lm2_light.argtypes = [Pv, Ii, LL, Pv, Pv, Pv, Pv, Pv, Ii, Pv, Pv, Pv, Pv, Pv, Pv, Pv, Ii, Pv, Ii, Dd, Pv, Pv, Pv, Pv]; L.lm2_smooth.argtypes = [Pv, Ii, LL, Pv, Pv, Pv, Pv, Pv]

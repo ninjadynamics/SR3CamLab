@@ -6,18 +6,13 @@ use, like fastdxt.py). Only a filter: seal1995 measures what is left with its ow
     cnt, off, cand = candidates(U, E, xo, i0s, i1s, tol)     cand[off[e]:off[e] + cnt[e]] = the corners to measure for edge e, in the order of xo"""
 import os, ctypes, subprocess, hashlib
 import numpy as np
-HERE = os.path.dirname(os.path.abspath(__file__)); SRC = os.path.join(HERE, 'fastseal.c'); GCC = r'C:\mingw64\bin\gcc.exe'; ON = os.environ.get('SR3_FASTSEAL', '1') != '0'
+HERE = os.path.dirname(os.path.abspath(__file__)); SRC = os.path.join(HERE, 'fastseal.c'); import cbuild as _cb; from cbuild import runtime as _runtime; ON = os.environ.get('SR3_FASTSEAL', '1') != '0'
 _lib = None
 def lib():
     global _lib
     if _lib is None:
-        dll = os.path.join(HERE, 'fastseal.%s.dll' % hashlib.md5(open(SRC, 'rb').read()).hexdigest()[:8])      # one file per version of the source
-        if not os.path.exists(dll):
-            tmp = dll + '.%d.tmp' % os.getpid(); r = subprocess.run([GCC, '-O3', '-march=native', '-fopenmp', '-shared', '-o', tmp, SRC], capture_output=True, text=True, cwd=HERE)
-            if r.returncode != 0: raise RuntimeError('fastseal does not compile: ' + r.stderr[-1500:])
-            try: os.replace(tmp, dll)
-            except OSError: os.remove(tmp)
-        os.add_dll_directory(os.path.dirname(GCC)); L = ctypes.CDLL(dll); P = ctypes.c_void_p; LL = ctypes.c_longlong; D = ctypes.c_double
+        dll = _cb.dll('fastseal')                                  # built on first use (cbuild.py: sources, flags, compiler)
+        _runtime(); L = ctypes.CDLL(dll); P = ctypes.c_void_p; LL = ctypes.c_longlong; D = ctypes.c_double
         L.seal_count.argtypes = [P, P, LL, P, P, P, D, P]; L.seal_fill.argtypes = [P, P, LL, P, P, P, D, P, P, P]; L.seal_count.restype = None; L.seal_fill.restype = None; _lib = L
     return _lib
 def candidates(U, E, xo, i0s, i1s, tol):

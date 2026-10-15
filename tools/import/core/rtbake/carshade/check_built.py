@@ -1,4 +1,5 @@
 """The cars' pages of a BUILT step read back from its file and compared with what the bake made.   python check_built.py <step> <carshade.npz>"""
+import os as _os_, sys as _sys_; _sys_.path.insert(0, _os_.path.normpath(_os_.path.join(_os_.path.dirname(_os_.path.abspath(__file__)), '..', '..')))      # tools/import/core
 import sys, os, struct, numpy as np
 from common import *
 import sbfw, trackdeform as TDm, build_testtrack as BT, preview_obj as PO

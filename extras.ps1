@@ -1152,8 +1152,10 @@ function Test-HandlingBuilt([string]$tracks, [string]$key) {
     return [bool]@(Get-ChildItem -LiteralPath (Join-Path (Get-GameDir $tracks) "Main_release\car$($v.Digit)") -Filter '*_data.sbf' -ErrorAction SilentlyContinue).Count
 }
 function Find-Python {
-    $b = Join-Path $PSScriptRoot 'tools\python\python.exe'           # the one the release zip brings (nothing to install)
+    $b = Join-Path $PSScriptRoot 'tools\python\python.exe'           # the toolchain zip's (nothing to install)
     if (Test-Path -LiteralPath $b) { return $b }
+    $sf = Join-Path $PSScriptRoot 'tools\import\settings.json'       # the one winget fetched (tools\setup_toolchain.ps1 -Winget)
+    if (Test-Path -LiteralPath $sf) { try { $p = "$(([IO.File]::ReadAllText($sf) | ConvertFrom-Json).python)"; if ($p -and (Test-Path -LiteralPath $p)) { return $p } } catch { } }
     foreach ($n in 'python', 'py') { $c = Get-Command $n -ErrorAction SilentlyContinue; if ($c) { return $c.Source } }
     return $null
 }

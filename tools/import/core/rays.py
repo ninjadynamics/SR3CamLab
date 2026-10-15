@@ -8,7 +8,7 @@
 import os, ctypes, subprocess
 import numpy as np
 
-HERE = os.path.dirname(os.path.abspath(__file__)); SRC = os.path.join(HERE, 'rays.c'); DLL = os.path.join(HERE, 'rays.dll'); GCC = r'C:\mingw64\bin\gcc.exe'
+HERE = os.path.dirname(os.path.abspath(__file__)); SRC = os.path.join(HERE, 'rays.c'); DLL = os.path.join(HERE, 'rays.dll'); import cbuild as _cb; from cbuild import runtime as _runtime
 _lib = None
 def lib():
     global _lib
@@ -16,14 +16,8 @@ def lib():
         # One file per version of the source (as fastgeo.py). It used to be rays.dll, rebuilt when older than rays.c: but Windows will not replace a
         # DLL that a running build has loaded, and the build that had asked for the new source then loaded the OLD rays.dll without a word
         # (shown 2026-10-08 with two processes). rays.dll itself is left alone: builds started before this change still hold it.
-        import hashlib
-        dll = os.path.join(HERE, 'rays.%s.dll' % hashlib.md5(open(SRC, 'rb').read()).hexdigest()[:8])
-        if not os.path.exists(dll):
-            tmp = dll + '.%d.tmp' % os.getpid(); r = subprocess.run([GCC, '-O3', '-march=native', '-fopenmp', '-shared', '-o', tmp, SRC], capture_output=True, text=True)
-            if r.returncode != 0: raise RuntimeError('rays.c does not compile: ' + r.stderr[-800:])
-            try: os.replace(tmp, dll)
-            except OSError: os.remove(tmp)                                # (another build got there first and has it loaded)
-        os.add_dll_directory(os.path.dirname(GCC)); L = ctypes.CDLL(dll); P = ctypes.c_void_p; LL = ctypes.c_longlong; D = ctypes.c_double; I = ctypes.c_int
+        dll = _cb.dll('rays')                                  # built on first use (cbuild.py: sources, flags, compiler)
+        _runtime(); L = ctypes.CDLL(dll); P = ctypes.c_void_p; LL = ctypes.c_longlong; D = ctypes.c_double; I = ctypes.c_int
         L.rt_build.restype = P; L.rt_build.argtypes = [P, I]; L.rt_free.argtypes = [P]; L.rt_masks.argtypes = [P, P, P, I, P, P, P, P]
         L.rt_cast.argtypes = [P, P, P, LL, D, P, P]; L.rt_fan.argtypes = [P, P, P, LL, P, I, P, D, D, D, P, P]; L.rt_threads.restype = I
         _lib = L

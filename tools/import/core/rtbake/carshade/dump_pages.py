@@ -1,5 +1,6 @@
 """The sun / shadow pages of a SEGA track's road: colours used, and each page as a picture with the road's vertices marked.
     python dump_pages.py <track folder name> <out dir>"""
+import os as _os_, sys as _sys_; _sys_.path.insert(0, _os_.path.normpath(_os_.path.join(_os_.path.dirname(_os_.path.abspath(__file__)), '..', '..')))      # tools/import/core
 import sys, os, struct, collections, numpy as np
 from PIL import Image
 from common import *

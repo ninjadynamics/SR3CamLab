@@ -6,6 +6,16 @@ numbered patch files, the importer, rounding, the light bake and the install int
 No SEGA data is in this repository. The scripts read your own ROM set and your own copy of SEGA Rally 3, and write
 every extract, build and texture to a data folder outside the repository.
 
+## Python and a C compiler
+
+The stack is Python with C helpers. `SR3Lab-<date>-toolchain.zip`, which comes with the release, holds both - CPython 3.11.3
+with numpy 1.24.3 and Pillow 10.0.1, and the part of MinGW-w64 gcc 13.2 the helpers need - and the window's "Python and gcc..."
+button (or `tools\setup_toolchain.ps1`) unpacks it into `tools\python` and `tools\mingw`: no internet, nothing installed in
+Windows. Or `setup_toolchain.ps1 -Winget` fetches Python, gcc, numpy and Pillow instead, and the zip can be deleted. These are
+the only binaries SR3Lab ships. The C helpers (`core\*.c`, `core\rtbake\*.c`) are compiled on your PC the first time they are
+needed: `core\cbuild.py` holds how each one is built (`python core\cbuild.py --list`; `python core\cbuild.py` builds them all
+and prints every gcc command).
+
 ## The stack
 
 `IMPORT.bat` (beside PLAY.bat) opens the stack window: the folders below, a course, and a checklist of the steps, each

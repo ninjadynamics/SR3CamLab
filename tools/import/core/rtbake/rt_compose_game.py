@@ -2,6 +2,7 @@
     light = (1 - AMB) x sun seen x facing + AMB x (0.35 + 0.65 x sky seen) + BOUNCE x colour coming back         (open flat ground = 1)
 The game multiplies its own brightness rule by the map, so a texel holds light / rule (never above 1). The road (lying polygons within 9 m of the
 centre line) takes the light without its colour. AMB is the shade level: 0.34 = the look of RT2 ; higher = softer."""
+import os as _os_, sys as _sys_; _sys_.path.insert(0, _os_.path.normpath(_os_.path.join(_os_.path.dirname(_os_.path.abspath(__file__)), '..')))      # tools/import/core
 import sys, pickle, numpy as np
 import lightmap1995 as LM
 PATH, OUT, AMB = sys.argv[1], sys.argv[2], float(sys.argv[3]); BOUNCE = float(sys.argv[4]) if len(sys.argv) > 4 else 0.55; PAGE = LM.PAGE

@@ -13,6 +13,9 @@ shot_*.png
 # release packaging
 dist/
 *.zip
+# the toolchain zip, unpacked (tools/setup_toolchain.ps1): Python and gcc are binaries, never committed
+/tools/python/
+/tools/mingw/
 
 # tools/ outputs
 __pycache__/
@@ -67,3 +70,5 @@ blender/
 
 # crash records of Git Bash (a killed shell leaves one in its working folder)
 *.stackdump
+# the C helpers being compiled (core/cbuild.py)
+.build_*/

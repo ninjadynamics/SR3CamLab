@@ -1,4 +1,5 @@
 """seal1995 on the meshes of a built step (nothing is written): gaps counted before and after.   python seal_test.py <step>"""
+import os as _os_, sys as _sys_; _sys_.path.insert(0, _os_.path.normpath(_os_.path.join(_os_.path.dirname(_os_.path.abspath(__file__)), '..')))      # tools/import/core
 import sys, os, time, struct, collections, numpy as np
 from common import *
 import sbfw, meshgen, seal1995

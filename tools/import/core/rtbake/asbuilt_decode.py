@@ -3,6 +3,7 @@
 -> <out>/asbuilt.npz: per triangle corner the place (course coordinates), uv0, uv1 ; per triangle its picture, its light-map page (-1 = none) and
    whether it is a cut-out ; <out>/tex/<id>.png pictures at full size (light-map pages too).
 Run from tools/import/core (it uses the importer's own file readers)."""
+import os as _os_, sys as _sys_; _sys_.path.insert(0, _os_.path.normpath(_os_.path.join(_os_.path.dirname(_os_.path.abspath(__file__)), '..')))      # tools/import/core
 import os, sys, struct, pickle, collections
 import numpy as np
 from PIL import Image

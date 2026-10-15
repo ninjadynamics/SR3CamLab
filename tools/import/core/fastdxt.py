@@ -6,19 +6,14 @@
     blocks = dxt1_rgb(img, hole, old)      img (h, w, 3) uint8, hole (h, w) bool or None, old = the numpy function (fallback / reference)"""
 import os, ctypes, subprocess, hashlib, atexit
 import numpy as np
-HERE = os.path.dirname(os.path.abspath(__file__)); SRC = os.path.join(HERE, 'fastdxt.c'); GCC = r'C:\mingw64\bin\gcc.exe'
+HERE = os.path.dirname(os.path.abspath(__file__)); SRC = os.path.join(HERE, 'fastdxt.c'); import cbuild as _cb; from cbuild import runtime as _runtime
 ON = os.environ.get('SR3_FASTDXT', '1') != '0'; CHECK = os.environ.get('SR3_FASTDXT_CHECK', '0') == '1'; STAT = dict(calls=0, different=0, texels=0)
 _lib = None
 def lib():
     global _lib
     if _lib is None:
-        dll = os.path.join(HERE, 'fastdxt.%s.dll' % hashlib.md5(open(SRC, 'rb').read()).hexdigest()[:8])      # one file per version of the source
-        if not os.path.exists(dll):
-            tmp = dll + '.%d.tmp' % os.getpid(); r = subprocess.run([GCC, '-O3', '-march=native', '-fopenmp', '-shared', '-o', tmp, SRC], capture_output=True, text=True, cwd=HERE)
-            if r.returncode != 0: raise RuntimeError('fastdxt does not compile: ' + r.stderr[-1500:])
-            try: os.replace(tmp, dll)
-            except OSError: os.remove(tmp)
-        os.add_dll_directory(os.path.dirname(GCC)); L = ctypes.CDLL(dll); L.dxt1_rgb.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p]; _lib = L
+        dll = _cb.dll('fastdxt')                                  # built on first use (cbuild.py: sources, flags, compiler)
+        _runtime(); L = ctypes.CDLL(dll); L.dxt1_rgb.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p]; _lib = L
     return _lib
 def dxt1_rgb(img, hole, old):
     if not ON: return old(img, hole)

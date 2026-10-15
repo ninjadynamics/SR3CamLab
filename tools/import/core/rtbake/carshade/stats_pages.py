@@ -1,4 +1,5 @@
 """joint statistics of the R and G channels of a SEGA track's road pages, on the road and off it.   python stats_pages.py <track>"""
+import os as _os_, sys as _sys_; _sys_.path.insert(0, _os_.path.normpath(_os_.path.join(_os_.path.dirname(_os_.path.abspath(__file__)), '..', '..')))      # tools/import/core
 import sys, os, struct, collections, numpy as np
 from common import *
 import sbfw, trackdeform as TDm, build_testtrack as BT, preview_obj as PO

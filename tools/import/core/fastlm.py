@@ -18,7 +18,7 @@ Measured 2026-10-08, Mountain: pages / table / all nine built files the bytes of
 import os, sys, ctypes, subprocess, hashlib, glob, math, time, pickle, tempfile
 import numpy as np
 
-HERE = os.path.dirname(os.path.abspath(__file__)); GCC = r'C:\mingw64\bin\gcc.exe'
+HERE = os.path.dirname(os.path.abspath(__file__)); import cbuild as _cb; from cbuild import runtime as _runtime
 SRCS = [os.path.join(HERE, f) for f in ('rays.c', 'fastlm_rays.c', 'fastlm.c')]
 ON = os.environ.get('SR3_FASTGEO', '1') != '0' and os.environ.get('SR3_FASTLM', '1') != '0'
 ORDERED = os.environ.get('SR3_FASTLM_ORDERED', '1') != '0'
@@ -36,30 +36,8 @@ _lib = None
 def lib():
     global _lib
     if _lib is None:
-        h = hashlib.md5()
-        for s in SRCS: h.update(open(s, 'rb').read())
-        DLL = os.path.join(HERE, 'fastlm.%s.dll' % h.hexdigest()[:8])   # one file per version of the three sources (as fastgeo.py: a running build keeps its own)
-        if not os.path.exists(DLL):
-            tmp = DLL + '.%d.tmp' % os.getpid(); td = tempfile.mkdtemp(prefix='fastlm_'); oa = os.path.join(td, 'a.o'); ob = os.path.join(td, 'b.o')
-            try:
-                for cmd in ([GCC, '-O3', '-march=native', '-fopenmp', '-c', '-o', oa, SRCS[1]],                              # rays.c with the flags rays.py gives it
-                            [GCC, '-O3', '-march=native', '-ffp-contract=off', '-fopenmp', '-c', '-o', ob, SRCS[2]],         # numpy's arithmetic: no fused multiply-add
-                            [GCC, '-shared', '-fopenmp', '-o', tmp, oa, ob]):
-                    r = subprocess.run(cmd, capture_output=True, text=True, cwd=HERE)
-                    if r.returncode != 0: raise RuntimeError('fastlm does not compile: ' + r.stderr[-1500:])
-                try: os.replace(tmp, DLL)
-                except OSError: os.remove(tmp)                            # (another build got there first and has it loaded)
-            finally:
-                for f in (oa, ob):
-                    try: os.remove(f)
-                    except OSError: pass
-                try: os.rmdir(td)
-                except OSError: pass
-            for old in glob.glob(os.path.join(HERE, 'fastlm.*.dll')):    # versions nobody has loaded any more
-                if old != DLL:
-                    try: os.remove(old)
-                    except OSError: pass
-        os.add_dll_directory(os.path.dirname(GCC)); L = ctypes.CDLL(DLL); P = ctypes.c_void_p; LL = ctypes.c_longlong; D = ctypes.c_double; I = ctypes.c_int
+        DLL = _cb.dll('fastlm')                                  # built on first use (cbuild.py: sources, flags, compiler)
+        _runtime(); L = ctypes.CDLL(DLL); P = ctypes.c_void_p; LL = ctypes.c_longlong; D = ctypes.c_double; I = ctypes.c_int
         L.rt_build.restype = P; L.rt_build.argtypes = [P, I]; L.rt_free.argtypes = [P]; L.rt_masks.argtypes = [P, P, P, I, P, P, P, P]; L.rt_cast.argtypes = [P, P, P, LL, D, P, P]
         L.rx_depth.argtypes = [P]; L.rx_depth.restype = I; L.rx_depth2.argtypes = [P]; L.rx_depth2.restype = I; L.rx_nodes.argtypes = [P]; L.rx_nodes.restype = I; L.rx_cast.argtypes = [P, I, P, P, LL, D, P, P, P]; L.rx_cast.restype = None
         L.rx_open.argtypes = [P, I]; L.rx_open.restype = P; L.rx_close.argtypes = [P]; L.rx_close.restype = None
