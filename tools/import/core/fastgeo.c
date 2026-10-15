@@ -908,3 +908,78 @@ EXPORT void fg_bends(const double *X, const i64 *TA, const i64 *TB, i64 m, doubl
         pos[k] = red3(s0 * n10, s1 * n11, s2 * n12) > 0;
     }
 }
+
+/* lightside._scores buffer kernels. Included in fastgeo.c once the preceding
+   mesh handoff has been committed. Compile with -ffp-contract=off. */
+EXPORT i64 fg_side_triangles(const double *v, i64 nv, const i64 *f, i64 nf, double *out)
+{
+    i64 nt=nf;
+    for(i64 k=0;k<nf;++k) {
+        for(int j=0;j<4;++j) if(f[4*k+j]<0 || f[4*k+j]>=nv) return -1;
+        if(f[4*k+2]!=f[4*k+3]) ++nt;
+    }
+    if(!out) return nt;
+    i64 tail=nf;
+    for(i64 k=0;k<nf;++k) {
+        const i64 *ix=f+4*k; const int a[3]={0,1,3},b[3]={1,2,3};
+        for(int j=0;j<3;++j) memcpy(out+9*k+3*j,v+3*ix[a[j]],24);
+        if(ix[2]!=ix[3]) { for(int j=0;j<3;++j) memcpy(out+9*tail+3*j,v+3*ix[b[j]],24); ++tail; }
+    }
+    return nt;
+}
+
+static inline void fg_side_cross(const double *a,const double *b,double *n)
+{ n[0]=a[1]*b[2]-a[2]*b[1]; n[1]=a[2]*b[0]-a[0]*b[2]; n[2]=a[0]*b[1]-a[1]*b[0]; }
+static inline double fg_side_norm(const double *n)
+{ return sqrt((n[0]*n[0]+n[1]*n[1])+n[2]*n[2]); }
+
+EXPORT void fg_side_fans(const double *v,const i64 *f,const i64 *active,i64 count,const double *fan,
+                         double sign,double *org,double *dir,unsigned char *ok)
+{
+    #pragma omp parallel for schedule(static) if(count>512)
+    for(i64 k=0;k<count;++k) {
+        const i64 *ix=f+4*active[k]; double q[4][3],n[3]={0,0,0},cen[3]={0,0,0};
+        for(int j=0;j<4;++j) memcpy(q[j],v+3*ix[j],24);
+        for(int j=0;j<4;++j) {
+            double c[3]; fg_side_cross(q[j],q[(j+1)%4],c);
+            for(int a=0;a<3;++a) n[a]+=c[a];
+        }
+        double ln=fg_side_norm(n); ok[k]=ln>1e-9;
+        double den=ln<1e-12 ? 1e-12:ln;
+        for(int a=0;a<3;++a) n[a]/=den;
+        int corners=ix[2]==ix[3] ? 3:4;
+        for(int j=0;j<corners;++j) for(int a=0;a<3;++a) cen[a]+=q[j][a];
+        for(int a=0;a<3;++a) cen[a]/=corners;
+        double ax[3]={0,0,0},t[3],b[3]; ax[fabs(n[1])<0.9 ? 1:0]=1;
+        fg_side_cross(n,ax,t); double lt=fg_side_norm(t); if(lt<1e-12) lt=1e-12;
+        for(int a=0;a<3;++a) t[a]/=lt;
+        fg_side_cross(n,t,b);
+        for(int j=0;j<32;++j) for(int a=0;a<3;++a) {
+            org[(32*k+j)*3+a]=cen[a]+(sign*n[a])*0.06;
+            dir[(32*k+j)*3+a]=(t[a]*fan[3*j]+b[a]*fan[3*j+1])+n[a]*(sign*fan[3*j+2]);
+        }
+    }
+}
+
+/* NumPy's contiguous 32-element add.reduce uses eight accumulators. */
+static inline double fg_side_mean32(const double *v)
+{
+    double r[8]; for(int a=0;a<8;++a) r[a]=v[a];
+    for(int j=8;j<32;j+=8) for(int a=0;a<8;++a) r[a]+=v[j+a];
+    return (((r[0]+r[1])+(r[2]+r[3]))+((r[4]+r[5])+(r[6]+r[7])))/32.0;
+}
+EXPORT void fg_side_reduce(const int *hit,const double *dist,const unsigned char *ok,const i64 *active,
+                           i64 count,int side,float *scores)
+{
+    #pragma omp parallel for schedule(static) if(count>512)
+    for(i64 k=0;k<count;++k) {
+        if(!ok[k]) continue;
+        int escaped=0; double values[32];
+        for(int j=0;j<32;++j) {
+            i64 i=32*k+j; int miss=hit[i]<0; escaped+=miss;
+            values[j]=miss ? 100.0:(dist[i]>100.0 ? 100.0:dist[i]);
+        }
+        scores[4*active[k]+side]=(float)(escaped/32.0);
+        scores[4*active[k]+2+side]=(float)fg_side_mean32(values);
+    }
+}
