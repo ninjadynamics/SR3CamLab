@@ -55,6 +55,7 @@ def lib():
         L.lm_lookup.argtypes = [LL] + [P] * 7 + [I, P, P]; L.lm_lookup.restype = None
         L.sky_dirs.argtypes = [P, P, LL, P, I, I, P, P]; L.sky_dirs.restype = None; L.sky_tile.argtypes = [LL, P, I, I, P, D, D, P, P]; L.sky_tile.restype = I
         L.sky_fill.argtypes = [I, I, P, P]; L.sky_fill.restype = None
+        L.fb_paint.argtypes = [I, I, P, P, P, P, I, I, I, I, P, P, P, I, I, I, I]; L.fb_paint.restype = LL; L.fb_fill.argtypes = [I, I, P, P]; L.fb_fill.restype = I
         _lib = L
     return _lib
 

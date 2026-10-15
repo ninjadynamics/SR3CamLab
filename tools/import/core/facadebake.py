@@ -4,39 +4,44 @@ A course patch may carry "bake" entries: {"name": "facade_012", "size": [w, h], 
 Each source is one triangle of the wall as it was: where it lies on the new picture (p, 0..1, v up) and which part of its tile it showed
 (uv, as Blender has it, v up). The picture is painted texel by texel from those tiles (nearest texel, bigger triangles first so that a
 window drawn over its wall wins); texels no triangle reaches take the nearest painted one. Nothing of SEGA's ships: only the recipe."""
-import collections
-import numpy as np
+import collections, bisect
+from array import array
+# Since 2026-10-15 (kb 31) the painting and the fill are fastlm.c's (fb_paint, fb_fill: their comments quote the numpy lines), the picture is
+# bytes (compose_bytes). compose() hands the build its numpy array as before: save_baked keeps numpy pictures (a bridge until build_classic
+# is numpy-free).
 
-def _nearest(g):
-    """per texel: row of the nearest painted texel in its column, and how far"""
-    idx = np.arange(g.shape[0])[:, None] * np.ones((1, g.shape[1]), int)
-    up = np.maximum.accumulate(np.where(g, idx, -10 ** 6), axis=0); dn = np.minimum.accumulate(np.where(g, idx, 10 ** 6)[::-1], axis=0)[::-1]
-    pick = np.where((idx - up) <= (dn - idx), up, dn); return pick, np.abs(pick - idx)
+def compose_bytes(size, sources, pixels):
+    """size (w, h), sources as in the patch file (in painting order), pixels(tile) -> (rgb top row first, hole) -> the picture as bytes,
+    h rows of w RGB texels, top row first (what compose returns as an array)"""
+    import fastlm; from lightmap1995 import _raw
+    W, H = int(size[0]), int(size[1]); img = bytearray(H * W * 3); got = bytearray(H * W)      # row 0 = v 0 (bottom) while painting
+    px = [(i + 0.5) / W for i in range(W)]; py = [(j + 0.5) / H for j in range(H)]; pxa = array('d', px); pya = array('d', py); memo = {}; L = fastlm.lib()      # (np.arange(W) + 0.5) / W
+    ad = lambda b_: fastlm.ctypes.addressof((fastlm.ctypes.c_char * max(1, len(b_))).from_buffer(b_)) if b_ else 0
+    for s in sources:
+        if s['tile'] not in memo:
+            px_ = pixels(s['tile'])
+            if px_ is None: memo[s['tile']] = None
+            else:
+                dt, sh, tb = _raw(px_[0]); kind = 0 if dt == '|u1' else 1
+                if kind == 1 and dt != '<f8': dt, sh, tb = _raw(px_[0], '<f8')
+                memo[s['tile']] = (sh, kind, bytearray(tb))
+        if memo[s['tile']] is None: continue
+        sh, kind, tb = memo[s['tile']]; th, tw = sh[0], sh[1]; tc = sh[2] if len(sh) == 3 else 1
+        P = [float(v) for q in s['p'] for v in q]; U = [float(v) for q in s['uv'] for v in q]
+        i0, i1 = bisect.bisect_left(px, min(P[0], P[2], P[4]) - 2.0 / W), bisect.bisect_left(px, max(P[0], P[2], P[4]) + 2.0 / W)      # np.searchsorted (side left)
+        j0, j1 = bisect.bisect_left(py, min(P[1], P[3], P[5]) - 2.0 / H), bisect.bisect_left(py, max(P[1], P[3], P[5]) + 2.0 / H)
+        if i1 <= i0 or j1 <= j0: continue
+        Pa = array('d', P); Ua = array('d', U)
+        L.fb_paint(W, H, ad(img), ad(got), pxa.buffer_info()[0], pya.buffer_info()[0], i0, i1, j0, j1, Pa.buffer_info()[0], Ua.buffer_info()[0], ad(tb), th, tw, tc, kind)
+    for _ in range(4):
+        if all(got) or not any(got): break
+        L.fb_fill(W, H, ad(img), ad(got))
+    return b''.join(bytes(img[3 * W * r:3 * W * (r + 1)]) for r in range(H - 1, -1, -1))       # img[::-1]: top row first
 
 def compose(size, sources, pixels):
-    """size (w, h), sources as in the patch file (in painting order), pixels(tile) -> (rgb top row first, hole) -> rgb uint8 (h, w, 3), top row first"""
-    W, H = int(size[0]), int(size[1]); img = np.zeros((H, W, 3), np.uint8); got = np.zeros((H, W), bool)      # row 0 = v 0 (bottom) while painting
-    px = (np.arange(W) + 0.5) / W; py = (np.arange(H) + 0.5) / H; memo = {}
-    for s in sources:
-        if s['tile'] not in memo: memo[s['tile']] = pixels(s['tile'])
-        if memo[s['tile']] is None: continue
-        T = np.asarray(memo[s['tile']][0]); th, tw = T.shape[:2]; P = np.asarray(s['p'], float); U = np.asarray(s['uv'], float)
-        i0, i1 = np.searchsorted(px, P[:, 0].min() - 2.0 / W), np.searchsorted(px, P[:, 0].max() + 2.0 / W); j0, j1 = np.searchsorted(py, P[:, 1].min() - 2.0 / H), np.searchsorted(py, P[:, 1].max() + 2.0 / H)
-        if i1 <= i0 or j1 <= j0: continue
-        X, Y = np.meshgrid(px[i0:i1], py[j0:j1]); den = (P[1, 1] - P[2, 1]) * (P[0, 0] - P[2, 0]) + (P[2, 0] - P[1, 0]) * (P[0, 1] - P[2, 1])
-        if abs(den) < 1e-12: continue
-        l0 = ((P[1, 1] - P[2, 1]) * (X - P[2, 0]) + (P[2, 0] - P[1, 0]) * (Y - P[2, 1])) / den; l1 = ((P[2, 1] - P[0, 1]) * (X - P[2, 0]) + (P[0, 0] - P[2, 0]) * (Y - P[2, 1])) / den; l2 = 1 - l0 - l1
-        m = (l0 >= -1e-4) & (l1 >= -1e-4) & (l2 >= -1e-4)
-        if not m.any(): continue
-        uu = l0 * U[0, 0] + l1 * U[1, 0] + l2 * U[2, 0]; vv = l0 * U[0, 1] + l1 * U[1, 1] + l2 * U[2, 1]
-        tx = np.floor(uu * tw + 1e-6).astype(int) % tw; ty = (th - 1) - np.floor(vv * th + 1e-6).astype(int) % th
-        sub = img[j0:j1, i0:i1]; sub[m] = T[ty[m], tx[m]][:, :3]; got[j0:j1, i0:i1] |= m
-    for _ in range(4):
-        if got.all() or not got.any(): break
-        pv, dv = _nearest(got); ph, dh = _nearest(got.T); ph, dh = ph.T, dh.T; rows = np.arange(H)[:, None] * np.ones((1, W), int); cols = np.ones((H, 1), int) * np.arange(W)[None, :]
-        usev = (dv <= dh) & (dv < 10 ** 5); useh = ~usev & (dh < 10 ** 5); miss = ~got
-        a = miss & usev; img[a] = img[np.clip(pv, 0, H - 1)[a], cols[a]]; b = miss & useh; img[b] = img[rows[b], np.clip(ph, 0, W - 1)[b]]; got |= a | b
-    return np.ascontiguousarray(img[::-1])
+    """compose_bytes as an (h, w, 3) uint8 numpy array, top row first (the build keeps its pictures as numpy arrays)"""
+    import numpy as np
+    return np.frombuffer(bytearray(compose_bytes(size, sources, pixels)), np.uint8).reshape(int(size[1]), int(size[0]), 3)
 
 def apply(entries, pixels, save, origin=None, log=print):
     """the "bake" entries of a patch: every picture composed and handed to save(name, rgb, hole) (build_classic.save_baked)"""

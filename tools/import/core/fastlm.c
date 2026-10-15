@@ -483,4 +483,64 @@ EXPORT void sky_fill(int H, int W, double *img, unsigned char *mask)
     }
 }
 
+/* ------------------------------------------------------------------ facadebake.compose (2026-10-15, kb 31)
+   fb_paint: one source triangle painted into img[H][W][3] (row 0 = v 0 while painting), the texels i0..i1-1 x j0..j1-1 (np.searchsorted
+   bounds, found by the caller). T: the tile, th x tw texels of tc channels, kind 0 = u8, 1 = f8 (numpy's cast to uint8 truncates). The
+   numpy lines: X, Y = np.meshgrid(px[i0:i1], py[j0:j1]); den = (P1y - P2y) * (P0x - P2x) + (P2x - P1x) * (P0y - P2y)
+     l0 = ((P1y - P2y) * (X - P2x) + (P2x - P1x) * (Y - P2y)) / den; l1 = ((P2y - P0y) * (X - P2x) + (P0x - P2x) * (Y - P2y)) / den; l2 = 1 - l0 - l1
+     m = all >= -1e-4; uu = l0 * U0x + l1 * U1x + l2 * U2x; vv likewise
+     tx = np.floor(uu * tw + 1e-6).astype(int) % tw; ty = (th - 1) - np.floor(vv * th + 1e-6).astype(int) % th; img[m] = T[ty, tx][:, :3]
+   (% as numpy's: the result has the sign of the divisor). Returns the texels painted. */
+static inline i64 pymod(i64 a, i64 b) { i64 r = a % b; return r < 0 ? r + b : r; }
+EXPORT i64 fb_paint(int W, int H, unsigned char *img, unsigned char *got, const double *px, const double *py, int i0, int i1, int j0, int j1,
+                    const double *P, const double *U, const void *T, int th, int tw, int tc, int kind)
+{
+    double den = (P[3] - P[5]) * (P[0] - P[4]) + (P[4] - P[2]) * (P[1] - P[5]); i64 cnt = 0;
+    if (fabs(den) < 1e-12) return 0;
+    for (int j = j0; j < j1; j++)
+        for (int i = i0; i < i1; i++) {
+            double X = px[i], Y = py[j];
+            double l0 = ((P[3] - P[5]) * (X - P[4]) + (P[4] - P[2]) * (Y - P[5])) / den, l1 = ((P[5] - P[1]) * (X - P[4]) + (P[0] - P[4]) * (Y - P[5])) / den, l2 = (1 - l0) - l1;
+            if (!(l0 >= -1e-4 && l1 >= -1e-4 && l2 >= -1e-4)) continue;
+            double uu = (l0 * U[0] + l1 * U[2]) + l2 * U[4], vv = (l0 * U[1] + l1 * U[3]) + l2 * U[5];
+            i64 tx = pymod((i64)floor(uu * tw + 1e-6), tw), ty = (th - 1) - pymod((i64)floor(vv * th + 1e-6), th);
+            unsigned char *o = img + 3 * ((i64)j * W + i);
+            for (int c = 0; c < 3; c++) { i64 q = (ty * tw + tx) * tc + c; o[c] = kind == 0 ? ((const unsigned char *)T)[q] : (unsigned char)(i64)((const double *)T)[q]; }
+            got[(i64)j * W + i] = 1; cnt++;
+        }
+    return cnt;
+}
+
+/* fb_fill: one round of compose's fill: every texel not painted takes the nearest painted one in its column (dv) or its row (dh),
+   the column on a tie, an earlier one on a tie within the line (_nearest: (idx - up) <= (dn - idx)); then it counts as painted.
+     usev = (dv <= dh) & (dv < 10 ** 5); useh = ~usev & (dh < 10 ** 5); img[a] = img[pv, col]; img[b] = img[row, ph]; got |= a | b
+   Returns 1 when something was filled. */
+static void fb_nearest(const unsigned char *got, int n, i64 stride, int *pick, int *dist)
+{
+    int up = -1000000;
+    for (int r = 0; r < n; r++) { if (got[r * stride]) up = r; pick[r] = up; }
+    int dn = 1000000;
+    for (int r = n - 1; r >= 0; r--) {
+        if (got[r * stride]) dn = r;
+        int u = pick[r]; pick[r] = (r - u) <= (dn - r) ? u : dn; dist[r] = abs(pick[r] - r);
+    }
+}
+EXPORT int fb_fill(int W, int H, unsigned char *img, unsigned char *got)
+{
+    int *pv = (int *)malloc(sizeof(int) * (size_t)W * H), *dv = (int *)malloc(sizeof(int) * (size_t)W * H), *ph = (int *)malloc(sizeof(int) * (size_t)W * H), *dh = (int *)malloc(sizeof(int) * (size_t)W * H);
+    int *t1 = (int *)malloc(sizeof(int) * (size_t)(W > H ? W : H)), *t2 = (int *)malloc(sizeof(int) * (size_t)(W > H ? W : H));
+    for (int c = 0; c < W; c++) { fb_nearest(got + c, H, W, t1, t2); for (int r = 0; r < H; r++) { pv[(i64)r * W + c] = t1[r]; dv[(i64)r * W + c] = t2[r]; } }
+    for (int r = 0; r < H; r++) { fb_nearest(got + (i64)r * W, W, 1, t1, t2); for (int c = 0; c < W; c++) { ph[(i64)r * W + c] = t1[c]; dh[(i64)r * W + c] = t2[c]; } }
+    unsigned char *src = (unsigned char *)malloc((size_t)W * H * 3); memcpy(src, img, (size_t)W * H * 3); int any = 0;
+    for (i64 k = 0; k < (i64)W * H; k++) {
+        if (got[k]) continue;
+        int r = (int)(k / W), c = (int)(k % W), usev = dv[k] <= dh[k] && dv[k] < 100000, useh = !usev && dh[k] < 100000;
+        if (usev) { int rr = pv[k] < 0 ? 0 : (pv[k] > H - 1 ? H - 1 : pv[k]); memcpy(img + 3 * k, src + 3 * ((i64)rr * W + c), 3); }
+        else if (useh) { int cc = ph[k] < 0 ? 0 : (ph[k] > W - 1 ? W - 1 : ph[k]); memcpy(img + 3 * k, src + 3 * ((i64)r * W + cc), 3); }
+    }
+    for (i64 k = 0; k < (i64)W * H; k++) if (!got[k]) { int usev = dv[k] <= dh[k] && dv[k] < 100000, useh = !usev && dh[k] < 100000; if (usev || useh) { got[k] = 1; any = 1; } }
+    free(pv); free(dv); free(ph); free(dh); free(t1); free(t2); free(src);
+    return any;
+}
+
 EXPORT int lm_threads(void) { return omp_get_max_threads(); }
