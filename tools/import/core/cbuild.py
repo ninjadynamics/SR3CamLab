@@ -39,6 +39,7 @@ def find_gcc():
 GCC = find_gcc()
 TARGET = os.environ.get('SR3_MARCH') or _settings().get('march') or 'x86-64-v3'      # the same code on every PC (any AVX2 CPU); 'native' for this PC's own
 MARCH = '-march=' + TARGET
+XFLAGS = os.environ.get('SR3_CFLAGS', '').split()                       # (tests) more flags for every unit; such DLLs get names of their own
 _DONE = []
 
 def runtime():
@@ -51,14 +52,15 @@ def runtime():
 def name(helper):
     h = HELPERS[helper]; d = os.path.normpath(os.path.join(HERE, h['dir'])); m = hashlib.md5()
     for f in h['hashed']: m.update(open(os.path.join(d, f), 'rb').read())
-    return os.path.join(d, '%s.%s%s.dll' % (helper, m.hexdigest()[:8], '' if TARGET == 'native' else '.' + TARGET))
+    xf = ('.' + hashlib.md5(' '.join(XFLAGS).encode()).hexdigest()[:6]) if XFLAGS else ''
+    return os.path.join(d, '%s.%s%s%s.dll' % (helper, m.hexdigest()[:8], '' if TARGET == 'native' else '.' + TARGET, xf))
 
 def commands(helper, out, tmpdir):
     h = HELPERS[helper]; d = os.path.join(HERE, h['dir'])
     if len(h['units']) == 1:
-        src, fl = h['units'][0]; return [[GCC, '-O3', MARCH] + fl + ['-fopenmp', '-shared', '-o', out, os.path.join(d, src)]]
+        src, fl = h['units'][0]; return [[GCC, '-O3', MARCH] + fl + XFLAGS + ['-fopenmp', '-shared', '-o', out, os.path.join(d, src)]]
     objs = [os.path.join(tmpdir, '%d.o' % k) for k in range(len(h['units']))]
-    return ([[GCC, '-O3', MARCH] + fl + ['-fopenmp', '-c', '-o', o, os.path.join(d, src)] for (src, fl), o in zip(h['units'], objs)] +
+    return ([[GCC, '-O3', MARCH] + fl + XFLAGS + ['-fopenmp', '-c', '-o', o, os.path.join(d, src)] for (src, fl), o in zip(h['units'], objs)] +
             [[GCC, '-shared', '-fopenmp', '-o', out] + objs])
 
 def dll(helper, rebuild=False, log=None):
@@ -77,7 +79,7 @@ def dll(helper, rebuild=False, log=None):
                 if not os.path.exists(path): raise                       # (it is there: another build got there first and has it loaded)
         finally: shutil.rmtree(td, ignore_errors=True)
         for old in glob.glob(os.path.join(os.path.dirname(path), helper + '.*.dll')):
-            if old != path and (TARGET == 'native') == (os.path.basename(old).count('.') == 2):      # the same target's older versions only
+            if old != path and not XFLAGS and (TARGET == 'native') == (os.path.basename(old).count('.') == 2):      # the same target's older versions only
                 try: os.remove(old)
                 except OSError: pass
     return path

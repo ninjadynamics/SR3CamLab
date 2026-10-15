@@ -15,8 +15,8 @@ $ErrorActionPreference = 'Stop'; if ($Winget) { $Online = $true }      # (-Winge
 $Repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path; $Settings = Join-Path $Repo 'tools\import\settings.json'
 $Dl = Join-Path $Repo 'dist\downloads'
 $PyVer = '3.11.3'; $Wheels = @(@('numpy', '1.24.3'), @('Pillow', '10.0.1'))
-$PyZip = @{ url = "https://www.python.org/ftp/python/$PyVer/python-$PyVer-embed-amd64.zip"; sha256 = '' }
-$GccZip = @{ url = 'https://github.com/brechtsanders/winlibs_mingw/releases/download/13.2.0posix-17.0.6-11.0.1-ucrt-r5/winlibs-x86_64-posix-seh-gcc-13.2.0-llvm-17.0.6-mingw-w64ucrt-11.0.1-r5.zip'; sha256 = '' }
+$PyZip = @{ url = "https://www.python.org/ftp/python/$PyVer/python-$PyVer-embed-amd64.zip"; sha256 = '7419b2e98516fbd0b66a1237b80187ffb21d32e47b4a4235c2d9d6379597070f' }
+$GccZip = @{ url = 'https://github.com/brechtsanders/winlibs_mingw/releases/download/13.2.0posix-17.0.6-11.0.1-ucrt-r5/winlibs-x86_64-posix-seh-gcc-13.2.0-llvm-17.0.6-mingw-w64ucrt-11.0.1-r5.zip'; sha256 = '937023da3975c50072233462c5dc8c415b835d4bc04852fede68cfbe1c9de087' }
 $PathsPy = @'
 """SR3Lab's Python (tools\python, python311._pth): at start-up, after site, the running script's own folder goes first on
 sys.path (the current folder for -c / -m), as a normal Python has it, and the user's own site-packages comes off it, so that

@@ -55,7 +55,7 @@ In-memory patching (as patch.ps1 does today) or more side-loaded DLLs, on the Te
      tools\build_*.py, ship; they need keystone and clang, which the toolchain zip does not have yet).
    - Builds must stay byte-identical across PCs: the C helpers are compiled for one fixed target (x86-64-v3) rather than
      each PC's own, and the Python packages are pinned to the versions the builds were checked with. winget's oldest WinLibs
-     is gcc 14.2 (the zip's is 13.2): that the winget compiler gives the same bytes is still to be shown.
+     is gcc 14.2 (the zip's is 13.2): shown 2026-10-15 to give the same bytes (the whole chain = v15).
 
 ## F. 100% legal
 

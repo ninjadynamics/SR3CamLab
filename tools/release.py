@@ -15,7 +15,10 @@ every game file to equal the reference build's; then zip (the DLLs that run comp
 import os, sys, re, shutil, subprocess, zipfile, time, json, glob, tempfile
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__))); BASE = sys.base_prefix; MINGW = r'C:\mingw64'
 SKIP_LIB = {'test', 'idlelib', 'tkinter', 'turtledemo', 'ensurepip', 'lib2to3', 'venv', 'site-packages', '__pycache__', 'pydoc_data', 'unittest'}
-SKIP_DLL = ('_tkinter', 'tcl', 'tk')
+SKIP_DLL = ('_tkinter', 'tcl', 'tk', '_test', '_ctypes_test', '_ssl', '_hashlib', 'libssl', 'libcrypto', '_sqlite3', 'sqlite3', '_decimal', 'pyexpat',
+            '_elementtree', '_socket', 'select', '_asyncio', '_overlapped', '_msi', '_uuid', 'winsound', '_zoneinfo', '_multiprocessing', '_wmi',
+            'unicodedata', '_bz2', '_lzma')      # nothing of SR3Lab uses them (hashlib falls back to Python's own MD5 / SHA): about 9 MB
+SKIP_PKG = ('__pycache__', 'tests', '*.pyi', '*.pxd', '*.h', '*.lib', '*.a', 'distutils', 'f2py', 'include', 'npy-pkg-config', 'doc')      # build-time parts
 PATHS_PY = '''"""SR3Lab's Python (tools\\\\python, python311._pth): at start-up, after site, the running script's own folder goes first on
 sys.path (the current folder for -c / -m), as a normal Python has it, and the user's own site-packages comes off it, so that
 nothing installed elsewhere on the PC is imported instead of this Python's own numpy and Pillow."""
@@ -123,7 +126,7 @@ def python(dst):
             for f in fs:
                 if f.endswith('.py'): z.write(os.path.join(root, f), os.path.relpath(os.path.join(root, f), lib)); n += 1
     sp = os.path.join(py, 'Lib', 'site-packages')
-    for p in ('numpy', 'PIL'): shutil.copytree(os.path.join(lib, 'site-packages', p), os.path.join(sp, p), ignore=shutil.ignore_patterns('__pycache__', 'tests'))
+    for p in ('numpy', 'PIL'): shutil.copytree(os.path.join(lib, 'site-packages', p), os.path.join(sp, p), ignore=shutil.ignore_patterns(*SKIP_PKG))
     for d in glob.glob(os.path.join(lib, 'site-packages', '*.dist-info')):
         if os.path.basename(d).split('-')[0].lower() in ('numpy', 'pillow'): shutil.copytree(d, os.path.join(sp, os.path.basename(d)))
     open(os.path.join(sp, 'sr3lab_paths.py'), 'w', newline='\n').write(PATHS_PY)

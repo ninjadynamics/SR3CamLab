@@ -70,9 +70,11 @@ table (sources, per-unit flags, the files that name each DLL); `python core\cbui
   complete corresponding source, the unchanged upstream archives, is `<name>-toolchain-source.zip` (release.py --sources),
   published beside the toolchain zip (GPL v3 section 6d). Python, numpy and Pillow carry their own licences.
 - The target: x86-64-v3 by default (`SR3_MARCH` / settings `march`; 'native' still possible, with its own DLL names), so every
-  AVX2 + FMA PC compiles the same code. On the author's PC it gives the native build's bytes: the release check (every
-  helper built for x86-64-v3 by the toolchain zip's gcc) rebuilt v15 byte for byte. winget's oldest WinLibs is gcc 14.2:
-  the same bytes from it are not shown.
+  AVX2 + FMA PC compiles the same code. On the author's PC it gives the native build's bytes (the release check rebuilt v15).
+  The compiler matters through the fused multiply-adds: every helper built with `-ffp-contract=off` changes 4 939 bytes in 16
+  light-map pages of `desert4_master_gfx_xdata.sbf` (of 42 MB; every other file the same), so a compiler that fuses less or
+  more would not give v15. winget's WinLibs gcc 14.2.0 (19.1.1 / 12.0.0 r2) does: every helper built with it, the chain gives
+  v15 byte for byte (2026-10-15). `SR3_CFLAGS` (tests) adds flags to every unit and gives those DLLs names of their own.
 - Found by the release check (`release.py --check`: the whole stack in the staged tree, on an empty data folder, PATH = System32,
   LOCALAPPDATA elsewhere): the `._pth` script-folder and user-site points above; rtbake scripts that imported core through the
   current folder; `cbuild` building in %TEMP% and moving the DLL across drives (os.replace cannot: the build now happens beside
