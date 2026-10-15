@@ -1,6 +1,6 @@
-/* patchcore: the in-game patches, written once; patches.dll (inside the game) and sr3mods.exe (from outside) both run
- * it, each with its own GameMem (patchcore.h). Each part names the patches.ps1 lines it does; the bytes come from
- * patches.ps1 (blobs.h, gen_blobs.py). Step 1 (2026-10-15): the cameras - the chase camera's cave and hooks ($Patches)
+/* patchcore: the in-game patches, written once; sr3mods.dll (inside the game) and sr3mods.exe (from outside) both run
+ * it, each with its own GameMem (patchcore.h). Each part names the sr3mods.ps1 lines it does; the bytes come from
+ * sr3mods.ps1 (blobs.h, gen_blobs.py). Step 1 (2026-10-15): the cameras - the chase camera's cave and hooks ($Patches)
  * and the camera cycle block (Install-Cycle). */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -29,9 +29,9 @@ void pc_logf(const char *fmt, ...) {
     va_start(a, fmt); vsnprintf(b, sizeof b, fmt, a); va_end(a); pc_log(b);
 }
 void pc_init(void) { if (!cloc) cloc = _create_locale(LC_NUMERIC, "C"); }
-const char *pc_source(void) { return PATCHES_SOURCE; }
+const char *pc_source(void) { return SR3MODS_SOURCE; }
 
-/* ---------------------------------------------------------------- profiles.yaml (patches.ps1 Read-ProfilesYaml)
+/* ---------------------------------------------------------------- profiles.yaml (sr3mods.ps1 Read-ProfilesYaml)
  * Its YAML subset: top-level "default:" and "profiles:", one mapping per profile, "key: value" below it, '#' comments
  * (cut at the first '#' of a line), quotes trimmed off both ends of keys and values, keys case-insensitive. */
 #define MAXP 48
@@ -193,7 +193,7 @@ static double seconds(const Yaml *y, const Yaml *own, const char *key, double sw
     return v < 0 ? 0 : v > max ? max : v;
 }
 
-/* patches.ps1 lines 110-158 (which profile), 309-347 (slots, overlay, smoothing, blend) */
+/* sr3mods.ps1 lines 110-158 (which profile), 309-347 (slots, overlay, smoothing, blend) */
 int pc_prepare_cameras(const PcCfg *c, char *err, size_t cap) {
     static Yaml y, own; char path[MAX_PATH], e2[256]; const Prof *row = NULL; int i, baseline, far_, haveown = 0;
     if (c->profiles_file[0]) snprintf(path, sizeof path, "%s", c->profiles_file); else snprintf(path, sizeof path, "%s\\profiles.yaml", c->mod);
@@ -235,10 +235,10 @@ int pc_prepare_cameras(const PcCfg *c, char *err, size_t cap) {
     return 1;
 }
 
-/* ---------------------------------------------------------------- the camera cycle block (patches.ps1 Find-Cycle .. Restore-CockpitSeat)
+/* ---------------------------------------------------------------- the camera cycle block (sr3mods.ps1 Find-Cycle .. Restore-CockpitSeat)
  * Written the way Install-Cycle writes it, write for write and in the same order, so a fresh game, a game this or an
  * older launcher already patched (PLAY.bat run again: the block kept, its settings rewritten) and a newer build (the
- * block's code differs: a fresh block, its state carried over) all end the same as with patches.ps1
+ * block's code differs: a fresh block, its state carried over) all end the same as with sr3mods.ps1
  * (live_lockstep.py's re-attach scenarios compare the writes). */
 #define SETTINGS_HI 0x90
 static int u32at(GameMem *m, unsigned va, unsigned *v) { return m->read(m, va, v, 4); }
@@ -338,7 +338,7 @@ int pc_check_sites(GameMem *m, char *err, size_t cap) {
     return 1;
 }
 
-/* patches.ps1 Test-CameraSites + Install-CameraPatch: every site the game's bytes or ours (an older build too, by the cave's
+/* sr3mods.ps1 Test-CameraSites + Install-CameraPatch: every site the game's bytes or ours (an older build too, by the cave's
  * "SR3C"), then with the game held the old build unhooked, every site written, the block made or updated, then read back.
  * Nothing is logged while the game is held (inside the game a held thread may own a lock the log needs). */
 int pc_install_cameras(GameMem *m, const PcCfg *c) {
@@ -360,7 +360,7 @@ int pc_install_cameras(GameMem *m, const PcCfg *c) {
     base = install_cycle(m, &why);
     m->resume(m);
     if (base && why) pc_logf("Camera blend not installed (View Change cuts as before): unexpected bytes at 0x%X.", HOOK_BLEND);
-    /* as patches.ps1: every site as written, the cave without the parts its code changes while running
+    /* as sr3mods.ps1: every site as written, the cave without the parts its code changes while running
        (counters and scratch DIAG_LO+4 .. 0x50, SR3's framing recorded every frame 0x80 .. 0x8C) */
     for (i = 0; i < 9; i++) {
         const unsigned char *want = i == 0 ? cam.cave : PATCHES[i].neu; unsigned k;
@@ -381,8 +381,8 @@ int pc_install_cameras(GameMem *m, const PcCfg *c) {
     return 1;
 }
 
-/* The plan (tools\patches\lockstep.py): what a fresh install writes, as JSON - the same file plan_ps1.ps1 makes from
- * patches.ps1 against a fake game. It is pc_install_cameras itself, run on a fake memory holding the game's original
+/* The plan (tools\sr3mods\lockstep.py): what a fresh install writes, as JSON - the same file plan_ps1.ps1 makes from
+ * sr3mods.ps1 against a fake game. It is pc_install_cameras itself, run on a fake memory holding the game's original
  * bytes (so the plan and the install are one code path); hooks and pointers into the block are given as block+offset. */
 typedef struct { unsigned va, n; unsigned char *b; } Rg;
 static Rg RG[64]; static int NRG; static unsigned NEXT_A;

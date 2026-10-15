@@ -1,6 +1,6 @@
 <#
   SR3CamLab setup: finds TeknoParrot, its SEGA Rally 3 game profile and Rally.exe, checks them,
-  and remembers them in setup.yaml (next to this script, one per PC). patches.ps1 dot-sources it.
+  and remembers them in setup.yaml (next to this script, one per PC). sr3mods.ps1 dot-sources it.
   PLAY.bat finds everything by itself when it can; the setup window opens when something is
   missing or wrong, and with "PLAY.bat -Setup".
 #>
@@ -259,7 +259,7 @@ function Show-SetupWindow($s) {
     return $ui.S
 }
 
-# What patches.ps1 calls before starting the game: the saved / detected setup when it checks out,
+# What sr3mods.ps1 calls before starting the game: the saved / detected setup when it checks out,
 # else the setup window. Returns $null when the window was cancelled.
 function Get-GameSetup([switch]$Force) {
     $s = Find-Setup

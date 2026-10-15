@@ -1,4 +1,4 @@
-/* livetest: pc_live on a scripted fake game, for live_lockstep.py (live_ps1.ps1 runs patches.ps1 on the same one).
+/* livetest: pc_live on a scripted fake game, for live_lockstep.py (live_ps1.ps1 runs sr3mods.ps1 on the same one).
  *   livetest <scenario.json> <game exe> <mod dir> <profiles.yaml> <trace out>
  * The fake game is the same as live_ps1.ps1's MockGame (keep the two alike):
  *   memory: bytes as written; a read that touches a byte never written fails (an unmapped page);

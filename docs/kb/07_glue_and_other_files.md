@@ -136,9 +136,9 @@ Authoring: `sky1995.py` keeps mesh, materials and texture headers and rewrites t
   `p = var / (var + (d - mean)^2)` with `var = E[x^2] - mean^2 + gfShadowParamsPs.y`, then `p ^ gfShadowParamsPs.z`, lit when
   `d <= mean`; `.x` is added at the end. The four floats live at 0x9F1068 (set by 0x594570 at start-up: y = 1/512, z = 10,
   w = -1/512; x is recomputed at 0x59B537). gfShadowParams at 0x9F1028 = (20, 0.05, ..). VERIFIED (code + shader).
-- `patches.ps1 Set-ShadowParams`: a track folder may bring `shadow.txt` ("<variance floor> <power>"); written to 0x9F106C / 0x9F1070
+- `sr3mods.ps1 Set-ShadowParams`: a track folder may bring `shadow.txt` ("<variance floor> <power>"); written to 0x9F106C / 0x9F1070
   while the track is chosen, SEGA's values put back otherwise. Effect in game NOT YET CONFIRMED.
-  Later the same day: "the two numbers alone changed nothing visible" in a run of 2026-10-08 (comment in patches.ps1); a
+  Later the same day: "the two numbers alone changed nothing visible" in a run of 2026-10-08 (comment in sr3mods.ps1); a
   third word "noblur" was added (20_launcher_inmemory_patches.md, section 7).
 - CONFLICT between files: this section says the technique is variance shadow maps (VERIFIED: code + shader) and that
   w = -1/512 and x is recomputed at 0x59B537; 16_lighting_shadows_lightmaps.md, written later the same day, says "LIKELY

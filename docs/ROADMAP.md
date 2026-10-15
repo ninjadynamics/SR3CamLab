@@ -17,7 +17,7 @@ Free SR3 from TeknoParrot by patching the executable; **side-loading a .dll that
 
 ## B. Patches on the TeknoParrot-free game
 
-In-memory patching (as patches.ps1 does today) or more side-loaded DLLs, on the TeknoParrot-free version.
+In-memory patching (as sr3mods.ps1 does today) or more side-loaded DLLs, on the TeknoParrot-free version.
 
 ## C. Quality-of-life improvements
 
@@ -38,7 +38,7 @@ In-memory patching (as patches.ps1 does today) or more side-loaded DLLs, on the 
    don't need to download anything or an internet connection at all (just click next and we'll set everything up for you
    automagically), but if you insist, we provide that option too - winget will fetch the necessary tools instead."
    - **The only binaries the mod includes are Python and a C compiler, in one zip.** Using it is optional, and it is safe to
-     delete when the user picks the winget option. Everything else (the C helpers' DLLs, the machine code patches.ps1
+     delete when the user picks the winget option. Everything else (the C helpers' DLLs, the machine code sr3mods.ps1
      writes into the game) is built on the user's PC from the shipped sources.
    - **The exception: CamLab** (`camlab.exe`) stays a shipped binary, as it is now, and CamLab is not to be changed (owner,
      2026-10-15).
@@ -47,16 +47,20 @@ In-memory patching (as patches.ps1 does today) or more side-loaded DLLs, on the 
      + clang, pip the pinned numpy / Pillow; where winget is missing or fails, curl fetches python.org's embeddable Python,
      the wheels from PyPI and WinLibs' exact gcc 13.2.0 + LLVM 17.0.6 build from its GitHub releases (setup_toolchain.ps1
      -Online). Pinned versions, SHA-256 checked.
-   - 32-bit code (Rally.exe is 32-bit): the planned patches.dll, which carries the in-memory patches, and the
+   - 32-bit code (Rally.exe is 32-bit): the planned sr3mods.dll, which carries the in-memory patches, and the
      TeknoParrot-free runtime (Codex's, `standalone\`) are built with WinLibs' i686 gcc 13.2.0 (same release and C runtime
      as the 64-bit one; winget has no 32-bit WinLibs, so it comes by curl from WinLibs' GitHub release). The runtime starts
-     patches.dll through `int __cdecl patches_start(const char *utf8_settings_path)` after its own executable check, outside
-     the loader lock; patches.dll's own thread waits for the game's data like patches.ps1 does (agreed with Codex,
+     sr3mods.dll through `int __cdecl sr3mods_start(const char *utf8_settings_path)` after its own executable check, outside
+     the loader lock; sr3mods.dll's own thread waits for the game's data like sr3mods.ps1 does (agreed with Codex,
      2026-10-15). Shown earlier the same day: clang + lld also build a working 32-bit DLL (kept as a fallback).
-   - Names (owner, 2026-10-15): patches.dll and patches.ps1 (the launcher script, formerly patch.ps1; patch.ps1 stays as a
-     forwarder because CamLab, which is not changed, looks for it).
+   - Names (Bruno, 2026-10-15, unified: "descriptive and Windows doesn't bitch about it"): one name per family, the same for
+     the .dll, the .exe and the .ps1 that mirror each other. The mods: sr3mods.dll (inside the game), sr3mods.exe (from
+     outside), sr3mods.ps1 (the PowerShell mirror and PLAY.bat's launcher; patches.ps1 / patches.dll that morning, patch.ps1
+     before), sources in tools\sr3mods. The watchdog: watchdog.exe (its host), watchdog.ps1, watchdog.cs (the recorder). No
+     "patch" in an exe name: Windows takes an unmanifested 32-bit exe called so for an installer and asks for admin rights.
+     patch.ps1 stays as a forwarder because CamLab, which is not changed, looks for it.
    - Status (2026-10-15): the import stack works this way (tools\release.py makes both zips; tools\setup_toolchain.ps1).
-     Not yet: patches.ps1 still carries its machine code as hex made on the author's PC (the sources and their build scripts,
+     Not yet: sr3mods.ps1 still carries its machine code as hex made on the author's PC (the sources and their build scripts,
      tools\build_*.py, ship; they need keystone and clang, which the toolchain zip does not have yet).
    - Builds must stay byte-identical across PCs: the C helpers are compiled for one fixed target (x86-64-v3) rather than
      each PC's own, and the Python packages are pinned to the versions the builds were checked with. winget's oldest WinLibs
@@ -79,5 +83,5 @@ their licences, which they carry.
 ## Where things are
 
 - The import stack: `tools\import\` (README there), `IMPORT.bat`; knowledge base `docs\kb\` (30 = the stack).
-- The launcher and the in-memory patches: `PLAY.bat`, `patches.ps1`; the settings app: `SR3Ultimate.bat` / `extras.ps1`; CamLab:
+- The launcher and the in-memory patches: `PLAY.bat`, `sr3mods.ps1`; the settings app: `SR3Ultimate.bat` / `extras.ps1`; CamLab:
   `src\`, `camlab.exe`; the SR3Lab app plan: `docs\SR3Lab-plan.md`.

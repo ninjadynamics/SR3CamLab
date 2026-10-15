@@ -19,7 +19,7 @@ emulator and record what it plays. This tool drives MAME for that, with no windo
 Then pick "SEGA Rally Championship (1995)" as the music in the settings app (SR3Ultimate.bat, Options), or run
 SR3Ultimate.bat -Music src. The app adds the tunes at the end of the game's stream file; only the 1995 courses in the
 Classic mode play them, each its own, and SEGA Rally 3's own stages and menus keep their music (extras.ps1,
-Set-MusicSource; patches.ps1, Set-CourseTune). A course whose tune is not there plays the Classic mode's own music.
+Set-MusicSource; sr3mods.ps1, Set-CourseTune). A course whose tune is not there plays the Classic mode's own music.
 Nothing here is SEGA's data: the recording comes out of the ROM set on your disk and stays in a git-ignored folder.
 
 How the recording is made (see docs/kb/audio.md, "SEGA Rally Championship"):

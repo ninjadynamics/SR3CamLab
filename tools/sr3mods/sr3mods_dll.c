@@ -1,12 +1,12 @@
-/* patches.dll: patchcore inside the game. Started by the TeknoParrot-free runtime (Codex's standalone\) through
- *     int __cdecl patches_start(const char *utf8_absolute_settings_path)      0 = started, 1 settings, 2 game bytes, 3 internal
+/* sr3mods.dll: patchcore inside the game. Started by the TeknoParrot-free runtime (Codex's standalone\) through
+ *     int __cdecl sr3mods_start(const char *utf8_absolute_settings_path)      0 = started, 1 settings, 2 game bytes, 3 internal
  * after its own check of Rally.exe, outside the loader lock, before the first race. It returns at once; a thread of
- * its own waits for the game's data (the non-zero dword at 0x9EB81C, as patches.ps1 waits), patches the cameras, and
+ * its own waits for the game's data (the non-zero dword at 0x9EB81C, as sr3mods.ps1 waits), patches the cameras, and
  * then runs the live loop (pc_live.c) for as long as the game runs.
- *     int __cdecl patches_plan(const char *utf8_settings_path, const char *out_json)   the plan (lockstep.py)
- *     const char *__cdecl patches_source(void)                                       the patches.ps1 it was built from
+ *     int __cdecl sr3mods_plan(const char *utf8_settings_path, const char *out_json)   the plan (lockstep.py)
+ *     const char *__cdecl sr3mods_source(void)                                       the sr3mods.ps1 it was built from
  * The game memory here is the game's own: reads and writes are plain copies (a page made writable for the write),
- * suspending means every other thread of the process. Log: patches.log beside this DLL. */
+ * suspending means every other thread of the process. Log: sr3mods.log beside this DLL. */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <tlhelp32.h>
@@ -96,13 +96,13 @@ static DWORD WINAPI worker(LPVOID p) {
     return 0;
 }
 
-EXPORT int __cdecl patches_start(const char *settings_path) {
+EXPORT int __cdecl sr3mods_start(const char *settings_path) {
     static LONG once; char err[512] = ""; HANDLE t;
     if (InterlockedExchange(&once, 1)) return 0;                            /* idempotent */
-    { char lp[MAX_PATH]; snprintf(lp, sizeof lp, "%s\\patches.log", here);
+    { char lp[MAX_PATH]; snprintf(lp, sizeof lp, "%s\\sr3mods.log", here);
       logh = CreateFileA(lp, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL); }
     pc_log = to_log; pc_init();
-    pc_logf("patches.dll started; settings %s", settings_path ? settings_path : "(none)");
+    pc_logf("sr3mods.dll started; settings %s", settings_path ? settings_path : "(none)");
     if (!settings_path || !pc_load_cfg(settings_path, here, &cfg, err, sizeof err)) { pc_logf("Settings: %s", err); return 1; }
     if (!pc_prepare_cameras(&cfg, err, sizeof err)) { pc_logf("Cameras: %s", err); return 1; }
     if (!pc_check_sites(&inside, err, sizeof err)) { pc_logf("%s", err); return 2; }
@@ -111,7 +111,7 @@ EXPORT int __cdecl patches_start(const char *settings_path) {
     CloseHandle(t); return 0;
 }
 
-EXPORT int __cdecl patches_plan(const char *settings_path, const char *out_path) {
+EXPORT int __cdecl sr3mods_plan(const char *settings_path, const char *out_path) {
     char err[512] = ""; FILE *f;
     pc_init();
     if (!pc_load_cfg(settings_path, here, &cfg, err, sizeof err) || !pc_prepare_cameras(&cfg, err, sizeof err)) {
@@ -121,7 +121,7 @@ EXPORT int __cdecl patches_plan(const char *settings_path, const char *out_path)
     return pc_plan(out_path);
 }
 
-EXPORT const char *__cdecl patches_source(void) { return pc_source(); }
+EXPORT const char *__cdecl sr3mods_source(void) { return pc_source(); }
 
 BOOL WINAPI DllMain(HINSTANCE self, DWORD why, LPVOID r) {
     (void)r;

@@ -506,7 +506,7 @@ function Get-ClassicCourse([string]$tracks, [string]$dir, [string]$title) {
     foreach ($c in $script:TuneCourses) { if ($name -match $c.Match) { return $c.Key } }
     return ''
 }
-# Where the tune of a Classic alternative is, for the switcher (patches.ps1, Set-CourseTune): only a 1995 course whose own
+# Where the tune of a Classic alternative is, for the switcher (sr3mods.ps1, Set-CourseTune): only a 1995 course whose own
 # tune was appended to the stream file gets one ($m = Get-MusicInstall). Every other track plays its slot's music.
 function Get-ClassicTune([string]$tracks, $m, [string]$dir, [string]$title) {
     if (-not $m) { return $null }
@@ -790,7 +790,7 @@ function Update-Announcer([string]$tracks, $st) {
 # ---- the race sounds of the alternative tracks ----
 # The game makes three names from a track's sound id ("ID_TRACK_CANYON_1"): the ambience event
 # "SFX_AMBIENT_<id>", the music event "MU_RACE_<id>" and the file Audio\<id>_Events.bin (where along
-# the route which ambience and reverb plays). The switcher can give a track other ids (patches.ps1).
+# the route which ambience and reverb plays). The switcher can give a track other ids (sr3mods.ps1).
 #   Ambience: the arcade sound bank has the events of most of Revo's routes (Safari is "DESERT").
 #   Events files: the arcade has only its own five; Revo's are in SR3CamLab\sounds\events\ (converted
 #     from your PlayStation 3 disc: the same file with every 32-bit word byte-swapped) and are copied
@@ -1017,7 +1017,7 @@ function Set-CoDriver([string]$tracks, [bool]$on) { return ,(Set-CoDriverSource 
 # Who plays a tune: only the course it belongs to. A 1995 course in the Classic mode (Get-ClassicCourse) whose tune
 # is there gets the tune's place in switch.json ("tune"). PLAY.bat's switcher then turns the stream record of the
 # Classic mode's music to it, in the game's memory, while that course is the one chosen, and back for every other
-# track (patches.ps1, Set-CourseTune). A course without a tune plays the Classic mode's own music, as it always did.
+# track (sr3mods.ps1, Set-CourseTune). A course without a tune plays the Classic mode's own music, as it always did.
 #   src  SEGA Rally Championship's (1995): SR3CamLab\music\src\desert.wav, forest.wav, mountain.wav, lakeside.wav
 #        (any of them) and tunes.json (where each one's loop starts), made from your own ROM set by
 #        tools\audio\src_music.py
@@ -1102,7 +1102,7 @@ function Set-MusicSource([string]$tracks, [string]$source) {
 }
 
 # ---- Handling (docs\kb\28_handling_flavors.md) ----
-# Which cars drive with which handling. handling.json next to PLAY.bat (patches.ps1, Read-Handling / Set-Handling):
+# Which cars drive with which handling. handling.json next to PLAY.bat (sr3mods.ps1, Read-Handling / Set-Handling):
 #   {"version": 1, "default": "src", "cars": {"ST205": "sr3"}, "flavors": {"src": {"digit": "1", "grip_file": true}}}
 # "default" is every car's flavor, "cars" the exceptions; no file = the game's own handling for every car. A flavor is a
 # folder of car files Main_release\car<digit> (and a grip file SurfacePairEffect<digit>) built on this PC from the game's

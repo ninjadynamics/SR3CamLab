@@ -1,4 +1,4 @@
-"""patches.ps1's live loop and pc_live.c in lockstep (Bruno, 2026-10-15: the .ps1 and the .dll in lockstep, automated):
+"""sr3mods.ps1's live loop and pc_live.c in lockstep (Bruno, 2026-10-15: the .ps1 and the .dll in lockstep, automated):
 
     python live_lockstep.py [--exe <livetest.exe>] [--keep] [--only <scenario>]   (build.py runs it after every build)
 
@@ -6,14 +6,14 @@ Each scenario is a scripted fake game: its memory, the files of a game folder (s
 arcade_times.bin, shadow.txt, road.txt, shader.txt, the stream file, car files, handling.json in the mod folder) and the
 frames (menus, entries, the current track, View Change, the highlighted card, the pad, the keys, the window in front).
 Both run it on their own copy of the folders:
-  patches.ps1  through live_ps1.ps1 (its own code, [Sr3Mem] swapped for a fake, the outside world faked)
-  pc_live.c    through livetest.exe (the code patches.dll and sr3mods.exe run, on livetest.c's fake GameMem)
+  sr3mods.ps1  through live_ps1.ps1 (its own code, [Sr3Mem] swapped for a fake, the outside world faked)
+  pc_live.c    through livetest.exe (the code sr3mods.dll and sr3mods.exe run, on livetest.c's fake GameMem)
 and the traces must be the same line for line: every write (address, keep-writable, bytes), suspend / resume,
 allocation, log line, screen grab with its JSON, and the frame marks; then handling.json (by value) and
 classic_mode.txt. The two fakes are the same game: livetest.c and live_ps1.ps1 say how it answers."""
 import json, os, re, shutil, struct, subprocess, sys, tempfile
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.dirname(os.path.dirname(HERE))
-PS = open(os.path.join(REPO, 'patches.ps1'), encoding='utf-8-sig').read()
+PS = open(os.path.join(REPO, 'sr3mods.ps1'), encoding='utf-8-sig').read()
 
 def i32(v): return struct.pack('<i', v) if v < 0x80000000 else struct.pack('<I', v)
 def f32(*v): return struct.pack('<%df' % len(v), *v)
@@ -273,9 +273,9 @@ def main(argv):
         pa = subprocess.run(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', os.path.join(HERE, 'live_ps1.ps1'), '-Scenario', sa, '-GameExe', ea, '-ModDir', ma, '-Out', ta], capture_output=True, text=True)
         pb = subprocess.run([exe, sb, eb, mb, os.path.join(REPO, 'profiles.yaml'), tb], capture_output=True, text=True)
         A, B = norm(ta, ra), norm(tb, rb)
-        if g.reinstall is not None:                                    # the install's other log lines are worded differently (patches.ps1's for PLAY.bat, sr3mods' for its callers)
+        if g.reinstall is not None:                                    # the install's other log lines are worded differently (sr3mods.ps1's for PLAY.bat, sr3mods' for its callers)
             A = [l for l in A if not l.startswith('L ') or l.startswith(DECISIONS)]; B = [l for l in B if not l.startswith('L ') or l.startswith(DECISIONS)]
-        if not A: A = ['(no trace from patches.ps1: %s)' % (pa.stdout + pa.stderr).strip()[-800:]]
+        if not A: A = ['(no trace from sr3mods.ps1: %s)' % (pa.stdout + pa.stderr).strip()[-800:]]
         if not B: B = ['(no trace from livetest.exe, exit %d: %s)' % (pb.returncode, (pb.stdout + pb.stderr).strip()[-400:])]
         diff = []
         if A != B:

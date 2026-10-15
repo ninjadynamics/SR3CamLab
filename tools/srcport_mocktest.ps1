@@ -1,6 +1,6 @@
-# Runs patches.ps1's SRC-turning install / keep / remove (Install-SrcPort, Remove-SrcPort) against a fake in-memory game.
+# Runs sr3mods.ps1's SRC-turning install / keep / remove (Install-SrcPort, Remove-SrcPort) against a fake in-memory game.
 #   powershell -ExecutionPolicy Bypass -File srcport_mocktest.ps1        the last line counts the checks
-$src = Get-Content (Join-Path $PSScriptRoot '..\patches.ps1') -Raw
+$src = Get-Content (Join-Path $PSScriptRoot '..\sr3mods.ps1') -Raw
 $cut = $src.IndexOf('# ---- launch (unless')
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $body = $src.Substring(0, $cut).Replace('$PSScriptRoot', "'$repo'").Replace('[Sr3Mem]::Alloc', '[MockMem]::Alloc').Replace('[Sr3Mem]::Write', '[MockMem]::Write').Replace('[Sr3Mem]::Read', '[MockMem]::Read').Replace('[Sr3Mem]::Suspend', '[MockMem]::Nop').Replace('[Sr3Mem]::Resume', '[MockMem]::Nop')

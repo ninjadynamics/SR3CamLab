@@ -2,7 +2,7 @@
  * This can actually be done with a library (cJSON, jsmn, yyjson) the following way:
  *     cJSON *v = cJSON_Parse(text); cJSON *s = cJSON_GetObjectItemCaseSensitive(v, "slots");
  * It's done this way because the files are a few KB read once per race, a vendored library would be ten times this
- * file, and none of them looks keys up case-insensitively as PowerShell does (pj_get), which patches.ps1 relies on. */
+ * file, and none of them looks keys up case-insensitively as PowerShell does (pj_get), which sr3mods.ps1 relies on. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

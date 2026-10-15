@@ -1,12 +1,12 @@
-# patches.ps1's plan for one set of settings: everything it would write into a freshly started game, written instead
+# sr3mods.ps1's plan for one set of settings: everything it would write into a freshly started game, written instead
 # into a fake game that holds the original bytes (the mock tests' way: its own code, with [Sr3Mem] swapped for [MockMem]).
-# lockstep.py compares this with patches.dll's plan (patches_plan); they must be the same, byte for byte.
+# lockstep.py compares this with sr3mods.dll's plan (sr3mods_plan); they must be the same, byte for byte.
 #   plan_ps1.ps1 -Out <plan.json> [-CameraProfile <name>] [-ProfilesFile <yaml>] [-Overlay <px>] [-MouseSmoothing <s>] [-CameraBlend <s>] [-Canary]
 param([Parameter(Mandatory = $true)][string]$Out, [string]$CameraProfile = '', [string]$ProfilesFile = '', [int]$Overlay = -1,
       [double]$MouseSmoothing = -1, [double]$CameraBlend = -1, [switch]$Canary)
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$src = Get-Content (Join-Path $repo 'patches.ps1') -Raw
+$src = Get-Content (Join-Path $repo 'sr3mods.ps1') -Raw
 $cut = $src.IndexOf('# ---- launch (unless')
 $body = $src.Substring(0, $cut).Replace('[Sr3Mem]::Alloc', '[MockMem]::Alloc').Replace('[Sr3Mem]::Write', '[MockMem]::Write').Replace('[Sr3Mem]::Read', '[MockMem]::Read').Replace(
     '. (Join-Path $PSScriptRoot ''setup.ps1'')', ". '" + (Join-Path $repo 'setup.ps1') + "'").Replace("Join-Path `$PSScriptRoot 'profiles.yaml'", "Join-Path '$repo' 'profiles.yaml'")
@@ -27,7 +27,7 @@ foreach ($p in $Patches) { [MockMem]::Write(0, $p.VA, $p.OrigB, $false) }       
 [MockMem]::Write(0, $HookDrawVA, $HookDrawOrig, $false); [MockMem]::Write(0, $HookLostVA, $HookLostOrig, $false); [MockMem]::Write(0, $HookBlendVA, $HookBlendOrig, $false)
 foreach ($v in $CamUpdateHooks) { [MockMem]::Write(0, $v[0], ([BitConverter]::GetBytes([int]$v[1])), $false) }
 $h = [IntPtr]::Zero
-foreach ($p in $Patches) { [MockMem]::Write($h, $p.VA, $p.NewB, ($p.VA -eq $CaveVA)) }   # patches.ps1's main flow, fresh install
+foreach ($p in $Patches) { [MockMem]::Write($h, $p.VA, $p.NewB, ($p.VA -eq $CaveVA)) }   # sr3mods.ps1's main flow, fresh install
 Install-Cycle $h
 $base = Find-Cycle $h
 $plan = [ordered]@{ profile = $ProfileName; slots = @($slots | ForEach-Object { $_.Name }); sites = [ordered]@{}; hooks = [ordered]@{}; vtables = [ordered]@{}; block = '' }

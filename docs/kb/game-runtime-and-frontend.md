@@ -2,7 +2,7 @@
 
 Game: SEGA Rally 3 arcade, Rally.exe v3.8.4.1 (32-bit, image base 0x400000, file offset = VA - 0x400000
 for the strings and code quoted here). The exe on disk is never modified (TeknoParrot checks it);
-everything below is done by patching the running process (`SR3CamLab\patches.ps1`).
+everything below is done by patching the running process (`SR3CamLab\sr3mods.ps1`).
 
 Status tags: CONFIRMED = seen working in the game by the user; STATIC = read from disassembly,
 not yet exercised; OFFLINE = only run against the emulator / fake-game tests.
@@ -42,7 +42,7 @@ not yet exercised; OFFLINE = only run against the emulator / fake-game tests.
   mapping, a pad, a wheel): the low 15 bits = held this frame, the previous frame's shifted up by 15, bit 30 = pressed
   this frame (held: 0x7F80FF). View Change = entry 15 (0x9DBB0C), START = entry 53 (0x9DBBA4), gas = 29, handbrake = 32,
   the same in the menus and in a race. CONFIRMED (2026-10-15, each held alone with tools\pad.py and the array sampled).
-  The launcher's START screenshot and VIEW CHANGE race exit read entries 53 and 15 since then (patches.ps1
+  The launcher's START screenshot and VIEW CHANGE race exit read entries 53 and 15 since then (sr3mods.ps1
   Get-GameButtons, pc_live.c); before, they read XInput pad 0 and missed every other input.
 - Highlighted stage card: the game itself asks the selector widget only when a stage is
   confirmed (0x6669C0): `hash = 0x5470D0(ecx = "ID_SELECTOR_TRACKSELECT" @0x6E53FC, push 23)`
@@ -115,7 +115,7 @@ render thread every frame, which is what makes game-thread-only work possible (v
 loading and reopening, selector query, text drawing). Track-switcher fields: LOADVIDEOS
 0x2264, PHINT 0x2268 (second popup line), HILITE 0x226C, REOPEN 0x2270, REOPENPATH 0x2274;
 scratch strings at 0x2400 (popup text), 0x2500 (video path), 0x2600.. (announcer names),
-0x2700.. (sound names). `patches.ps1` function `Watch-Tracks` drives it from outside (15 ms
+0x2700.. (sound names). `sr3mods.ps1` function `Watch-Tracks` drives it from outside (15 ms
 loop); `tools\switch_mocktest.ps1` runs that loop against a scripted fake game.
 
 ## Other handy addresses

@@ -5,9 +5,9 @@
  *   sr3mods plan <out.json> [the same settings switches]          (what a fresh install writes: lockstep.py)
  * attach patches the cameras, then runs the live loop (pc_live.c: menu timers, car lists, handling, the track switcher,
  * START screenshots, the race exit) until the game closes, and exits 0 then; --no-live stops after the cameras.
- * No pid: the running Rally.exe. The switches are patches.ps1's (CamLab passes them) and win over settings.yaml's
- * patches: section. --delay: seconds to wait after the game's data has loaded (TeknoParrot's checks: patches.ps1 waits
- * 20). The game memory here is ReadProcessMemory / WriteProcessMemory; suspending = NtSuspendProcess, as patches.ps1. */
+ * No pid: the running Rally.exe. The switches are sr3mods.ps1's (CamLab passes them) and win over settings.yaml's
+ * patches: section. --delay: seconds to wait after the game's data has loaded (TeknoParrot's checks: sr3mods.ps1 waits
+ * 20). The game memory here is ReadProcessMemory / WriteProcessMemory; suspending = NtSuspendProcess, as sr3mods.ps1. */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <tlhelp32.h>
@@ -66,10 +66,10 @@ static int run(void) {
     int argc, i; wchar_t **av = CommandLineToArgvW(GetCommandLineW(), &argc); char a[1024], settings[1024] = "", mod[MAX_PATH], err[512] = "", plan[1024] = "";
     PcCfg c, sw; DWORD pid = 0; double delay = 0; char *s; int live = 1, watch = -1;
     pc_log = to_log; pc_init();
-    SetProcessDPIAware();             /* the screen's own pixels for the START screenshot (patches.ps1's Initialize-Host; 2560x1440 of a 4K screen at 150 % without it) */
+    SetProcessDPIAware();             /* the screen's own pixels for the START screenshot (sr3mods.ps1's Initialize-Host; 2560x1440 of a 4K screen at 150 % without it) */
     GetModuleFileNameA(NULL, mod, MAX_PATH); if ((s = strrchr(mod, '\\'))) *s = 0;          /* (default mod folder: beside the exe) */
     memset(&sw, 0, sizeof sw); sw.overlay = -1; sw.mouse = -1; sw.blend = -1; sw.canary = -1;
-    if (argc >= 2 && !wcscmp(av[1], L"source")) { pc_logf("%s", pc_source()); return 0; }   /* the SHA-256 of the patches.ps1 it was built from (PLAY.bat uses it only when that is today's) */
+    if (argc >= 2 && !wcscmp(av[1], L"source")) { pc_logf("%s", pc_source()); return 0; }   /* the SHA-256 of the sr3mods.ps1 it was built from (PLAY.bat uses it only when that is today's) */
     if (argc < 2 || (wcscmp(av[1], L"attach") && wcscmp(av[1], L"plan"))) {
         pc_logf("sr3mods attach [<pid>] [--settings <yaml>] [--mod <dir>] [--delay <s>] [--camera-profile <n>] [--profiles-file <f>] [--overlay <px>] [--mouse-smoothing <s>] [--camera-blend <s>] [--canary] [--watchdog | --no-watchdog] [--no-live] [--log <f>]  |  sr3mods plan <out.json> [the same]");
         return 4;
@@ -95,7 +95,7 @@ static int run(void) {
         else { pc_logf("Unknown argument: %s", a); return 4; }
     }
     if (!pc_load_cfg(settings[0] ? settings : NULL, mod, &c, err, sizeof err)) { pc_logf("Settings: %s", err); return 1; }
-    if (sw.profile[0]) snprintf(c.profile, sizeof c.profile, "%s", sw.profile);              /* the switches win, as patches.ps1's do */
+    if (sw.profile[0]) snprintf(c.profile, sizeof c.profile, "%s", sw.profile);              /* the switches win, as sr3mods.ps1's do */
     if (sw.profiles_file[0]) snprintf(c.profiles_file, sizeof c.profiles_file, "%s", sw.profiles_file);
     if (sw.overlay >= 0) c.overlay = sw.overlay;
     if (sw.mouse >= 0) c.mouse = sw.mouse;
@@ -122,7 +122,7 @@ static int run(void) {
     if (!pc_install_cameras(&outside, &c)) return 2;
     if (!live) { CloseHandle(game); return 0; }
     if (c.watchdog) { char line[512]; if (!ex_watch(&outside, line, sizeof line)) pc_logf("%s", line); }
-    {   /* patches.ps1's Release-StuckKeys: the live loop until the game closes, then key-ups for Alt, Ctrl, Shift and Win
+    {   /* sr3mods.ps1's Release-StuckKeys: the live loop until the game closes, then key-ups for Alt, Ctrl, Shift and Win
            (leaving the game sometimes leaves one "held" in Windows, its key-up never arrived) */
         static const BYTE vk[11] = {0x12, 0xA4, 0xA5, 0x11, 0xA2, 0xA3, 0x10, 0xA0, 0xA1, 0x5B, 0x5C};
         wchar_t w[1024]; DWORD n = 1024; char exe[2048] = ""; int k;

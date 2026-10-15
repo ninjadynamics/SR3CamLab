@@ -73,5 +73,5 @@ blender/
 *.stackdump
 # the C helpers being compiled (core/cbuild.py)
 .build_*/
-# patches.dll's build (tools\patches\build.py): made from the sources, never committed
-tools/patches/build/
+# sr3mods.dll's build (tools\sr3mods\build.py): made from the sources, never committed
+tools/sr3mods/build/

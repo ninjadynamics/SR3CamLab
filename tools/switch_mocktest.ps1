@@ -1,6 +1,6 @@
-# Runs patches.ps1's alternative-track switcher (Watch-Tracks) against a scripted fake game:
+# Runs sr3mods.ps1's alternative-track switcher (Watch-Tracks) against a scripted fake game:
 # the menus come and go, View Change is pressed, and the test prints what the game would read.
-$src = Get-Content (Join-Path $PSScriptRoot '..\patches.ps1') -Raw
+$src = Get-Content (Join-Path $PSScriptRoot '..\sr3mods.ps1') -Raw
 $cut = $src.IndexOf('# ---- launch (unless')
 $body = $src.Substring(0, $cut).Replace('[Sr3Mem]::Alloc', '[MockGame]::Alloc').Replace('[Sr3Mem]::Write', '[MockGame]::Write').Replace('[Sr3Mem]::Read', '[MockGame]::Read').Replace('[Sr3Mem]::Open', '[MockGame]::Open').Replace('[Sr3Mem]::Close', '[MockGame]::Close').Replace('. (Join-Path $PSScriptRoot ''setup.ps1'')', ". '" + (Join-Path $PSScriptRoot '..\setup.ps1') + "'").Replace('Start-Sleep -Milliseconds', 'Skip-Sleep')
 Add-Type @"

@@ -1,8 +1,8 @@
-# Runs patches.ps1's switcher (Watch-Tracks) against a scripted fake game to check a track's own tune (Set-CourseTune):
+# Runs sr3mods.ps1's switcher (Watch-Tracks) against a scripted fake game to check a track's own tune (Set-CourseTune):
 # the stream record of the Classic slot's music must be turned to the tune only while a track that has one is the
 # current choice, and be the game's own again with every other track. Same method as switch_mocktest.ps1: the game's
 # memory is a dictionary, nothing real is touched.
-$src = Get-Content (Join-Path $PSScriptRoot '..\patches.ps1') -Raw
+$src = Get-Content (Join-Path $PSScriptRoot '..\sr3mods.ps1') -Raw
 $cut = $src.IndexOf('# ---- launch (unless')
 $body = $src.Substring(0, $cut).Replace('[Sr3Mem]::Alloc', '[MockTune]::Alloc').Replace('[Sr3Mem]::Write', '[MockTune]::Write').Replace('[Sr3Mem]::Read', '[MockTune]::Read').Replace('[Sr3Mem]::Open', '[MockTune]::Open').Replace('[Sr3Mem]::Close', '[MockTune]::Close').Replace('. (Join-Path $PSScriptRoot ''setup.ps1'')', ". '" + (Join-Path $PSScriptRoot '..\setup.ps1') + "'").Replace('Start-Sleep -Milliseconds', 'Skip-Sleep')
 Add-Type @"

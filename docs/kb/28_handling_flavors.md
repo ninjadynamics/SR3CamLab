@@ -224,7 +224,7 @@ The names (Standard, SegaRally, PowerslideSteer, AlwaysSteer) are SR3's own clas
 - `handling.json` next to PLAY.bat (`handling.example.json`): `{version, default, cars{name: flavor}, flavors{name:
   {digit, grip_file}}}` (older files' steer_rate / steer_return_s / steer_linear are ignored: every handling steers with SEGA's own steering).
 
-### The launcher (patches.ps1: Read-Handling, Set-Handling, Sync-RaceFlavor, Remove-SteerHook, Install-SrcPort)
+### The launcher (sr3mods.ps1: Read-Handling, Set-Handling, Sync-RaceFlavor, Remove-SteerHook, Install-SrcPort)
 | What | Where |
 |---|---|
 | all ten known cars on one flavor | the 's' of "cars" at 0x6C631D -> the digit |

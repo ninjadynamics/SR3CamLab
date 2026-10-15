@@ -1,14 +1,14 @@
-"""Builds the SRC turning port (srcport.c) into a blob for patches.ps1, and its surface table.
+"""Builds the SRC turning port (srcport.c) into a blob for sr3mods.ps1, and its surface table.
 
     python build_srcport.py [--game <Rally folder>] [--embed]   writes srcport.json next to this file; --embed also
-                                                                 writes the blob into ..\patches.ps1 ($SrcPortCode ...)
+                                                                 writes the blob into ..\sr3mods.ps1 ($SrcPortCode ...)
 
 1. clang (i686, freestanding, SSE2 + x87 for sin / cos / atan / pow) compiles srcport.c to a COFF object.
 2. The object's .text, .rdata, .data and .bss are laid out one after the other (16-byte aligned) from offset 0; every
    IMAGE_REL_I386_DIR32 site gets its target's offset, and its place is listed in "relocs": the launcher writes the
    blob at the address it allocated, then adds that address to the dword at each listed offset. No other relocation
    type is accepted (calls into Rally.exe are absolute addresses in registers, not relocations). The blob ends where
-   .bss starts (the log); the launcher allocates ALLOC bytes, zero-filled, so .bss needs no bytes in patches.ps1.
+   .bss starts (the log); the launcher allocates ALLOC bytes, zero-filled, so .bss needs no bytes in sr3mods.ps1.
 3. The surface table: the grip file's surface-pair records in file order (the index a tyre keeps at + 0x1C, the same
    order in every grip file the flavor builder writes), each classed for SRC's four records by its name and, for the
    rest, by its Tyre_Rally grip against Tyre_Rally_Tarmac's. Bit 7 marks the Tyre_Road records (the SRC files' tyres),
@@ -126,7 +126,7 @@ if __name__ == '__main__':
     for i, (n, k, why) in enumerate(cls):
         if k != 0xFF and k & 0x80: print('  %3d %-34s %s  (%s)' % (i, n, names[k & 3], why))
     if a.embed:
-        ps = os.path.join(HERE, '..', 'patches.ps1'); t = open(ps, encoding='utf-8-sig').read()
+        ps = os.path.join(HERE, '..', 'sr3mods.ps1'); t = open(ps, encoding='utf-8-sig').read()
         if any(r > 0xFFFF for r in relocs): raise SystemExit('a relocation beyond 0xFFFF')
         lines = {'$SrcPortCode = ': "$SrcPortCode = '%s'" % blob.hex(),
                  '$SrcPortEntry = ': '$SrcPortEntry = 0x%X; $SrcPortData = 0x%X; $SrcPortAlloc = 0x%X; $SrcPortVersion = %d' % (entry, data, ALLOC, struct.unpack_from('<I', blob, data + 4)[0]),
@@ -137,7 +137,7 @@ if __name__ == '__main__':
                 if ln.startswith(k): ln = v + ('\r' if ln.endswith('\r') else ''); break
             out.append(ln)
         n = sum(1 for ln in out for k in lines if ln.startswith(k))
-        if n != 3: raise SystemExit('patches.ps1: %d of the 3 lines found; nothing written' % n)
+        if n != 3: raise SystemExit('sr3mods.ps1: %d of the 3 lines found; nothing written' % n)
         bom = open(ps, 'rb').read(3) == b'\xef\xbb\xbf'
         open(ps, 'w', encoding='utf-8-sig' if bom else 'utf-8', newline='').write('\n'.join(out))
-        print('patches.ps1: $SrcPortCode (%d bytes), entry, data, %d relocations written' % (len(blob), len(relocs)))
+        print('sr3mods.ps1: $SrcPortCode (%d bytes), entry, data, %d relocations written' % (len(blob), len(relocs)))

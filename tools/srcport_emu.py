@@ -1,4 +1,4 @@
-"""Runs the SRC turning port (build_srcport.py's blob, relocated the way patches.ps1 does it) on an emulated CPU inside a
+"""Runs the SRC turning port (build_srcport.py's blob, relocated the way sr3mods.ps1 does it) on an emulated CPU inside a
 copy of Rally.exe's image, on a made-up car, and checks it against srcmodel.py (kb 29's chain in Python).
 
     python srcport_emu.py [--game <Rally folder>]        the last line counts the checks

@@ -1,15 +1,15 @@
-"""patches.ps1 and patches.dll in lockstep (Bruno, 2026-10-15: "everytime something changes, the changes should cascade
+"""sr3mods.ps1 and sr3mods.dll in lockstep (Bruno, 2026-10-15: "everytime something changes, the changes should cascade
 straight to .ps1 and .dll ... automated via script, so no ambiguity remains"):
 
-    python lockstep.py [--dll <patches.dll>]          (build.py runs it after every build; a difference fails the build)
+    python lockstep.py [--dll <sr3mods.dll>]          (build.py runs it after every build; a difference fails the build)
 
 For a matrix of settings (every profile in profiles.yaml, the built-in SR3 cameras, the default; the popup size, mouse
 smoothing, camera blend at off / default / other values; canary; a profiles file with hiddenCameras: false and its
 own fallbacks), both are asked what they would write into a freshly started game:
-  patches.ps1  through plan_ps1.ps1 (its own code against a fake game holding the original bytes)
-  patches.dll  through plan32.exe -> patches_plan (the code patches_start runs)
+  sr3mods.ps1  through plan_ps1.ps1 (its own code against a fake game holding the original bytes)
+  sr3mods.dll  through plan32.exe -> sr3mods_plan (the code sr3mods_start runs)
 and the two plans must be the same: every patch site's bytes, every hook and pointer (as block + offset), the camera
-block's 16 KB image, the profile and the camera list. The bytes themselves come from patches.ps1 in both (gen_blobs.py
+block's 16 KB image, the profile and the camera list. The bytes themselves come from sr3mods.ps1 in both (gen_blobs.py
 copies them into the DLL at each build), so what this checks is the logic around them."""
 import json, os, subprocess, sys, tempfile
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.dirname(os.path.dirname(HERE))
@@ -49,12 +49,12 @@ def settings_yaml(path, c):
     open(path, 'w', newline='\n').write('\n'.join(lines) + '\n')
 
 def main(argv):
-    dll = argv[argv.index('--dll') + 1] if '--dll' in argv else os.path.join(HERE, 'build', 'patches.dll')
+    dll = argv[argv.index('--dll') + 1] if '--dll' in argv else os.path.join(HERE, 'build', 'sr3mods.dll')
     tmp = tempfile.mkdtemp(prefix='lockstep_'); exe = runner(os.path.dirname(dll)); bad = 0; n = 0
     import hashlib
-    want = hashlib.sha256(open(os.path.join(REPO, 'patches.ps1'), 'rb').read()).hexdigest()
+    want = hashlib.sha256(open(os.path.join(REPO, 'sr3mods.ps1'), 'rb').read()).hexdigest()
     got = subprocess.run([exe, dll], capture_output=True, text=True).stdout.strip()
-    if got != want: print('STALE: %s was built from another patches.ps1 (%s, now %s): build it again (tools\\patches\\build.py)' % (dll, got[:12] or '?', want[:12])); return 2
+    if got != want: print('STALE: %s was built from another sr3mods.ps1 (%s, now %s): build it again (tools\\patches\\build.py)' % (dll, got[:12] or '?', want[:12])); return 2
     for k, c in enumerate(cases(tmp)):
         sy = os.path.join(tmp, 's%d.yaml' % k); pd = os.path.join(tmp, 'dll%d.json' % k); pp = os.path.join(tmp, 'ps%d.json' % k); settings_yaml(sy, c)
         rd = subprocess.run([exe, dll, sy, pd]).returncode

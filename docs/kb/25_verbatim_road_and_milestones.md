@@ -58,7 +58,7 @@ getter 0x4283A0), and the indexed-draw calls next to the object at 0xACEB98:
 | 0x4EEF70 | draws the road (TrackDeform object 0xA95570) | cdecl, 2 arguments, plain `ret`; first bytes `55 8B EC 83 E4 F0` | wrappers 0x4EF4C0 and 0x4EF500, called from 0x4F00D3, 0x5A3F4D, 0x5A42CB | first byte 0x55 -> 0xC3 |
 | 0x4EE920 | draws road cells AROUND EACH CAR from the same road data (LIKELY the patch that carries ruts and tyre marks) | cdecl, plain `ret`; first bytes `83 EC 3C 8B 00 6B` | twice from 0x5E0330, with a car's position | first byte 0x83 -> 0xC3 |
 
-- `patches.ps1` `Set-RoadHide`: a track folder with `road.txt` holding `hide` patches the first routine while that track is
+- `sr3mods.ps1` `Set-RoadHide`: a track folder with `road.txt` holding `hide` patches the first routine while that track is
   selected; `hide all` patches both. The original bytes are put back for every other track; nothing is written unless the
   six expected bytes are there. VERIFIED in game: with `hide` the road is gone and the driving is unchanged; with `hide all`
   the artefact described next is gone too.

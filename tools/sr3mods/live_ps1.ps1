@@ -1,4 +1,4 @@
-# patches.ps1's live part (Set-MenuTimers, Set-CarLists, Set-Handling, Watch-Tracks) on a scripted fake game, writing every
+# sr3mods.ps1's live part (Set-MenuTimers, Set-CarLists, Set-Handling, Watch-Tracks) on a scripted fake game, writing every
 # write, suspend / resume, allocation, log line and screen grab to a trace. live_lockstep.py runs livetest.exe (pc_live.c) on
 # the same game and compares the two traces line for line. The fake game is livetest.c's (see there; keep the two alike).
 #   live_ps1.ps1 -Scenario <scenario.json> -GameExe <...\Rally.exe> -ModDir <dir> -Out <trace>
@@ -8,7 +8,7 @@
 param([Parameter(Mandatory = $true)][string]$Scenario, [Parameter(Mandatory = $true)][string]$GameExe, [Parameter(Mandatory = $true)][string]$ModDir, [Parameter(Mandatory = $true)][string]$Out)
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$src = Get-Content (Join-Path $repo 'patches.ps1') -Raw
+$src = Get-Content (Join-Path $repo 'sr3mods.ps1') -Raw
 $cut = $src.IndexOf('# ---- launch (unless')
 $body = $src.Substring(0, $cut).Replace('[Sr3Mem]::', '[MockGame]::').Replace('Start-Sleep -Milliseconds', 'Skip-Sleep').Replace(
     '. (Join-Path $PSScriptRoot ''setup.ps1'')', ". '" + (Join-Path $repo 'setup.ps1') + "'").Replace("Join-Path `$PSScriptRoot 'profiles.yaml'", "Join-Path '$repo' 'profiles.yaml'")
@@ -63,7 +63,7 @@ public static class MockGame {
 "@
 $body += @'
 
-# ---- the outside world, faked (these come after patches.ps1's own and replace them)
+# ---- the outside world, faked (these come after sr3mods.ps1's own and replace them)
 function Log($m) { [MockGame]::Line("L $m") }
 function Skip-Sleep($ms) { }
 function Initialize-Host { }
@@ -96,7 +96,7 @@ foreach ($p in $Patches) { [MockGame]::Put($p.VA, $p.OrigB) }                   
 [MockGame]::Put($HookDrawVA, $HookDrawOrig); [MockGame]::Put($HookLostVA, $HookLostOrig); [MockGame]::Put($HookBlendVA, $HookBlendOrig)
 foreach ($v in $CamUpdateHooks) { [MockGame]::Put($v[0], ([BitConverter]::GetBytes([int]$v[1]))) }
 foreach ($w in @($sc.mem)) { if ($w) { [MockGame]::Put([long]$w[0], [MockGame]::Hex([string]$w[1])) } }
-$older = Test-CameraSites $h; Install-CameraPatch $h $older                                  # patches.ps1's main flow, fresh install
+$older = Test-CameraSites $h; Install-CameraPatch $h $older                                  # sr3mods.ps1's main flow, fresh install
 [MockGame]::Base = Find-Cycle $h
 foreach ($w in @($sc.after)) { if ($w) { [MockGame]::Put([MockGame]::Base + [long]$w[0], [MockGame]::Hex([string]$w[1])) } }
 foreach ($w in @($sc.between)) { if ($w) { [MockGame]::Put([long]$w[0], [MockGame]::Hex([string]$w[1])) } }

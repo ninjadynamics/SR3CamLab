@@ -1,8 +1,8 @@
-# Runs patches.ps1's START / VIEW CHANGE logic without a game: Step-Start (a short START = a screenshot when it is let go,
+# Runs sr3mods.ps1's START / VIEW CHANGE logic without a game: Step-Start (a short START = a screenshot when it is let go,
 # VIEW CHANGE held = leave the race) on made-up button and menu timelines, then Request-RaceExit / Step-RaceExit against a fake game memory
 # that plays the game's part (the race update taking the flag, the states that follow). Same method as switch_mocktest.ps1:
 # the script is cut before its launch part and the game's memory is a dictionary. Counts on the last line.
-$src = Get-Content (Join-Path $PSScriptRoot '..\patches.ps1') -Raw
+$src = Get-Content (Join-Path $PSScriptRoot '..\sr3mods.ps1') -Raw
 $cut = $src.IndexOf('# ---- launch (unless')
 $body = $src.Substring(0, $cut).Replace('[Sr3Mem]::Write', '[MockRace]::Write').Replace('[Sr3Mem]::Read', '[MockRace]::Read').Replace('. (Join-Path $PSScriptRoot ''setup.ps1'')', ". '" + (Join-Path $PSScriptRoot '..\setup.ps1') + "'")
 Add-Type @"

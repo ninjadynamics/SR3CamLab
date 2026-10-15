@@ -9,7 +9,7 @@ exit /b
 
 :notextracted
 echo.
-echo   SR3CamLab can't find its other files (patches.ps1, setup.ps1) next to PLAY.bat.
+echo   SR3CamLab can't find its other files (sr3mods.ps1, setup.ps1) next to PLAY.bat.
 echo.
 echo   If you opened the zip and double-clicked PLAY.bat inside it, Windows ran it on its own.
 echo   Close this window, right-click the zip, choose "Extract All...", put the SR3CamLab

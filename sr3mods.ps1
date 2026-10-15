@@ -6,7 +6,7 @@
   version check has passed), then patches the camera in the game's memory.
 
     ON  = start the game with PLAY.bat (runs this script)
-    TEST = patches.ps1 -Canary: camera looks at the car from the side (proves the patch is live)
+    TEST = sr3mods.ps1 -Canary: camera looks at the car from the side (proves the patch is live)
     OFF = start the game normally from TeknoParrot. Closing the game undoes everything.
 
   The camera feel comes from profiles.yaml (next to this script):
@@ -1043,7 +1043,7 @@ $WatchdogValues = 'state=0x7ECE10, next=0x7ECE14, mode=0x728598, menus=0x9D6E3C:
 $script:WatchdogOn = $false
 function Start-Watchdog($game) {
     $cs = Join-Path $PSScriptRoot 'watchdog.cs'
-    if (-not (Test-Path -LiteralPath $cs)) { Log 'Watchdog: watchdog.cs is missing next to patches.ps1; crashes and freezes are not recorded this time.'; return }
+    if (-not (Test-Path -LiteralPath $cs)) { Log 'Watchdog: watchdog.cs is missing next to sr3mods.ps1; crashes and freezes are not recorded this time.'; return }
     try {
         if (-not ('Sr3Watchdog' -as [type])) { Add-Type -Path $cs -ErrorAction Stop }
         [Sr3Watchdog]::Values = $WatchdogValues
@@ -1079,7 +1079,7 @@ function Wait-GameExit($game) {
 
 # Runs until the game closes.
 # What the loop asks of the world outside the game's memory, each in a function of its own: the mock tests and the trace
-# lockstep (tools\patches\live_lockstep.py) put fakes in their place, and patchcore (pc_live.c) asks its GameMem the same
+# lockstep (tools\sr3mods\live_lockstep.py) put fakes in their place, and patchcore (pc_live.c) asks its GameMem the same
 # questions (now, key, front, shot).
 function Initialize-Host {
     Add-Type -AssemblyName System.Drawing, System.Windows.Forms
@@ -1788,7 +1788,7 @@ function Release-StuckKeys($game) {
     Log 'Game closed. Modifier keys released.'
 }
 
-# The camera patch into a running game: the check, then the install (pc_install_cameras in tools\patches\patchcore.c does the
+# The camera patch into a running game: the check, then the install (pc_install_cameras in tools\sr3mods\patchcore.c does the
 # same, write for write: live_lockstep.py's re-attach scenarios run both on a game already patched with other settings).
 # Every site must still hold the original bytes, or ours. The cave's "SR3C" signature also recognises an older build of this
 # patch, which is then replaced in place. Returns whether an older build is in; throws on bytes that are neither.
@@ -1884,21 +1884,21 @@ if ($Cores -gt 0 -and $Cores -lt [Environment]::ProcessorCount) {
     try { $proc.ProcessorAffinity = [IntPtr]$mask; Log ("Game limited to {0} of {1} CPU threads (keeps its video decoders' memory down)." -f $Cores, [Environment]::ProcessorCount) }
     catch { Log "Could not limit the game's CPU cores: $($_.Exception.Message)" }
 }
-# The in-game part runs from sr3mods.exe (tools\patches: the same C as patches.dll, in lockstep with this script's own code
-# below, checked at every build by tools\patches\lockstep.py and live_lockstep.py): it waits for the game, patches the
+# The in-game part runs from sr3mods.exe (tools\sr3mods: the same C as sr3mods.dll, in lockstep with this script's own code
+# below, checked at every build by tools\sr3mods\lockstep.py and live_lockstep.py): it waits for the game, patches the
 # cameras and, for a game this script started, runs the live loop and the watchdog (Ctrl+Scroll Lock too) until the game
 # closes, then releases stuck modifier keys. This script's own code stays the reference those checks compare with, and runs
-# instead only for -Off and when sr3mods.exe is not built or was built from another patches.ps1 (python
-# tools\patches\build.py builds it; PLAY.bat never builds on its own).
-$sr3mods = Join-Path $PSScriptRoot 'tools\patches\build\sr3mods.exe'
+# instead only for -Off and when sr3mods.exe is not built or was built from another sr3mods.ps1 (python
+# tools\sr3mods\build.py builds it; PLAY.bat never builds on its own).
+$sr3mods = Join-Path $PSScriptRoot 'tools\sr3mods\build\sr3mods.exe'
 $useExe = $false
 if (-not $Off) {
     if (Test-Path -LiteralPath $sr3mods) {
-        $want = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $PSScriptRoot 'patches.ps1')).Hash.ToLower()
+        $want = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $PSScriptRoot 'sr3mods.ps1')).Hash.ToLower()
         $got = ("$(& $sr3mods source 2>$null)" -replace '^\s*\[[^\]]*\]\s*', '').Trim()           # its one line: [hh:mm:ss] <sha256>
         if ($got -eq $want) { $useExe = $true }
-        else { Log 'sr3mods.exe was built from another patches.ps1 (python tools\patches\build.py builds it again); the PowerShell patches run this time.' }
-    } else { Log 'sr3mods.exe is not built yet (python tools\patches\build.py); the PowerShell patches run this time.' }
+        else { Log 'sr3mods.exe was built from another sr3mods.ps1 (python tools\sr3mods\build.py builds it again); the PowerShell patches run this time.' }
+    } else { Log 'sr3mods.exe is not built yet (python tools\sr3mods\build.py); the PowerShell patches run this time.' }
 }
 if ($useExe) {
     $a = @('attach', "$($proc.Id)", '--delay', "$DelaySeconds", '--mod', $PSScriptRoot)

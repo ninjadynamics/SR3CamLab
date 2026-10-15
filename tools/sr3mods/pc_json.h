@@ -1,5 +1,5 @@
 /* A small JSON reader for patchcore (switch.json, handling.json, classic.json): the whole document into one tree.
- * PowerShell's ConvertFrom-Json is what patches.ps1 used; this reads the same files the same way for what patchcore
+ * PowerShell's ConvertFrom-Json is what sr3mods.ps1 used; this reads the same files the same way for what patchcore
  * asks of them: objects (keys in file order), arrays, strings (\uXXXX turned into UTF-8), numbers (their text kept as
  * written, and as a double), true, false, null. */
 #pragma once

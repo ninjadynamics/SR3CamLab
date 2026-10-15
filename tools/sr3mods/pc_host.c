@@ -1,7 +1,7 @@
-/* pc_host: the world outside the game's memory for pc_live, the same for patches.ps1 and both front ends (patches.dll
+/* pc_host: the world outside the game's memory for pc_live, the same for sr3mods.ps1 and both front ends (sr3mods.dll
  * inside the game, sr3mods.exe outside): the clock, the keys, the window in front, the screen grab. (No pad: START
  * and View Change are read from the game's own inputs, pc_live.c / Get-GameButtons.)
- *   shot: the whole primary screen through GDI (patches.ps1's CopyFromScreen), PNG by WIC (Windows' own codecs), the
+ *   shot: the whole primary screen through GDI (sr3mods.ps1's CopyFromScreen), PNG by WIC (Windows' own codecs), the
  *         shot's JSON in a tEXt chunk "SR3Lab" after IHDR (Add-PngText). GDI sees the desktop: a game in exclusive
  *         fullscreen can come out black from inside or outside alike (windowed / borderless is fine).
  * This can actually be done with stb_image_write the following way:
@@ -23,7 +23,7 @@ int ph_key(GameMem *m, int vk) { (void)m; return (GetAsyncKeyState(vk) & 0x8000)
 unsigned ph_front(GameMem *m) { (void)m; return (unsigned)(uintptr_t)GetForegroundWindow(); }
 
 /* ---------------------------------------------------------------- the screen grab */
-/* patches.dll sets this to the TeknoParrot-free runtime's sr3rt_grab_backbuffer (Codex's, standalone\capture.c): the
+/* sr3mods.dll sets this to the TeknoParrot-free runtime's sr3rt_grab_backbuffer (Codex's, standalone\capture.c): the
  * game's own back buffer, which exclusive fullscreen keeps from GDI. 1 = a top-down tight BGRA8 picture the caller frees
  * with HeapFree(GetProcessHeap(), 0, ..); 0 = none (within 250 ms): then no picture, logged as such (Codex, chat #86:
  * GDI would give a black one of a game in exclusive fullscreen and call it a success). Not set (no runtime): GDI. */

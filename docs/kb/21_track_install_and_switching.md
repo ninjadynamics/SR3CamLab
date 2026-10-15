@@ -1,7 +1,7 @@
 # 21 - Installing extra tracks in SEGA Rally 3 and switching between them
 
 How a track gets into the arcade game without replacing SEGA's files, how the running game is pointed at it, and which
-side files a track folder may carry. Sources: comments of `SR3CamLab\extras.ps1` and `SR3CamLab\patches.ps1`, the owner's
+side files a track folder may carry. Sources: comments of `SR3CamLab\extras.ps1` and `SR3CamLab\sr3mods.ps1`, the owner's
 persistent notes, `work/tools/import/src/tracks/courses/src_1.json`, and the importer scripts named below. The patch sites themselves are also
 listed in [game-runtime-and-frontend.md](game-runtime-and-frontend.md); the PS3 -> PC converter is in
 [ps3-to-pc-conversion.md](ps3-to-pc-conversion.md).
@@ -54,7 +54,7 @@ alternatives must stay below 10").
   overwritten: a scripted run through the menus faster than the poll turned it into 0 and the Classic popup disappeared.
 - An "art" key in `switch.json` turns on the second set of banner / background names (section 5).
 
-## 4. How the running game is switched (`patches.ps1`, `Watch-Tracks`)
+## 4. How the running game is switched (`sr3mods.ps1`, `Watch-Tracks`)
 - On the stage-select screen, View Change steps the HIGHLIGHTED card through its tracks. The highlighted card is read
   from the game's own selector every frame (game-runtime-and-frontend.md) and the popup shows the track's title.
 - Classic has no stage select: its alternatives are stepped through with View Change on the game's FIRST menu
@@ -102,8 +102,8 @@ alternatives must stay below 10").
 Optional side files, read by the launcher or the tools, never by the game itself:
 | File | Written by | Read by | Purpose |
 |---|---|---|---|
-| `arcade_times.bin` | `arcade_times.py classic` (copied into the step folder by hand; the importer does not write it) | `patches.ps1 Set-ArcadeTimes` | checkpoint seconds for this track |
-| `shadow.txt` | by hand | `patches.ps1 Set-ShadowParams` | shadow edge values, optional "noblur" |
+| `arcade_times.bin` | `arcade_times.py classic` (copied into the step folder by hand; the importer does not write it) | `sr3mods.ps1 Set-ArcadeTimes` | checkpoint seconds for this track |
+| `shadow.txt` | by hand | `sr3mods.ps1 Set-ShadowParams` | shadow edge values, optional "noblur" |
 | `texmap.json` | every importer build | `texfast.py` (`UPDATE_TEXTURES.bat`) | which texture chunk shows which 1995 tile, and the recipe of composed tiles |
 
 ## 7. Updating textures of an installed track without a rebuild

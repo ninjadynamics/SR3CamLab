@@ -1,8 +1,8 @@
-/* pc_live: patches.ps1's live part, after the cameras: Release-StuckKeys' Set-MenuTimers, Set-CarLists, Set-Handling and
+/* pc_live: sr3mods.ps1's live part, after the cameras: Release-StuckKeys' Set-MenuTimers, Set-CarLists, Set-Handling and
  * Watch-Tracks (the alternative tracks, their sounds / tune / checkpoint times / shadows / road / shader test, the popups,
  * START = screenshot, VIEW CHANGE held = race exit, the handling keys), until the game exits. Each function is the
- * patches.ps1 function of the same name and does what it does in the same order, write for write and log line for log
- * line: tools\patches\live_lockstep.py runs both on the same fake games and compares (Bruno, 2026-10-15: the .ps1 and the
+ * sr3mods.ps1 function of the same name and does what it does in the same order, write for write and log line for log
+ * line: tools\sr3mods\live_lockstep.py runs both on the same fake games and compares (Bruno, 2026-10-15: the .ps1 and the
  * .dll in lockstep, automated).
  * PowerShell's ways that show in the writes, kept on purpose:
  *   - string -eq / -ne and hashtable keys ignore case: ieq(), _stricmp;
@@ -33,7 +33,7 @@ static char GAMEDIR[1024], MODDIR[1024];
 #define HOOK_DRAW 0x591C4D
 #define CYCLE_DRAW 0x1000
 
-/* ---------------------------------------------------------------- the game's memory, the way patches.ps1 reads it */
+/* ---------------------------------------------------------------- the game's memory, the way sr3mods.ps1 reads it */
 static int rd(ll va, void *d, unsigned n) { return va >= 0 && va + n <= 0x100000000LL && G->read(G, (unsigned)va, d, n); }
 static void wr(ll va, const void *s, unsigned n, int keep) { if (va >= 0 && va + n <= 0x100000000LL) G->write(G, (unsigned)va, s, n, keep); }
 static int gi(ll va) { int v; return rd(va, &v, 4) ? v : 0; }                         /* Read-GameInt */
@@ -715,7 +715,7 @@ static void set_arcade_times(const char *s, int dir) {  /* checkpoint times: an 
     free(nb);
     pc_logf("Checkpoint times: %s uses the times of Main_release\\track%c\\%s.", s, dir, s);
 }
-static int dnum(const char *s, double *v) {             /* [double]::TryParse(s, Float, Invariant), NaN and the infinities refused (patches.ps1 refuses them by range) */
+static int dnum(const char *s, double *v) {             /* [double]::TryParse(s, Float, Invariant), NaN and the infinities refused (sr3mods.ps1 refuses them by range) */
     char *e;
     if (!*s || strpbrk(s, "xXnNiI")) return 0;
     *v = strtod(s, &e); return !*e;
@@ -872,7 +872,7 @@ static void shot_info(ll base, const char *track, int dir, const char *title, ll
       jesc(a, sizeof a, track); jesc(b, sizeof b, fo); jesc(c, sizeof c, title); snprintf(tr, sizeof tr, "{\"name\":%s,\"folder\":%s,\"title\":%s}", a, b, c); }
     snprintf(o, cap, "{\"time\":\"%s\",\"coords\":\"game (y up)\"%s,\"camera\":%s,\"track\":%s}", t, car, cam, tr);
 }
-/* Leaving a race the way the game itself does (FINDINGS.md, "Leaving a race"; patches.ps1 Request-RaceExit .. Step-RaceExit) */
+/* Leaving a race the way the game itself does (FINDINGS.md, "Leaving a race"; sr3mods.ps1 Request-RaceExit .. Step-RaceExit) */
 #define RACE_EXIT_FLAG 0x9DB4F4
 #define GAME_STATE 0x7ECE10
 #define GAME_MODE 0x728598

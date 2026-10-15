@@ -1,4 +1,4 @@
-"""Builds the track-folder routine of patches.ps1 (Install-TrackDir): the folder an alternative track is read from is
+"""Builds the track-folder routine of sr3mods.ps1 (Install-TrackDir): the folder an alternative track is read from is
 chosen inside the game's own path code, at the moment a path is made, instead of by the launcher's polling.
 
 Why: the launcher switched folders by polling. It rewrote the 's' of "\\main_release\\tracks\\%s\\..." in six format strings
@@ -16,7 +16,7 @@ character), writes that character into the six format strings (the game's own an
 with the instruction it replaced. A name that is not in the table gets 's' (the game's own folder). So every file of a
 load comes from one folder, however late the launcher's poll is.
 
-Layout of the block (patches.ps1 allocates it, 0x1000 bytes): code at 0; at TABLE (0x200) a dword count, then up to 16
+Layout of the block (sr3mods.ps1 allocates it, 0x1000 bytes): code at 0; at TABLE (0x200) a dword count, then up to 16
 entries of 0x20 bytes: the name (zero-terminated, at most 23 characters), the folder character at +0x18; at LAST (0x1F0)
 the character written last. Position independent (call / pop; jumps back with push / ret).
     python build_trackdir.py        prints the bytes as hex, the entry offsets and the disassembly"""
