@@ -1,13 +1,15 @@
 """The release: two zips, run on the author's PC.
-    python tools\\release.py [--name SR3Lab-<date>] [--check <reference build folder>] [--sources] [--keep]
+    python tools\\release.py [--name SR3Lab-<date>] [--check <reference build folder>] [--keep]
   dist\\<name>.zip            the mod: every file a commit would hold (scripts, C sources, docs). No binary of any kind.
   dist\\<name>-toolchain.zip  optional, the only binaries: tools\\python (this PC's CPython with the numpy and Pillow the builds
                              were checked with) and tools\\mingw (the part of MinGW-w64 gcc our C needs), with their licenses.
                              Unzipped into the mod's folder; safe to delete when the tools come from winget instead.
-  dist\\<name>-toolchain-source.zip   (--sources) the complete corresponding source of tools\\mingw: the upstream archives,
-                             unchanged, downloaded once into dist\\sources (about 150 MB). Published beside the toolchain zip
-                             (GPL v3 section 6d); the toolchain zip itself carries the licences and SOURCES.txt.
-Steps: stage the files; build tools\\python (python311._pth: PYTHONPATH, PYTHONHOME and other Pythons' packages are ignored;
+The GPL / LGPL parts' source is provided as links (owner, 2026-10-15): tools\\mingw\\licenses\\SOURCES.txt names, for every
+component, the unchanged upstream archive and where it is, and WinLibs' build recipes at the commit this build was made
+from (GPL v3 section 6d: the source on a third-party server, with clear directions next to the object code). Those links
+must keep working while the zip is offered, so a release first checks that every one of them still answers (HEAD
+requests only: nothing is downloaded).
+Steps: check the source links; stage the files; build tools\\python (python311._pth: PYTHONPATH, PYTHONHOME and other Pythons' packages are ignored;
 sr3lab_paths.py puts the running script's folder first, as a normal Python does); copy the gcc subset (what compiling and
 linking every C helper in core/cbuild.py touches: headers, programs, link inputs, the DLLs they load); then, with --check, run
 the whole stack in the stage on an empty data folder with nothing but the staged tools (PATH = Windows' own folder) and require
@@ -39,8 +41,9 @@ tools\\mingw    part of GCC %(gcc)s for MinGW-w64, as built by WinLibs (Brecht S
                assembler, linker, headers and libraries SR3Lab's C helpers need, unchanged. GCC and binutils are free software
                under the GNU GPL version 3 (the libraries under the GCC Runtime Library Exception); the MinGW-w64 headers and
                runtime are under their own permissive licenses. tools\\mingw\\licenses holds the licences and SOURCES.txt,
-               which names every component, its version and licence. The complete corresponding source of all of them is
-               %(name)s-toolchain-source.zip, published beside this zip (the upstream archives, unchanged).
+               which names every component, its version and licence. The complete corresponding source of each is the
+               unchanged upstream archive SOURCES.txt links to, and WinLibs' build recipes for this build (also linked
+               there) say how they were configured and built.
 '''
 # What tools\mingw holds, from the DLLs' and programs' own version strings (WinLibs gcc-13.2.0-mingw-w64ucrt-11.0.1-r5, 2024-02-03),
 # and where each one's source comes from. The GPL / LGPL ones need their source offered; the permissive ones are there for their notices.
@@ -57,51 +60,42 @@ SOURCES = [
     ('zlib (zlib1)', '1.3.1', 'Zlib', 'https://zlib.net/fossils/zlib-1.3.1.tar.gz'),
     ('Zstandard (libzstd)', '1.5.5', 'BSD-3-Clause', 'https://github.com/facebook/zstd/releases/download/v1.5.5/zstd-1.5.5.tar.gz'),
     ('dlfcn-win32 (libdl)', '1.4.1', 'MIT', 'https://github.com/dlfcn-win32/dlfcn-win32/archive/refs/tags/v1.4.1.tar.gz'),
+    # how WinLibs configured and built all of the above for r5 (published 2024-02-03 12:38 UTC): the recipes at that day's commit
+    ('WinLibs build recipes (configure options, patches)', 'r5', 'MIT', 'https://github.com/brechtsanders/winlibs_recipes/tree/05c3acf4d286fb6d6a944456901988afa915f8e8'),
 ]
-LICENCE_NAMES = re.compile(r'^(COPYING|LICENSE|LICENCE)(\..*|\d.*|v\d.*|-.*)?$', re.I)
 
 def licences(out):
-    """tools\\mingw\\licenses: SOURCES.txt, the GPL v3 and the GCC Runtime Library Exception (as numpy's licence file carries them),
-    and every component's own licence files when its source archive is in dist\\sources (release.py --sources)"""
-    os.makedirs(out, exist_ok=True); src = os.path.join(REPO, 'dist', 'sources')
+    """tools\\mingw\\licenses: SOURCES.txt, the GPL v3 and the GCC Runtime Library Exception (as numpy's licence file carries
+    them) and the two LGPLs (tools\\licenses, the SPDX texts)"""
+    os.makedirs(out, exist_ok=True)
     t = open(os.path.join(sys.base_prefix, 'Lib', 'site-packages', 'numpy-%s.dist-info' % __import__('numpy').__version__, 'LICENSE.txt'), encoding='utf-8').read()
     i = t.index('GCC RUNTIME LIBRARY EXCEPTION'); j = t.index('GNU GENERAL PUBLIC LICENSE', i)
     open(os.path.join(out, 'GCC-RUNTIME-LIBRARY-EXCEPTION-3.1.txt'), 'w', newline='\n').write(t[i:j].strip() + '\n')
     open(os.path.join(out, 'GPL-3.0.txt'), 'w', newline='\n').write(t[j:].strip() + '\n')
-    rows = ['Component | version | licence | source archive (unchanged, in the toolchain-source zip)']
-    for name, ver, lic, url in SOURCES:
-        f = url.rsplit('/', 1)[-1] if 'github.com' not in url or 'releases/download' in url else '%s-%s.tar.gz' % (url.split('/')[4], ver)
-        rows.append('%s | %s | %s | %s (%s)' % (name, ver, lic, f, url))
-        p = os.path.join(src, f)
-        if os.path.exists(p):
-            import tarfile
-            with tarfile.open(p) as tf:
-                for m in tf.getmembers():
-                    parts = m.name.split('/')
-                    if m.isfile() and len(parts) <= 4 and LICENCE_NAMES.match(parts[-1]) and m.size < 200000:
-                        open(os.path.join(out, '%s__%s' % (f.split('.tar')[0], '_'.join(parts[1:]))), 'wb').write(tf.extractfile(m).read())
+    for f in ('LGPL-2.1-or-later.txt', 'LGPL-3.0-or-later.txt'): shutil.copy2(os.path.join(REPO, 'tools', 'licenses', f), out)
+    rows = ['Component | version | licence | source: the unchanged upstream archive (or the recipes) at this link']
+    rows += ['%s | %s | %s | %s' % s for s in SOURCES]
     open(os.path.join(out, 'SOURCES.txt'), 'w', newline='\n').write('\n'.join(rows) + '\n')
 
-def sources(name):
-    """dist\\<name>-toolchain-source.zip: every component's upstream source archive, downloaded once into dist\\sources"""
-    import urllib.request, hashlib
-    d = os.path.join(REPO, 'dist', 'sources'); os.makedirs(d, exist_ok=True); z = os.path.join(REPO, 'dist', name + '-toolchain-source.zip'); sums = []
+def linkcheck():
+    """every link in SOURCES still answers: HEAD requests, redirects followed by hand (a GET would download the archive)"""
+    import urllib.request, urllib.error, urllib.parse
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **k): return None
+    op = urllib.request.build_opener(NoRedirect); bad = []
     for comp, ver, lic, url in SOURCES:
-        f = url.rsplit('/', 1)[-1] if 'github.com' not in url or 'releases/download' in url else '%s-%s.tar.gz' % (url.split('/')[4], ver)
-        p = os.path.join(d, f)
-        if not os.path.exists(p):
-            print('download', url, flush=True); tmp = p + '.part'
-            with urllib.request.urlopen(url, timeout=120) as r, open(tmp, 'wb') as o: shutil.copyfileobj(r, o)
-            os.replace(tmp, p)
-        sums.append('%s  %s' % (hashlib.sha256(open(p, 'rb').read()).hexdigest(), f))
-    with zipfile.ZipFile(z, 'w', zipfile.ZIP_STORED) as zf:
-        for line in sums: zf.write(os.path.join(d, line.split('  ', 1)[1]), os.path.join(name + '-toolchain-source', line.split('  ', 1)[1]))
-        zf.writestr(os.path.join(name + '-toolchain-source', 'SHA256SUMS.txt'), '\n'.join(sums) + '\n')
-        zf.writestr(os.path.join(name + '-toolchain-source', 'README.txt'), 'The complete corresponding source of the programs and libraries in %s-toolchain.zip\n'
-                    '(tools\\mingw): the upstream archives, unchanged, as WinLibs built them (gcc-13.2.0-mingw-w64ucrt-11.0.1-r5, https://winlibs.com;\n'
-                    'its build recipes: https://github.com/brechtsanders/winlibs_mingw). SOURCES.txt in the toolchain zip lists which archive\n'
-                    'covers which file.\n' % name)
-    print('zip: %s, %.1f MB' % (z, os.path.getsize(z) / 1e6))
+        u = url
+        for hop in range(8):
+            loc = None
+            try:
+                r = op.open(urllib.request.Request(u, method='HEAD', headers={'User-Agent': 'SR3Lab-release'}), timeout=30); code = r.status; r.close()
+            except urllib.error.HTTPError as e: code = e.code; loc = e.headers.get('Location')
+            except OSError as e: code = 'no answer (%s)' % e
+            if code in (301, 302, 303, 307, 308) and loc: u = urllib.parse.urljoin(u, loc); continue
+            break
+        if code != 200: bad.append('%s: %s' % (url, code))
+    if bad: raise SystemExit('source links that no longer answer (the toolchain zip must point at working source):\n  ' + '\n  '.join(bad))
+    print('links: all %d source links answer' % len(SOURCES))
 
 def stage(dst):
     if os.path.exists(dst): shutil.rmtree(dst)
@@ -219,8 +213,7 @@ def main(argv):
     for k in ('--name', '--check'):
         if k in a: i = a.index(k); opt[k] = a[i + 1]; del a[i:i + 2]
     name = opt.get('--name', 'SR3Lab-' + time.strftime('%Y-%m-%d')); dst = os.path.join(REPO, 'dist', 'stage', name)
-    if '--sources' in a: sources(name)                                # first: mingw() takes the licence files out of the archives
-    stage(dst); python(dst); mingw(dst); data = check(dst, opt['--check']) if '--check' in opt else None; pack(dst, name)
+    linkcheck(); stage(dst); python(dst); mingw(dst); data = check(dst, opt['--check']) if '--check' in opt else None; pack(dst, name)
     if data and '--keep' not in a: shutil.rmtree(data, ignore_errors=True)
 
 if __name__ == '__main__':

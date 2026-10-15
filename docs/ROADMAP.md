@@ -68,10 +68,13 @@ No SEGA assets or code, except "where our pieces fit": coordinates for 3D, audio
 hooks). Partial data may bend this rule a little, but 1. it should not be necessary, and 2. if it is, keep it to the bare
 minimum. (Earlier rule, still standing: a whole track, modified or not, is never shipped.)
 
-The toolchain zip's GPL parts (owner: "your decision, keep it lean and legal friendly", 2026-10-15): the zip carries the
-licences and SOURCES.txt (every component, version, licence and source archive); the complete corresponding source, the
-unchanged upstream archives (about 150 MB), is a separate `<name>-toolchain-source.zip` published beside it in the same place
-(GPL v3 section 6d), made by `tools\release.py --sources`. Python, numpy and Pillow need only their licences, which they carry.
+The toolchain zip's GPL parts (owner, 2026-10-15: "regarding the GPL stuff, we provide only links"): the zip carries the
+licences (GPL v3, the GCC Runtime Library Exception, LGPL 2.1 and 3, from `tools\licenses`) and SOURCES.txt, which names
+every component, its version and licence and links to its unchanged upstream source archive, plus WinLibs' build recipes
+at the commit r5 was built from (GPL v3 section 6d allows the source on a third-party server with clear directions next to
+the object code). We stay responsible for those links while the zip is offered, so `tools\release.py` checks that every
+one still answers before it makes a release (HEAD requests; nothing is downloaded). Python, numpy and Pillow need only
+their licences, which they carry.
 
 ## Where things are
 
