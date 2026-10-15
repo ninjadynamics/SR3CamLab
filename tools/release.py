@@ -14,7 +14,7 @@ sr3lab_paths.py puts the running script's folder first, as a normal Python does)
 linking every C helper in core/cbuild.py touches: headers, programs, link inputs, the DLLs they load); then, with --check, run
 the whole stack in the stage on an empty data folder with nothing but the staged tools (PATH = Windows' own folder) and require
 every game file to equal the reference build's; then zip (the DLLs that run compiled are not in either zip)."""
-import os, sys, re, shutil, subprocess, zipfile, time, json, glob, tempfile
+import os, sys, re, shutil, subprocess, zipfile, time, json, glob, tempfile, hashlib
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__))); BASE = sys.base_prefix; MINGW = r'C:\mingw64'
 SKIP_LIB = {'test', 'idlelib', 'tkinter', 'turtledemo', 'ensurepip', 'lib2to3', 'venv', 'site-packages', '__pycache__', 'pydoc_data', 'unittest'}
 SKIP_DLL = ('_tkinter', 'tcl', 'tk', '_test', '_ctypes_test', '_ssl', '_hashlib', 'libssl', 'libcrypto', '_sqlite3', 'sqlite3', '_decimal', 'pyexpat',
@@ -153,6 +153,14 @@ def mingw(dst):
         for tok in r.stdout.replace('\\\n', ' ').split(): add(tok)
     for f in glob.glob(os.path.join(MINGW, 'x86_64-w64-mingw32', 'lib', 'ldscripts', 'i386pe.*')): add(f)   # ld -m i386pe reads its script from
     # a file (the 64-bit default is built in), and --trace does not name it
+    # Other components' builds (Codex's standalone\: the runtime, SDL, raylib, the settings app) name the compiler files they
+    # use in a closure file: {"compiler_root": ..., "files": {path under it: sha256}}. Each must be the file this MINGW has.
+    for cj in [os.path.join(REPO, 'standalone', 'toolchain-closure.json')] + [p for p in os.environ.get('SR3_CLOSURES', '').split(os.pathsep) if p]:
+        if not os.path.exists(cj): continue
+        for rel, want in json.load(open(cj, encoding='utf-8'))['files'].items():
+            p = os.path.join(MINGW, rel)
+            if not os.path.isfile(p) or hashlib.sha256(open(p, 'rb').read()).hexdigest() != want: raise SystemExit('%s: %s is not the file it names' % (cj, rel))
+            add(p)
     shutil.rmtree(td, ignore_errors=True)
     for prog in ('cc1', 'collect2', 'lto-wrapper', 'as', 'ld', 'liblto_plugin.dll'): add(subprocess.run([G, '-print-prog-name=' + prog], capture_output=True, text=True).stdout.strip())
     for f in ('gcc.exe', 'ld.bfd.exe', 'dlltool.exe', 'libgomp-1.dll', 'libwinpthread-1.dll', 'libgcc_s_seh-1.dll'): add(os.path.join(MINGW, 'bin', f))
