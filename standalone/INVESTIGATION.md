@@ -181,3 +181,32 @@ Native build/loader tests pass with the new names. The shared launcher and
 play.ps1 invoke watchdog.exe; its direct script entry remains available. Staged
 launch.exe/settings.exe were rebuilt. Historical evidence directories and
 previously installed game binaries are retained as their original evidence.
+
+Standalone windowed integration check (2026-10-15, monitor off): deployed the
+rebuilt runtime and sr3mods.dll into the private modded overlay after saving
+backups/hashes under SR3-investigation/native-windowed-test-1. The watched
+terminal launch first exposed a Get-FileHash module-path dependency in
+watchdog.ps1; source hashing now uses CLR SHA256. The next terminal launch
+still failed D3D creation in 1280x720 windowed mode. The interactive native
+launcher succeeded with the same game/build/settings: CreateDevice 0, first
+Present, cameras ACTIVE, menu/car/handling/track live loop, watchdog attached
+before game entry and watching RacingClass. This supports a launch-context
+explanation; fullscreen/display absence alone does not explain all failures.
+WGC screenshots failed twice, so no race-navigation/physical-controller claim.
+Escape closed the game but exposed an unhandled access violation at 0x586F74
+(reading 0xFEEEFEF6; state 0x27), captured in crash_20261015_192855.dmp. Both game
+and watchdog exited. Clean shutdown remains a failing test, not a pass.
+Runtime/mod/watchdog logs and the prior DLL are retained in that evidence
+folder. The private modded overlay now contains the new DLLs; the original game
+and baseline remain unchanged. Claude has the slot to repeat the explicit
+--settings command from his normal desktop-token shell (chat #148-149).
+
+Claude independently confirmed the exact native CLI launch with the selected
+windowed YAML from his normal desktop shell (chat #152): successful device
+creation, active cameras/live loop/capture bridge, and watchdog attached before
+entry. He force-terminated that run, so it provides no clean-shutdown result.
+The exit AV remains open. A separate settings.windowed.nomods.yaml disables
+only the optional mod DLL for comparison; the user's regular settings are
+unchanged. The failing instruction calls a resource's vtable+8 method through
+a freed-heap marker, consistent with a stale resource pointer during cleanup;
+this observation does not establish which component freed the resource.
