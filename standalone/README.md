@@ -104,3 +104,20 @@ No changes are made to `Rally.exe` on disk. This build supports the inspected
 3.8.4.1 executable only; see `INVESTIGATION.md`. It does not claim support for
 every cabinet dump or unknown modified executable. CamLab's source and executable
 are independent of this component and are not rebuilt by these scripts.
+
+
+Both apps accept an explicit settings copy:
+
+```powershell
+.\launch.exe --settings .\settings.windowed.yaml
+.\launch.exe --settings .\settings.windowed.yaml --no-watchdog
+.\settings.exe --settings .\settings.windowed.yaml
+```
+
+Omitting --settings keeps settings.yaml beside the executable. An explicit
+relative path resolves from the caller's working directory; game_path remains
+relative to the selected YAML. The companion loads, saves and launches that
+same copy and shows its filename. Invalid or conflicting arguments are rejected
+before any game launch. Launcher watchdog switches can precede or follow
+--settings. The existing diagnostic --preview option remains supported by the
+companion. test_command_line.c covers parsing and path selection.

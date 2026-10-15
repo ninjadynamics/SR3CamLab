@@ -163,3 +163,20 @@ watchdog.exe runs that same script in its own process and accepts its named
 attach/launch arguments. `--script PATH` selects an explicit script for tests.
 The C# compiler output is cached; clean-build byte reproducibility is not claimed
 for this small host. The runtime, launch.exe and settings.exe still use GCC.
+
+
+Both apps accept an explicit settings copy:
+
+```powershell
+.\launch.exe --settings .\settings.windowed.yaml
+.\launch.exe --settings .\settings.windowed.yaml --no-watchdog
+.\settings.exe --settings .\settings.windowed.yaml
+```
+
+Omitting --settings keeps settings.yaml beside the executable. An explicit
+relative path resolves from the caller's working directory; game_path remains
+relative to the selected YAML. The companion loads, saves and launches that
+same copy and shows its filename. Invalid or conflicting arguments are rejected
+before any game launch. Launcher watchdog switches can precede or follow
+--settings. The existing diagnostic --preview option remains supported by the
+companion. test_command_line.c covers parsing and path selection.

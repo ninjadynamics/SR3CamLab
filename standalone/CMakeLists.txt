@@ -28,7 +28,7 @@ set_target_properties(sr3runtime PROPERTIES PREFIX "" OUTPUT_NAME "dinput8" ARCH
 enable_testing()
 add_executable(test_input test_input.c)
 add_test(NAME input_report COMMAND test_input)
-add_executable(sr3launcher WIN32 launcher.c launch.c watch_launcher.c settings.c)
+add_executable(sr3launcher WIN32 launcher.c command_line.c launch.c watch_launcher.c settings.c)
 target_compile_definitions(sr3launcher PRIVATE _CRT_SECURE_NO_WARNINGS)
 set_target_properties(sr3launcher PROPERTIES OUTPUT_NAME "launch")
 add_executable(test_settings test_settings.c settings.c)

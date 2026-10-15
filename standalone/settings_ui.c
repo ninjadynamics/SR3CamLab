@@ -63,13 +63,13 @@ static int commitEdit(void){
 }
 static int save(void){
     if(!valid || !commitEdit())return 0;
-    if(sr3_fingerprint(yamlPath)!=diskHash){strcpy(status,"settings.yaml changed outside this app. Reload before saving.");return 0;}
+    if(sr3_fingerprint(yamlPath)!=diskHash){strcpy(status,"The selected settings file changed outside this app. Reload before saving.");return 0;}
     if(!sr3_save(yamlPath,&current,status,sizeof(status)))return 0;
     saved=current;diskHash=sr3_fingerprint(yamlPath);strcpy(status,"Saved. Changes apply on the next game launch.");return 1;
 }
 static void reload(void){
     Sr3Settings loaded;
-    if(sr3_load(yamlPath,&loaded,status,sizeof(status))){current=saved=loaded;valid=1;diskHash=sr3_fingerprint(yamlPath);editing=picker=-1;strcpy(status,"Loaded settings.yaml.");}
+    if(sr3_load(yamlPath,&loaded,status,sizeof(status))){current=saved=loaded;valid=1;diskHash=sr3_fingerprint(yamlPath);editing=picker=-1;snprintf(status,sizeof status,"Loaded %s.",strrchr(yamlPath,'\\')?strrchr(yamlPath,'\\')+1:yamlPath);}
     else valid=0;
 }
 static int page(int i){
@@ -131,7 +131,7 @@ static void draw(void){
     }
     if(tab==1){text("Positions work across controller brands. Cross = A; Options = Start.",32,583,13,SUB,0);}
     if(tab==2){
-        Rectangle r=rect(32,471,740,38);text("Private game executable (relative to settings.yaml, or absolute)",32,447,13,SUB,0);
+        Rectangle r=rect(32,471,740,38);text("Private game executable (relative to this settings file, or absolute)",32,447,13,SUB,0);
         box(r,PANEL);BeginScissorMode((int)(42*scale),(int)(475*scale),(int)(720*scale),(int)(32*scale));
         text(editing==sr3_field_count?edit:current.game_path,44,481,14,editing==sr3_field_count?ACCENT:TEXT,0);EndScissorMode();
         if(!blocked && hover(r) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && editing!=sr3_field_count && commitEdit()){editing=sr3_field_count;snprintf(edit,sizeof(edit),"%s",current.game_path);}
@@ -151,7 +151,7 @@ static void draw(void){
         text("TeknoParrot curve + deadzone 0 preserves the imported steering conversion.",32,592,13,FAINT,0);}
     DrawLineEx((Vector2){32*scale,623*scale},(Vector2){772*scale,623*scale},scale,(Color){53,57,68,255});
     BeginScissorMode((int)(32*scale),(int)(635*scale),(int)(740*scale),(int)(30*scale));
-    text(status[0]?status:(dirty()?"Unsaved changes":"settings.yaml"),32,639,13,valid?SUB:ACCENT,0);EndScissorMode();
+    text(status[0]?status:(dirty()?"Unsaved changes":yamlPath),32,639,13,valid?SUB:ACCENT,0);EndScissorMode();
     if(button("Reload",32,678,100,0,picker<0 && !closing)){if(dirty())closing=2;else reload();}
     if(button("Save",548,678,100,dirty(),!blocked)){save();}
     if(button("Save & play",660,678,112,1,!blocked)){if(save()){if(sr3_launch(yamlPath,&current,status,sizeof(status)))strcpy(status,"Game launched. Close the game before starting another instance.");}}
@@ -180,11 +180,14 @@ static void draw(void){
 }
 int main(int argc,char **argv){
     const char *preview=NULL;char fontPath[SR3_PATH];const char *win=getenv("WINDIR");int frames=0;
-    if(argc>=3 && !strcmp(argv[1],"--preview")){preview=argv[2];if(argc==4)tab=atoi(argv[3]);}
-    if(!sr3_settings_path(yamlPath,sizeof(yamlPath)))return 1;
+    Sr3LaunchOptions options; (void)argc; (void)argv;
+    if(!sr3_current_options(1,&options,status,sizeof status)){
+        sr3_option_error(status);return 1;
+    }
+    strcpy(yamlPath,options.settings);if(options.preview[0]){preview=options.preview;tab=options.preview_tab;}
     sr3_defaults(&current);saved=current;reload();
     SetTraceLogLevel(LOG_WARNING);SetConfigFlags(FLAG_MSAA_4X_HINT|(preview?FLAG_WINDOW_HIDDEN:0));
-    InitWindow(804,744,"SR3Lab Settings");if(!IsWindowReady())return 2;
+    InitWindow(804,744,TextFormat("SR3Lab Settings - %s",strrchr(yamlPath,'\\')?strrchr(yamlPath,'\\')+1:yamlPath));if(!IsWindowReady())return 2;
     SetExitKey(KEY_NULL);
     {int monitor=GetCurrentMonitor();Vector2 dpi=GetWindowScaleDPI();scale=fminf(dpi.x,fminf(GetMonitorWidth(monitor)/850.0f,GetMonitorHeight(monitor)/800.0f));if(scale<0.75f)scale=0.75f;SetWindowSize((int)(804*scale),(int)(744*scale));}
     snprintf(fontPath,sizeof(fontPath),"%s/Fonts/segoeui.ttf",win?win:"C:/Windows");regular=LoadFontEx(fontPath,(int)(20*scale),NULL,0);
