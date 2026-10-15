@@ -554,4 +554,36 @@ EXPORT i64 lm_nearest_xz(i64 n, const double *X, const double *Z, double x, doub
     return best;
 }
 
+/* bsp_build.build_corridor's in_corridor: is (x, z) in one of the corridor's triangles T (ntri x 3 corners x (x, z))? The numpy it
+   replaces: TB = np.roll(T, -1, axis=1); cr = (TB[:, :, 0] - T[:, :, 0]) * (z - T[:, :, 1]) - (TB[:, :, 1] - T[:, :, 1]) * (x - T[:, :, 0]);
+   ((cr >= -1e-9).all(1) | (cr <= 1e-9).all(1)).any() - the same products, every triangle (no early filter: a triangle of three equal
+   corners counts everywhere, as in numpy) */
+EXPORT int bc_inside(const double *T, i64 ntri, double x, double z)
+{
+    for (i64 t = 0; t < ntri; t++) {
+        const double *a = T + 6 * t; double cr[3];
+        for (int k = 0; k < 3; k++) {
+            const double *p = a + 2 * k, *q = a + 2 * ((k + 1) % 3);
+            cr[k] = (q[0] - p[0]) * (z - p[1]) - (q[1] - p[1]) * (x - p[0]);
+        }
+        if ((cr[0] >= -1e-9 && cr[1] >= -1e-9 && cr[2] >= -1e-9) || (cr[0] <= 1e-9 && cr[1] <= 1e-9 && cr[2] <= 1e-9)) return 1;
+    }
+    return 0;
+}
+/* build_corridor's limits(cell): the corridor quads whose box meets the cell's box, Q (nq x 6: x0 x1 z0 z1 lo hi; numpy:
+   m = (qx1 >= min(xs)) & (qx0 <= max(xs)) & (qz1 >= min(zs)) & (qz0 <= max(zs))) -> out (qlo[m].min(), qhi[m].max()); returns m.any() */
+EXPORT int bc_limits(const double *Q, i64 nq, double x0, double x1, double z0, double z1, double *out)
+{
+    int any = 0; double lo = 0.0, hi = 0.0;
+    for (i64 i = 0; i < nq; i++) {
+        const double *q = Q + 6 * i;
+        if (q[1] >= x0 && q[0] <= x1 && q[3] >= z0 && q[2] <= z1) {
+            if (!any || q[4] < lo) lo = q[4];
+            if (!any || q[5] > hi) hi = q[5];
+            any = 1;
+        }
+    }
+    out[0] = lo; out[1] = hi; return any;
+}
+
 EXPORT int lm_threads(void) { return omp_get_max_threads(); }

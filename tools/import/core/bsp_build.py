@@ -1,8 +1,7 @@
 """TrackBoundary BSP: serializer (byte-identical on SEGA's 6 chunks) and a builder for a corridor between two polylines.
 Semantics (see docs/kb/06_boundary_collision.md): binary tree in pre-order; child A = negative side of the node plane,
 child B = positive side; walls/floor/ceiling polygons face INTO the drivable space."""
-import struct, math, collections
-import numpy as np
+import struct, math, collections, array
 from bsp import parse_bsp, classify
 
 def serialize(tree, polys, surf_ids):
@@ -44,13 +43,13 @@ def to_tree(b):
     def conv(i):
         t, k, a, bb = b.nodes[i]
         if t == 2:
-            r = b.kd[k]; return ('kd', tuple(r['box'].tolist()), int(r['ix']), int(r['iz']), tuple(r['pl'].tolist()), conv(a), conv(bb))
+            r = b.kd[k]; return ('kd', tuple(r['box']), int(r['ix']), int(r['iz']), tuple(r['pl']), conv(a), conv(bb))
         if t == 1:
-            r = b.pl[k]; return ('pl', tuple(r['pl'].tolist()), int(r['flag']), int(r['surf']), conv(a), conv(bb))
+            r = b.pl[k]; return ('pl', tuple(r['pl']), int(r['flag']), int(r['surf']), conv(a), conv(bb))
         if t == 3: return ('solid',)
         if t == 4: return ('empty',)
-        pl, sf = b.leaves[k][:2]; return ('leaf', [(tuple(p.tolist()), int(s)) for p, s in zip(pl, sf)])
-    polys = [(tuple(p['pl'].tolist()), [tuple(q.tolist()) for q in p['v'][:3]]) for p in b.poly]
+        pl, sf = b.leaves[k][:2]; return ('leaf', [(tuple(p), int(s)) for p, s in zip(pl, sf)])
+    polys = [(tuple(p['pl']), [tuple(q) for q in p['v'][:3]]) for p in b.poly]
     return conv(b.root), polys, b.surf
 
 def classify_tree(tree, p):
@@ -92,13 +91,13 @@ def build_corridor(left, right, y0=-2.0, y1=10.0, surf_wall=0, surf_floor=0, sur
     (left[i], left[i+1], right[i+1], right[i]). Walls stand on both polylines; a floor at y0 and a ceiling at y1 close the
     tunnel (as in SEGA's data). y0/y1 may be arrays per point is NOT supported: flat limits only.
     Returns (data, fix, tree, polys, stats, in_corridor)."""
+    import fastlm
+    FL = fastlm.lib()                                                  # (fastlm.c bc_inside / bc_limits: the two loops over every corridor triangle / quad, numpy-free since 2026-10-16)
     n = len(left); L = [tuple(map(float, p)) for p in left]; R = [tuple(map(float, p)) for p in right]
     quads = [(L[i], L[(i + 1) % n], R[(i + 1) % n], R[i]) for i in range(n)]
-    T = np.array([(q[0], q[1], q[2]) for q in quads] + [(q[0], q[2], q[3]) for q in quads]); TB = np.roll(T, -1, axis=1)
-    def in_corridor(pt):
-        x, z = pt
-        cr = (TB[:, :, 0] - T[:, :, 0]) * (z - T[:, :, 1]) - (TB[:, :, 1] - T[:, :, 1]) * (x - T[:, :, 0])
-        return bool(((cr >= -1e-9).all(1) | (cr <= 1e-9).all(1)).any())
+    T = array.array('d', [v for t in ([(q[0], q[1], q[2]) for q in quads] + [(q[0], q[2], q[3]) for q in quads]) for p in t for v in p]); ntri = 2 * n; pT = T.buffer_info()[0]
+    def in_corridor(pt):                                              # inside one of the triangles, 1e-9 of tolerance (bc_inside quotes the numpy it replaced)
+        x, z = pt; return bool(FL.bc_inside(pT, ntri, float(x), float(z)))
     segs = []                                                         # (p, q, (a, b, c)), corridor on the positive side
     for i in range(n):
         for (p, q), other in (((L[i], L[(i + 1) % n]), R[i]), ((R[i], R[(i + 1) % n]), L[i])):
@@ -107,22 +106,22 @@ def build_corridor(left, right, y0=-2.0, y1=10.0, surf_wall=0, surf_floor=0, sur
             a, b = -ez / ln, ex / ln; c = -(a * p[0] + b * p[1])
             if a * other[0] + b * other[1] + c < 0: a, b, c = -a, -b, -c
             segs.append((p, q, (a, b, c)))
-    allp = np.array(L + R); x0, z0 = allp.min(0) - margin; x1, z1 = allp.max(0) + margin
+    x0 = min(p[0] for p in L + R) - margin; z0 = min(p[1] for p in L + R) - margin; x1 = max(p[0] for p in L + R) + margin; z1 = max(p[1] for p in L + R) + margin
     P3 = lambda ln: (ln[0], 0.0, ln[1], ln[2])
     floor = (0.0, 1.0, 0.0, -y0); ceil = (0.0, -1.0, 0.0, y1)
     stats = collections.Counter()
     # terrain following: heights = road height at each polyline point; a free cell gets a horizontal floor `below` the lowest
     # and a ceiling `above` the highest road point of the corridor quads it overlaps (stepped, not sloped like the originals)
     if heights is not None:
-        H = np.asarray(heights, float); Hn = np.roll(H, -1)
-        qlo = np.minimum(H, Hn); qhi = np.maximum(H, Hn)
-        Qa = np.array(quads); qx0 = Qa[:, :, 0].min(1); qx1 = Qa[:, :, 0].max(1); qz0 = Qa[:, :, 1].min(1); qz1 = Qa[:, :, 1].max(1)
+        H = [float(v) for v in (heights.tolist() if hasattr(heights, 'tolist') else heights)]; Hn = H[1:] + H[:1]      # np.roll(H, -1)
+        qlo = [min(a, b) for a, b in zip(H, Hn)]; qhi = [max(a, b) for a, b in zip(H, Hn)]
+        Q = array.array('d', [v for q, lo, hi in zip(quads, qlo, qhi) for v in (min(p[0] for p in q), max(p[0] for p in q), min(p[1] for p in q), max(p[1] for p in q), lo, hi)])
+        pQ = Q.buffer_info()[0]; lh = array.array('d', [0.0, 0.0]); plh = lh.buffer_info()[0]
     def limits(cell):
         if heights is None: return floor, ceil, y0, y1
         xs = [p[0] for p in cell]; zs = [p[1] for p in cell]
-        m = (qx1 >= min(xs)) & (qx0 <= max(xs)) & (qz1 >= min(zs)) & (qz0 <= max(zs))
-        if not m.any(): return floor, ceil, y0, y1
-        a = float(qlo[m].min()) - below; b = float(qhi[m].max()) + above
+        if not FL.bc_limits(pQ, n, float(min(xs)), float(max(xs)), float(min(zs)), float(max(zs)), plh): return floor, ceil, y0, y1      # (the quads whose box meets the cell's)
+        a = lh[0] - below; b = lh[1] + above
         return (0.0, 1.0, 0.0, -a), (0.0, -1.0, 0.0, b), a, b
     cells_out = []
     def split_segs(S, a, b, c):
@@ -196,7 +195,9 @@ def build_corridor(left, right, y0=-2.0, y1=10.0, surf_wall=0, surf_floor=0, sur
     return data, fix, tree, polys, stats, in_corridor
 
 def check_corridor(tree, in_corridor, bbox, y0, y1, n=20000, seed=3):
-    """random points: tree says free <=> point inside the corridor and between floor and ceiling"""
+    """random points: tree says free <=> point inside the corridor and between floor and ceiling (numpy's random numbers: the
+    flat-corridor check only, a log line; the terrain-following build of the stack skips it)"""
+    import numpy as np
     rng = np.random.default_rng(seed); bad = 0; free = 0; near = 0
     for _ in range(n):
         x = rng.uniform(bbox[0], bbox[2]); z = rng.uniform(bbox[1], bbox[3]); y = rng.uniform(y0 - 3, y1 + 3)

@@ -1,7 +1,6 @@
 """Kind 11 chunk = SceneManager block tree (master_gfx root +0x04). Parser, checker and minimal builder.
 See docs/kb/05_scene_kind11.md"""
 import struct, collections
-import numpy as np
 from common import *
 import sbfw
 

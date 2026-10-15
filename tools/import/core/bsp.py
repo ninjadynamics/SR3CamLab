@@ -1,29 +1,41 @@
 """TrackBoundary wall BSP (master_gfx root +0x34): parser, point classifier, builder. See docs/kb/06_boundary_collision.md
 Reader in the exe: 0x42C7F0 (arrays) and 0x42AD80 (tree linker: pre-order type list, child A then child B)."""
 import struct, collections, math
-import numpy as np
 from common import *
 import sbfw
 
-KD = np.dtype([('box', '<f4', 4), ('ix', '<u4'), ('iz', '<u4'), ('has', '<u4'), ('pl', '<f4', 4)])
-PL = np.dtype([('pl', '<f4', 4), ('flag', '<u4'), ('surf', '<u4')])
-PO = np.dtype([('n', '<u4'), ('pl', '<f4', 4), ('v', '<f4', (4, 3))])
-assert KD.itemsize == 0x2c and PL.itemsize == 0x18 and PO.itemsize == 0x44
+# the records (numpy=True: these as numpy structured arrays, the old result)
+KD = '<4f3I4f'; PL = '<4fII'; PO = '<I4f12f'                         # kd node: box, ix, iz, has, plane; plane node: plane, flag, surf; polygon: n, plane, 4 corners
+assert struct.calcsize(KD) == 0x2c and struct.calcsize(PL) == 0x18 and struct.calcsize(PO) == 0x44
 
 class Bsp: pass
-def parse_bsp(c):
+def _recs(d, fmt, n, off): return list(struct.iter_unpack(fmt, d[off:off + struct.calcsize(fmt) * n])) if n else []
+def parse_bsp(c, numpy=False):
+    """the chunk's arrays and its linked tree. Records as dicts of Python numbers ('box' / 'pl' / 'v' as tuples: the float32 values
+    exactly); numpy=True gives the numpy structured arrays instead (b.kd['pl'] ... for numpy code: preview.py)"""
     d = c.data; b = Bsp(); b.c = c
     h = struct.unpack_from('<16I', d, 0); b.h = h
     b.ver, b.nkd, b.npl, b.n3, b.n4, b.nleaf, b.npoly, b.nsurf = h[:8]
     b.p_kd, b.p_pl, b.p_a, b.p_b, b.p_leaf, b.p_types, b.p_poly, b.p_surf = h[8:]
-    b.kd = np.frombuffer(d, KD, b.nkd, b.p_kd); b.pl = np.frombuffer(d, PL, b.npl, b.p_pl)
-    b.leaves = []
-    for i in range(b.nleaf):
-        n, pa, pb = struct.unpack_from('<III', d, b.p_leaf + 12 * i)
-        b.leaves.append((np.frombuffer(d, '<f4', 4 * n, pa).reshape(n, 4), np.frombuffer(d, '<u4', n, pb), pa, pb))
     ntypes = b.nkd + b.npl + b.n3 + b.n4 + b.nleaf
-    b.types = np.frombuffer(d, '<u4', ntypes, b.p_types)
-    b.poly = np.frombuffer(d, PO, b.npoly, b.p_poly); b.surf = list(struct.unpack_from('<%dI' % b.nsurf, d, b.p_surf))
+    if numpy:
+        import numpy as np
+        KDn = np.dtype([('box', '<f4', 4), ('ix', '<u4'), ('iz', '<u4'), ('has', '<u4'), ('pl', '<f4', 4)]); PLn = np.dtype([('pl', '<f4', 4), ('flag', '<u4'), ('surf', '<u4')])
+        POn = np.dtype([('n', '<u4'), ('pl', '<f4', 4), ('v', '<f4', (4, 3))])
+        b.kd = np.frombuffer(d, KDn, b.nkd, b.p_kd); b.pl = np.frombuffer(d, PLn, b.npl, b.p_pl); b.leaves = []
+        for i in range(b.nleaf):
+            n, pa, pb = struct.unpack_from('<III', d, b.p_leaf + 12 * i)
+            b.leaves.append((np.frombuffer(d, '<f4', 4 * n, pa).reshape(n, 4), np.frombuffer(d, '<u4', n, pb), pa, pb))
+        b.types = np.frombuffer(d, '<u4', ntypes, b.p_types); b.poly = np.frombuffer(d, POn, b.npoly, b.p_poly)
+    else:
+        b.kd = [{'box': r[0:4], 'ix': r[4], 'iz': r[5], 'has': r[6], 'pl': r[7:11]} for r in _recs(d, KD, b.nkd, b.p_kd)]
+        b.pl = [{'pl': r[0:4], 'flag': r[4], 'surf': r[5]} for r in _recs(d, PL, b.npl, b.p_pl)]; b.leaves = []
+        for i in range(b.nleaf):
+            n, pa, pb = struct.unpack_from('<III', d, b.p_leaf + 12 * i)
+            f = struct.unpack_from('<%df' % (4 * n), d, pa); b.leaves.append(([f[4 * j:4 * j + 4] for j in range(n)], list(struct.unpack_from('<%dI' % n, d, pb)), pa, pb))
+        b.types = list(struct.unpack_from('<%dI' % ntypes, d, b.p_types))
+        b.poly = [{'n': r[0], 'pl': r[1:5], 'v': [r[5:8], r[8:11], r[11:14], r[14:17]]} for r in _recs(d, PO, b.npoly, b.p_poly)]
+    b.surf = list(struct.unpack_from('<%dI' % b.nsurf, d, b.p_surf))
     # link the tree: nodes = (type, record index, childA, childB)
     cnt = collections.Counter(); pos = [0]; b.nodes = []
     def read():
@@ -49,9 +61,10 @@ def classify(b, p):
 
 if __name__ == '__main__':
     import sys
+    import numpy as np
     for tr in sys.argv[1:] or ['Stadium4']:
         f = sbfw.read_sbf(track_files(os.path.join(TRACKS, tr))['master_gfx_xdata']); by = f.byid(); r = f.chunks[-1]
-        b = parse_bsp(by[r.u32(0x34)])
+        b = parse_bsp(by[r.u32(0x34)], numpy=True)
         print(tr, 'kd', b.nkd, 'planes', b.npl, 'n3', b.n3, 'n4', b.n4, 'leaves', b.nleaf, 'polys', b.npoly, 'types', collections.Counter(b.types.tolist()))
         # where does each poly centroid (pushed slightly inside along -normal) fall
         res = collections.Counter(); inside_ok = collections.Counter()

@@ -22,7 +22,7 @@ def decode_step(step, slot='Desert4'):
     surf = [td.verts[i]['surf'][:, 1].copy() for i in range(1, n + 1)]
     walls = []
     if r.u32(0x34) and r.u32(0x34) in by:
-        b = bsp.parse_bsp(by[r.u32(0x34)]); walls = [p['v'][:3].astype(float) for p in b.poly if abs(p['pl'][1]) < 0.5]
+        b = bsp.parse_bsp(by[r.u32(0x34)], numpy=True); walls = [p['v'][:3].astype(float) for p in b.poly if abs(p['pl'][1]) < 0.5]
     s = scene11.parse11(by[r.u32(4)]); meshes = []
     for mid in s.nodes[0].meshes:
         m = meshgen.parse_mesh(by[mid]); V = m['verts']; I = m['idx']; tris = []

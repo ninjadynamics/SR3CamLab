@@ -1,7 +1,6 @@
 """Coloured contact sheet of the classic tiles with their index and current class label (../retex/tile_labels.csv).
     python retex_contact.py   -> ../retex/classic_tiles_contact_colour.png"""
 import os, json
-import numpy as np
 from PIL import Image, ImageDraw
 from common import *
 import classic_tex, retex
