@@ -8,9 +8,9 @@ with are [18_src_1995_rom_data.md](18_src_1995_rom_data.md), [classic-sources.md
 
 Tags: VERIFIED (how), LIKELY, UNKNOWN. DOCS = taken from MAME (model2.cpp, model2_v.cpp, model2rd.ipp: the copies in
 `<scratchpad>\sr_classic\src\mame\`). "Code" = read in the i960 program with `daytona_i960.py`, which uses the
-project's `scripts/importer/i960.py`.
+project's `tools/import/core/i960.py`.
 
-Scripts: `scripts/rom_tools/daytona_*.py` (section 10). Extracted data: `SR3 track format\classic\courses\daytona\<course>\`.
+Scripts: `tools/import/daytona/tracks/rom/daytona_*.py` (section 10). Extracted data: `SR3 track format\classic\courses\daytona\<course>\`.
 Nothing extracted is committed (SEGA data rule).
 The Beginner course's import into SEGA Rally 3 (Classic slot, in game 2026-10-14): 14_importer.md, last section.
 
@@ -188,7 +188,7 @@ All 22 chips used have the CRC32 of MAME's `ROM_START( daytona )`. VERIFIED (unz
 - People, digits, reels, animals (section 6); the id-3 grid. (Cars: section 11.)
 - Polygon light per face (flat bake, section 5); the 64-phase luma animations are frozen at the phase in the header.
 
-## 10. Scripts (`scripts/rom_tools/`, run from that folder)
+## 10. Scripts (`tools/import/daytona/tracks/rom/`, run from that folder)
 
 | Script | Does |
 |---|---|

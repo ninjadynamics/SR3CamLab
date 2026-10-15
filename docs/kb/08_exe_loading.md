@@ -1,6 +1,6 @@
 # 08 - How Rally.exe (3.8.4.1, image base 0x400000, not packed) loads and uses a track
 
-Helper: `work/scripts/x86.py` (`dis`, `fn`, `str`, `xref`); `work/tmp/rally.asm` is a linear disassembly for grep
+Helper: `tools/import/core/x86.py` (`dis`, `fn`, `str`, `xref`); `work/tmp/rally.asm` is a linear disassembly for grep
 (regenerate with the snippet in x86.py if missing). The exe was only read.
 
 ## Loaders

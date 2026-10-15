@@ -2,7 +2,7 @@
 
 How a track gets into the arcade game without replacing SEGA's files, how the running game is pointed at it, and which
 side files a track folder may carry. Sources: comments of `SR3CamLab\extras.ps1` and `SR3CamLab\patch.ps1`, the owner's
-persistent notes, `work/courses/src_1.json`, and the importer scripts named below. The patch sites themselves are also
+persistent notes, `work/tools/import/src/tracks/courses/src_1.json`, and the importer scripts named below. The patch sites themselves are also
 listed in [game-runtime-and-frontend.md](game-runtime-and-frontend.md); the PS3 -> PC converter is in
 [ps3-to-pc-conversion.md](ps3-to-pc-conversion.md).
 
@@ -45,7 +45,7 @@ alternatives must stay below 10").
   `Main_release\track<dir>\Desert4`; `Write-SwitchFile` adds them to `switch.json` as slot Desert4. `video` (optional,
   up to 8 letters/digits) names the mode menu's Classic card for that track, `frontend\PC\Videos\classic_<video>.wmv`
   (Mountain MTN, Daytona DAY); without the file the card stays SEGA's. Until 2026-10-14 `Write-SwitchFile` dropped it.
-  `scripts\importer\rtbake\install_set.ps1 'step folder|Title|VIDEO' ...` writes the whole list (it loads
+  `tools\import\core\rtbake\install_set.ps1 'step folder|Title|VIDEO' ...` writes the whole list (it loads
   `extras.ps1 -NoWindow` for the functions). Installed 2026-10-14: track1..4 Mountain RT (four shadow levels), track5
   Daytona: Three Seven Speedway.
 - `tracks\_SR3Extras\classic_mode.txt` remembers which value of the first menu's selector is "Classic". It is learnt the
@@ -107,7 +107,7 @@ Optional side files, read by the launcher or the tools, never by the game itself
 | `texmap.json` | every importer build | `texfast.py` (`UPDATE_TEXTURES.bat`) | which texture chunk shows which 1995 tile, and the recipe of composed tiles |
 
 ## 7. Updating textures of an installed track without a rebuild
-`UPDATE_TEXTURES.bat` runs `work/scripts/texfast.py`, which opens every installed Classic alternative that has a
+`UPDATE_TEXTURES.bat` runs `tools/import/core/texfast.py`, which opens every installed Classic alternative that has a
 `texmap.json` and rewrites only the textures whose PNG in the course's `textures_hd` folder changed (the old texture is
 the template: its header, wrap modes included, is kept; only size and pixels change). `watch` keeps it running. The game
 must be closed, because it holds the files open. Details and limits: 23_texture_pipeline.md.

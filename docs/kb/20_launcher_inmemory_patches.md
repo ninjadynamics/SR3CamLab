@@ -172,7 +172,7 @@ The seconds every checkpoint marker grants live in the loaded ArcadeDatabase, on
 `[[0xB2A850] + 0xC] + 4 + 0xC60 x track` (reader 0x661AA0, called at 0x5ABDF8 whenever a marker is crossed). A track folder
 may bring `arcade_times.bin` (that block); it is written into the loaded table while the track is chosen, and SEGA's block
 is put back when another one is. The file on disk is never touched. In game on Mountain the gantries at the three 1995
-time checkpoints fire (owner confirmed), with the times swapped in memory this way. The block is made by `python work/scripts/arcade_times.py classic
+time checkpoints fire (owner confirmed), with the times swapped in memory this way. The block is made by `python tools/import/core/arcade_times.py classic
 <game> <course>`; its lap-1 and later-lap seconds for a classic course are a GUESS of that script (1995 practice mode, its
 shortest lap setting, frames / 60; at the line on later laps the largest 1995 extension).
 

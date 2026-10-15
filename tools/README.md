@@ -4,6 +4,10 @@ The sources of the in-game patch and the scripts used to investigate SEGA Rally 
 building it. You don't need any of this to play; it's here so you can rebuild, extend or
 check the patch. [FINDINGS.md](../FINDINGS.md) explains what they found.
 
+The subfolders are the other tool sets: [`import\`](import/README.md) (other games' courses and cars into
+SEGA Rally 3, from your own ROM sets), `audio\` (co-driver, music and sound banks) and `handling\` (the
+handling flavors).
+
 **Requirements:** Python 3 with `keystone-engine`, `capstone` and `unicorn`
 (`pip install keystone-engine capstone unicorn`), and Windows PowerShell 5.1. The scripts
 that read the exe need `SR3_EXE` set to your `Rally.exe` (v3.8.4.1):
@@ -21,7 +25,7 @@ set SR3_EXE=C:\TeknoParrot\GAME\Sega Rally 3\Rally\Rally.exe
 | `build_patch.py` | The chase camera patch: the code cave at `0x673C80` (travel follow, spring constants, soft angle limit, framing) and the hooks into SR3's chase camera. Writes `patch.json`; `patch.ps1`'s `$Patches` table holds those bytes (the cave's tunables are filled in per profile at run time). Needs `SR3_EXE`. |
 | `build_cycle.py` | The camera-cycle block: camera list, name popup, debug-camera controls and their mouse / key smoothing, the blend between cameras on View Change, PVS switch, driver's-seat cockpit, stage-reset fix. Position-independent x86 assembled with keystone, in two code areas of the block (`0x1000` and `0x2800`). Writes `cycle.json`. The data layout and the game facts it relies on are documented at the top of the file. |
 | `embed.py` | Copies `cycle.json` into `../patch.ps1` (`$CycleCode`, `$CycleCode2` and the entry offsets). |
-| `build_srcport.py` | The SRC turning (SEGA Rally Championship's turning for the cars on the SRC handling, `docs\kb9_src_steering_code.md` section 12): compiles `srcport.c` with clang (i686, freestanding; `C:\mingw64in`), lays it out as one relocatable blob, classes the grip file's surface records for SRC's four records, writes `srcport.json`; `--embed` writes `$SrcPortCode`, the offsets and the relocation list into `../patch.ps1`. Needs SEGA's `SurfacePairEffects\surfacepairdata_xdata.sbf` (`--game`). `srcmodel.py` is kb 29's chain in Python, the reference the tests compare with. |
+| `build_srcport.py` | The SRC turning (SEGA Rally Championship's turning for the cars on the SRC handling, `docs\kb\29_src_steering_code.md` section 12): compiles `srcport.c` with clang (i686, freestanding; `C:\mingw64\bin`), lays it out as one relocatable blob, classes the grip file's surface records for SRC's four records, writes `srcport.json`; `--embed` writes `$SrcPortCode`, the offsets and the relocation list into `../patch.ps1`. Needs SEGA's `SurfacePairEffects\surfacepairdata_xdata.sbf` (`--game`). `srcmodel.py` is kb 29's chain in Python, the reference the tests compare with. |
 
 The workflow after changing `build_cycle.py`:
 

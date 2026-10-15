@@ -202,7 +202,7 @@ The names (Standard, SegaRally, PowerslideSteer, AlwaysSteer) are SR3's own clas
 - Grip (`surf_split.py`, 1995 collision attribute bits 16-19 under the car): tarmac sustained lateral p95 2.65 / 2.75 g
   (owner, Celica / Delta, Mountain), gravel 2.35 g, dirt 2.41 g (autopilot, Desert): gravel / tarmac 0.87. Slip angle
   4 / 5 / 7 / 10 degrees at 0.75 / 1.0 / 1.4 / >1.6 g; braking 3.1-3.9 g. Slides (robot) build up in about 1 s, recover in 0.7-1.1 s.
-- Lap recorder for ElSemi's emulator: `scripts\handling\src_recorder.py` (read-only; finds the RAM by the car object and
+- Lap recorder for ElSemi's emulator: `tools\handling\src_recorder.py` (read-only; finds the RAM by the car object and
   the display-slot list; VERIFIED in ElSemi's emulator by the owner's laps).
 
 ### SEGA Rally 2 (ROM; MAME 0.229 srally2 only boots with its comm-board wait 0x79434 skipped, then the car falls through the road)
@@ -218,9 +218,9 @@ The names (Standard, SegaRally, PowerslideSteer, AlwaysSteer) are SR3's own clas
 ### Files (built on the owner's machine; only the numbers ship)
 - `Main_release\car<digit>\<car>bespoke_data.sbf` (and `<name>gravel_data.sbf` for added cars), `SurfacePairEffect<digit>\
   surfacepairdata_xdata.sbf` when the flavor changes grip (it sets only its own tyre type's records: SR3's Tyre_Rally stays).
-- Build: `python scripts\handling\build_flavor.py scripts\handling\flavor_src.json --out <staging>\Rally` (refuses a folder
+- Build: `python tools\handling\build_flavor.py tools\handling\flavor_src.json --out <staging>\Rally` (refuses a folder
   inside the game; checks the layout and a byte-identical round trip of each SEGA file first), then copy into the game.
-  Realism: `python scripts\handling\realism_map.py` (realism_specs.json -> flavor_realism.json), then build_flavor.py.
+  Realism: `python tools\handling\realism_map.py` (realism_specs.json -> flavor_realism.json), then build_flavor.py.
 - `handling.json` next to PLAY.bat (`handling.example.json`): `{version, default, cars{name: flavor}, flavors{name:
   {digit, grip_file}}}` (older files' steer_rate / steer_return_s / steer_linear are ignored: every handling steers with SEGA's own steering).
 
@@ -232,7 +232,7 @@ The names (Standard, SegaRally, PowerslideSteer, AlwaysSteer) are SR3's own clas
 | added cars (Hornet) | the 's' at 0x6C6371, one flavor for all of them |
 | grip file | the 's' of "Effects" at 0x6C6176, when a flavor in use has one (one per race) |
 | steering | SEGA's own for every handling. The STEER hook of 2026-10-14 / 15 (0x5CFF32 `call 0x448C00` -> a routine of ours: steering return, then 1:1, then a steering rate) is gone; Remove-SteerHook writes SEGA's call back when a game still holds it (PLAY.bat run again on a game an earlier launcher had hooked) |
-| turning of the SRC handling | CVehicle vtable 0x678864 slot 5, the entry 0x678878 (= 0x45C820, the vehicle step) -> SRCPORT (toolsuild_srcport.py from tools\srcport.c, about 9.5 KB plus a zero-filled log, relocated by Install-SrcPort): after each step, a car whose tyres stand on Tyre_Road records (the SRC files) gets SRC's yaw rate and side velocity (29_src_steering_code.md section 12). Installed by Set-Handling when the SRC flavor is built, taken out when it is not and by -Off. Log: "SRC turning: in (0x...)" |
+| turning of the SRC handling | CVehicle vtable 0x678864 slot 5, the entry 0x678878 (= 0x45C820, the vehicle step) -> SRCPORT (tools\build_srcport.py from tools\srcport.c, about 9.5 KB plus a zero-filled log, relocated by Install-SrcPort): after each step, a car whose tyres stand on Tyre_Road records (the SRC files) gets SRC's yaw rate and side velocity (29_src_steering_code.md section 12). Installed by Set-Handling when the SRC flavor is built, taken out when it is not and by -Off. Log: "SRC turning: in (0x...)" |
 All but the turning take effect when the next race loads. A missing folder or car file: that car keeps SEGA's file (Log line).
 The turning acts at once on any car that loaded the SRC files.
 

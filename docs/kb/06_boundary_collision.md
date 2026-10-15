@@ -1,6 +1,6 @@
 # 06 - Collision: what there is, and the TrackBoundary wall BSP
 
-Tools: `work/scripts/bsp.py` (parser, point classifier), `bsp_build.py` (serializer, corridor builder, checks).
+Tools: `tools/import/core/bsp.py` (parser, point classifier), `bsp_build.py` (serializer, corridor builder, checks).
 
 ## Where collision comes from
 | Source | Physics class (strings in the exe) | Data |

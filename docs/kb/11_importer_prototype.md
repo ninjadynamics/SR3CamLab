@@ -1,6 +1,6 @@
 # 11 - Importer prototype: a real centre line into the road format
 
-Script: `work/scripts/build_more.py` (`import_classic`, steps 14 and 15). Input: SEGA Rally Championship course 1,
+Script: `tools/import/core/build_more.py` (`import_classic`, steps 14 and 15). Input: SEGA Rally Championship course 1,
 `classic/obj/src_course1_centreline.csv` (300 points about 11.6 m apart) and `src_course1_collision.obj`
 (polygons grouped by attribute; the ones without attribute bit 23 are treated as drivable). See classic-sources.md.
 
@@ -44,7 +44,7 @@ radius 8.9 m, no plan-view crossings.
 - The borrowed Desert4 objects and cameras stay where Desert4 had them and will stand in the way in places.
 
 ---
-# Update (third package): the importer as it is now - `work/scripts/build_classic.py`
+# Update (third package): the importer as it is now - `tools/import/core/build_classic.py`
 - Course 1 is the MOUNTAIN course (12_classic_textures.md).
 - Handedness fixed: SR3 = (x_obj + ox, y, -z_obj + oz), i.e. the game's own left-handed coordinates re-centred
   (`work/tmp/classic_xform.json`). The earlier step14/15 were mirrored; they were rebuilt under the same names.

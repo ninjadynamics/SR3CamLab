@@ -241,7 +241,7 @@ Details:
 ### 3.5 How the document feeds `import_classic.py`
 
 New, additive, and off unless asked for: `python import_classic.py src 1 classic --texlab
-"<project file>"` (or `"texlab": "<path>"` in `work\courses\src_1.json`).
+"<project file>"` (or `"texlab": "<path>"` in `work\tools\import\src\tracks\courses\src_1.json`).
 
 1. `stage_build` builds the face list as today.
 2. New module `texlab_apply.py`: assigns ids and meshes (same code as the cache dump),

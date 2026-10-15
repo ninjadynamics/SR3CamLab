@@ -81,8 +81,8 @@ Status tags as in game-runtime-and-frontend.md.
 
 ## The sound bank, decoded (ALL_AUDIO.sfx; PS3 .sfx = same, big-endian)
 
-Parsed on both platforms (scripts `classic\scripts\sfx_bank.py`, `ps3_streams.py`); table of
-every ambience/music event with file offsets: `classicudio_arcticrcade_event_stream_table.csv`.
+Parsed on both platforms (scripts `tools\audio\sfx_bank.py`, `ps3_streams.py`); table of
+every ambience/music event with file offsets: `classic\audio_arctic\arcade_event_stream_table.csv`.
 
 - Header 0x100 bytes; at 0x100 four {offset, count} pairs. Table 0 = events, 200-byte
   records {name[192], id, offset of event data} (arcade: 1142 events, table at 0x40C).
@@ -116,7 +116,7 @@ every ambience/music event with file offsets: `classicudio_arcticrcade_event_s
   selects sub-slot v+1 (tags 70+v / 80+v): INFERRED from value ranges matching slot counts.
 - The arcade ships only the five `_1` files. The PS3 disc has one per route; byte-swapping
   every 32-bit word gives a usable arcade file (slot order is the same). Converted copies:
-  `classicudio_arctic\events_converted\` (PS3 names: SAFARI_n, ARCTIC_n). SR3 Extras
+  `classic\audio_arctic\events_converted\` (PS3 names: SAFARI_n, ARCTIC_n). SR3 Extras
   copies the matching one into `Audio\` under the arcade id for each alternative track.
 - Unknown: what the game uses when the file for an id is missing (probably stale data).
 
@@ -151,9 +151,9 @@ How the game reads streams (disassembly):
 - A missing `<id>_Events.bin`: the read is skipped and the buffer at 0x78DAB0 keeps the
   previous track's zones.
 
-Tool: `classic\scriptsebuild_bank.py` (replace / add / repoint / setevent, independent
+Tool: `tools\audio\rebuild_bank.py` (replace / add / repoint / setevent, independent
 verifier, empty manifest reproduces the files byte for byte). Three prepared sets in
-`F:\Jogos\_sr3_bank_sets\` (manifests in `classicank_rebuild\`), to be booted in this
+`F:\Jogos\_sr3_bank_sets\` (manifests in `classic\bank_rebuild\`), to be booted in this
 order:
 1. `minimal_test`: only `Checkpoint!` made 50% longer (three beeps after the word) - tests
    that resizing works at all.
@@ -198,8 +198,8 @@ A third voice, the 1995 SEGA Rally Championship's, and the selector for all thre
 
 ## SEGA Rally Championship (1995): co-driver and music (added 2026-10-13)
 
-Tools: `scripts\rom_tools\src_audio.py` (reads `srallyc.zip` directly: `info`, `codriver`, `dump`) and
-`scripts\rom_tools\src_music.py` (`plan`, `record`, `build`). Tags: VERIFIED (how) / LIKELY / NOT RUN / NOT HEARD.
+Tools: `tools\audio\src_audio.py` (reads `srallyc.zip` directly: `info`, `codriver`, `dump`) and
+`tools\audio\src_music.py` (`plan`, `record`, `build`). Tags: VERIFIED (how) / LIKELY / NOT RUN / NOT HEARD.
 Nothing below was heard in SEGA Rally 3 yet.
 
 ### The 1995 sound board, as far as it was read

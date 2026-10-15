@@ -5,7 +5,7 @@ can building walls of an imported track get parallax mapping (a height-based, vi
 shader) without modifying any game file?
 
 Tags: VERIFIED (and how: "file" = read from a data file with `sbfw`, "PE" = read from the executable's headers, "code" =
-disassembly of `Rally.exe` with `work/scripts/x86.py`, "shader" = `D3DDisassemble` of the bytecode, "count" = a measurement
+disassembly of `Rally.exe` with `tools/import/core/x86.py`, "shader" = `D3DDisassemble` of the bytecode, "count" = a measurement
 over files), LIKELY, UNKNOWN. Nothing here was seen in game.
 
 Working files of this analysis (parsers, full disassemblies, counts) are in the session scratch folder `shader_agent\`, not

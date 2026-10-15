@@ -128,7 +128,7 @@ Per vertex: V = share of the sun's disc seen (7 rays in a 1.6 degree cone), A = 
 - **Sky:** the visible sky is a saturated blue backdrop of its own; whatever lights the scene must not tint the shade with that blue push.
 - **A look change is not a rebake:** keep the raw quantities (sun seen, sky seen, colour coming back) and apply the formula afterwards.
 
-### 3.7 The bake as it stands (2026-10-13, after two broken game builds; scripts in `scripts\importer\rtbake\`)
+### 3.7 The bake as it stands (2026-10-13, after two broken game builds; scripts in `tools\import\core\rtbake\`)
 Owner, on the builds that guessed a lit side per polygon: "there's a light source, there's an angle and there's geometry. just shine a light on it".
 - **No side is chosen** (SUPERSEDED the same day by 3.8: it lit walls from their hidden back). Every texel is lit from both faces of its polygon and keeps the brighter result. Guessing one "seen side" per polygon (road first, then sky) lit 952 pieces of ground from below and made neighbours on one surface disagree: dark wedges on the road, dark panels on cliffs.
 - **A four-corner polygon is drawn along corners 0 - 2, not 1 - 3.** VERIFIED on a built file: the strips are `[1, 0, 2, 3]` (`meshgen.quads_to_strip` with `ccw` False). `lightmap1995.py`, `bake1995.save_scene` and `lightside.py` all assume 1 - 3. Three consequences, all seen in game:

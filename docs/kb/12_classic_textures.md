@@ -12,11 +12,11 @@ attribute bits 12-16 AFTER the polygon; link type 0 polygons are not drawn but s
 With object k = (polygons of row k, texture pointers of row k-1): faces with a degenerate uv axis fall from 2198 to 6,
 all 130 materials are textured, and the render shows house fronts, "SEGA" / "SEGASATURN" boards reading the right way
 round, lamp posts and cut-out trees (`work/previews/blender_classic_road_1.png`).
-New exporter: `work/scripts/classic_export.py` (also folds mirrored u/v - header word 0 bits 8/9 - and names
+New exporter: `tools/import/core/classic_export.py` (also folds mirrored u/v - header word 0 bits 8/9 - and names
 translucent materials `_t`: renderer type 3 in header word 0 bits 13-14, texel 15 = hole -> alpha in the PNG and `map_d`).
 The tile set changed with the fix: 130 tiles (36 + 13 rectangles on the two pages), 25 translucent.
 
-Scripts: `work/scripts/m2tex.py` (texel decoder), `classic_tex.py` (course 1 export).
+Scripts: `tools/import/core/m2tex.py` (texel decoder), `classic_tex.py` (course 1 export).
 Output: `work/classic_tex/course1/` - `sheets/course1_sheet1_2048x1024.png`, `textures/<material>.png` (117 tiles,
 named exactly like the materials of `classic/obj/src_course1_hi.mtl`), `src_course1_hi.obj` + `.mtl` (loads in Blender
 with the tiles; 19 cut-out tiles have alpha and a `map_d` line).
@@ -56,7 +56,7 @@ SR3 import must use the GAME coordinates (x, y, +z). The second-batch steps 14/1
 mirrored; fixed in `build_classic.py`. The data itself is not mirrored. `classic/obj/src_course1_top.png` draws the OBJ
 x against OBJ z with z up, which is a mirror image of the real plan; `work/previews/overlay_top.png` is the real plan.
 
-## Colour: RECOVERED STATICALLY (fifth package) - `work/scripts/i960.py`, `m2boot.py`, `m2colour.py`
+## Colour: RECOVERED STATICALLY (fifth package) - `tools/import/core/i960.py`, `m2boot.py`, `m2colour.py`
 - A small i960 disassembler + interpreter was written (`i960.py`: REG / COBR / CTRL / MEMA / MEMB formats, the integer
   instructions the routines use). Running the program from its reset vector (start IP 0x420 from the initial memory
   image) shows the boot code clearing work RAM and then copying the initialised data ROM 0x1000.. -> RAM 0x5A0000..
@@ -105,7 +105,7 @@ is UNKNOWN (it is a clone of an opaque wall material), so in game the cut-outs m
 values run past 1 on tiling polygons; the SR3 vertex format used (uv = u16/32768) holds 0..2, so 422 of 13247 faces
 are clamped (it was 3820 before the pointer fix).
 
-## Exact colour table (sixth package) - `work/scripts/m2xlat.py`, `i960.py` (floating point added)
+## Exact colour table (sixth package) - `tools/import/core/m2xlat.py`, `i960.py` (floating point added)
 This replaces the "linear colorxlat" assumption above. VERIFIED by executing the game's own code in the interpreter.
 - The boot code at 0x3720 calls 0x3C80, then 0x4350, then the luma routine 0x4590. The tables at RAM 0x210830.. that
   0x330A0 copies are only fade copies (state machine at 0x33180: read the hardware table back to 0x20D830.., scale it

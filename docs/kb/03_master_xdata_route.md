@@ -184,7 +184,7 @@ AUTHORED (step22): root +0x0C = 0 and +0x14 = 0, the camera lists, their holder 
   Desert, Stadium); laps setting index = setting - 2 (records for 2, 3, 4 laps); mode 1 / 2 are other game modes.
   Desert4, mode 0: lap 1 = 50 + 21 s (21 / 18 / 13 by difficulty), every later lap 18 + 31 s. The number of non-zero
   values equals the number of markers of the track (Tropical 2, Canyon 3, Alpine 3, Lakeside 1, Desert 2).
-  `python work/scripts/arcade_times.py dump` prints everything.
+  `python tools/import/core/arcade_times.py dump` prints everything.
 - Consequence for a track in the Desert4 slot: only checkpoints 1 and 2 grant time. A third marker grants 0 s.
   The importer therefore writes TWO markers by default (gate + one 1995 time checkpoint); see 14_importer.md.
 

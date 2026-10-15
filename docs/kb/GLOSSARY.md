@@ -99,7 +99,7 @@ general to the particular. "SRC" = SEGA Rally Championship (1995), "SR2" = SEGA 
 ## The importer
 | Term | Meaning | File |
 |---|---|---|
-| importer | `work/scripts/import_classic.py` and the modules it calls | 14 |
+| importer | `tools/import/core/import_classic.py` and the modules it calls | 14 |
 | variant: classic / mixed / allsr3 | 1995 textures inside SR3 files / SR3 surfaces with 1995 pictures / no 1995 texel at all | 14, 13 |
 | step, stepNN | a built track folder `work/out/stepNN_<name>/<Slot>/`; the number orders the test ladder | work/out/README.txt |
 | ladder | the sequence of test tracks that each change one thing | 09 |

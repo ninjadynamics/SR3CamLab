@@ -1455,7 +1455,7 @@ function Open-CarCards($h, [long]$base) {
 # Handling flavors (docs\kb\28_handling_flavors.md; the owner, 2026-10-14): each car drives with SEGA's handling ("sr3") or
 # with a flavor (SRC = SEGA Rally Championship 1995, Realism, ...). A flavor is a folder of car files
 # Main_release\car<digit>\ (and, if it has one, a grip file SurfacePairEffect<digit>\surfacepairdata_xdata.sbf), built on the
-# owner's machine from SEGA's own files by scripts\handling\build_flavor.py; nothing of SEGA's ships. handling.json next to
+# owner's machine from SEGA's own files by tools\handling\build_flavor.py; nothing of SEGA's ships. handling.json next to
 # PLAY.bat (example: handling.example.json) says which car drives which flavor:
 #   {"version": 1, "default": "sr3", "cars": {"ST205": "src"}, "flavors": {"src": {"digit": "1", "grip_file": true}}}
 # No file, or "default": "sr3" and no car on a flavor: nothing is patched.

@@ -9,7 +9,7 @@ track and produce similar results (doesn't need to be byte identical) and genera
 script that simply repeats the patch steps, but a script that generalizes such things as 'expanding the pavement on the road sides, so that
 it covers all adjacent buildings and facades'".
 
-Mountain's own files are NOT replaced by this: `courses\src.mountain.patch.1.json` and `.2.json` remain the approved result (the scene
+Mountain's own files are NOT replaced by this: `tools\import\src\tracks\courses\src.mountain.patch.1.json` and `.2.json` remain the approved result (the scene
 `blender\mountain.patch2.forest.v12.zfight.blend`, build `step99_mountain_p2final_desert4`). The rules below are how to get the same kind of
 result on a course that has no hand patches, and what to compare a new attempt against.
 
@@ -17,11 +17,11 @@ result on a course that has no hand patches, and what to compare a new attempt a
 
 | File | What it is |
 |---|---|
-| `scripts\importer\genpatch1995.py` | the rules (one function a rule), the snapshot writer the importer calls, the patch writer, the audit |
-| `scripts\importer\roadfill1995.py` | rule F's generator (older; `genpatch1995.write` calls its `generate`). Two opt-in module switches added for section 10: `FILL_BRIDGES`, `KEEP_SLABS`, both off |
-| `scripts\importer\blendpatch\patch_compare.py` | two patch files side by side, tile by tile (generated against reference) |
-| `scripts\importer\import_classic.py` | two opt-in settings: `patch_rules` (make the snapshot / the patch and stop) and `patch_files` (apply patch files given by path) |
-| `scripts\importer\coursepatch.py` | one opt-in key read from a patch file: `"whole_polygons": true` (section 6) |
+| `tools\import\core\genpatch1995.py` | the rules (one function a rule), the snapshot writer the importer calls, the patch writer, the audit |
+| `tools\import\core\roadfill1995.py` | rule F's generator (older; `genpatch1995.write` calls its `generate`). Two opt-in module switches added for section 10: `FILL_BRIDGES`, `KEEP_SLABS`, both off |
+| `tools\import\core\blendpatch\patch_compare.py` | two patch files side by side, tile by tile (generated against reference) |
+| `tools\import\core\import_classic.py` | two opt-in settings: `patch_rules` (make the snapshot / the patch and stop) and `patch_files` (apply patch files given by path) |
+| `tools\import\core\coursepatch.py` | one opt-in key read from a patch file: `"whole_polygons": true` (section 6) |
 | `work\tmp\genpatch\` | output, outside the repository: `<game>.<name>.snapshot.pkl`, `.rules.json` (the patch), `.rules.report.txt`, `.rules.views.json` |
 
 Why a patch FILE and not an importer stage: the owner inspects, diffs and hand-corrects patches, later patches stack on earlier ones, and
@@ -38,7 +38,7 @@ exist only inside the importer; (c) the faces there are exactly what a patch is 
 
 RAW settings are the lines of 25 section 4 ("RAW as a recipe"); below they are `$RAW` = one `--set key=value` per setting
 (`light_contrast=0 fill=false handfill=false handmodel=false roofs=false seal=false verge=false lower_trees=false unsmear=false
-mirror_groups=[] road_verbatim=true road_under=0.0 surface_default="tarmac"`, plus `light_dir` / `scene_gain` as wanted). Git Bash, in `scripts\importer`:
+mirror_groups=[] road_verbatim=true road_under=0.0 surface_default="tarmac"`, plus `light_dir` / `scene_gain` as wanted). Git Bash, in `tools\import\core`:
 
 ```
 # 1. snapshot of the faces at the patch stage + the forest floor (10 s). Stops before building.
@@ -397,7 +397,7 @@ roofs), give its thresholds to `CFG` with the reason, and let rule A see what it
 
 ## 12. Patch 3 (the Blender scene v11, accepted 2026-10-15): what the owner did, why, and what goes by rule
 
-The owner, 2026-10-15: "Mountain R4 is accepted, which means v11 is accepted too" (25, section 5.3: `courses\src.mountain.patch.3.json`, staged:
+The owner, 2026-10-15: "Mountain R4 is accepted, which means v11 is accepted too" (25, section 5.3: `tools\import\src\tracks\courses\src.mountain.patch.3.json`, staged:
 the generated patch 3 of 2026-10-12, the board moves, the v11 scene's 4d); then "pick up generalization" - the task of 2026-10-11 / 12 now for
 patch 3: "explain my manual patches (what and why I did it) ... AND, IF POSSIBLE generalize them as well", results "sound, with proper
 geometry and no holes", "generalizes well enough to patch the other SRC tracks".

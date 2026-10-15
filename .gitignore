@@ -27,10 +27,10 @@ setup.yaml
 announcer/
 
 # another co-driver's clips (taken from your own copy of another game: SEGA Rally 2's in codriver/, the 1995
-# SEGA Rally Championship's in codriver/src/, made by scripts/rom_tools/src_audio.py)
+# SEGA Rally Championship's in codriver/src/, made by tools/audio/src_audio.py)
 codriver/
 
-# another game's music (music/src/: the 1995 tunes recorded from your own ROM set by scripts/rom_tools/src_music.py)
+# another game's music (music/src/: the 1995 tunes recorded from your own ROM set by tools/audio/src_music.py)
 music/
 
 # race sounds converted from your own PlayStation 3 disc
@@ -51,19 +51,16 @@ blender/
 *.dll
 *.pyc
 
-# the importer's data folders (links to the work folder outside the repository: builds, ROM extracts, SEGA textures - never committed)
-/scripts/tmp/
-/scripts/out/
-/scripts/classic_tex/
-/scripts/previews/
-/scripts/retex/
+# the import stack's data (tools/import/settings.json says where: builds, ROM extracts, SEGA textures - never committed),
+# its default places inside the repository, your ROM sets, and this PC's settings
+/data/
+/roms/
+/tools/import/settings.json
 /classic/
-# link to /courses (the importer looks for it beside itself)
-/scripts/courses/
 
 # handling flavors (docs/kb/28_handling_flavors.md): the owner's own choice of flavors, and any flavor build staged in the
 # repository (built car / grip files are SEGA data: they go to the game folder, never here)
 /handling.json
-/scripts/handling/stage_*/
-/scripts/handling/*.sbf
-/scripts/handling/flavor_realism.json
+/tools/handling/stage_*/
+/tools/handling/*.sbf
+/tools/handling/flavor_realism.json

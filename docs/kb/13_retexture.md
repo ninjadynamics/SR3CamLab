@@ -1,6 +1,6 @@
 # 13 - The classic Mountain course retextured with SR3 textures (step20)
 
-Scripts: `work/scripts/retex_survey.py` (contact sheets), `retex.py` (labels, box mapping, subdivision),
+Scripts: `tools/import/core/retex_survey.py` (contact sheets), `retex.py` (labels, box mapping, subdivision),
 `build_classic.py` mode `retex` (step20), `preview_obj.py` + `render_all.py` (decode back and render).
 
 ## Method
@@ -55,7 +55,7 @@ renders uses an arbitrary 6 m tiling of the layer texture because the game's own
 - The classic polygons under the SR3 road are no longer deleted but kept 20 cm lower (deleting upright ones left gaps).
 - step23 = step20 + the SR3 tree row (Alpine4 484f0734) on the upright boards of the tree wall.
 
-## All-SR3 version (step24) - `work/scripts/allsr3.py`, `build_allsr3.py`, `sr3_art.py`
+## All-SR3 version (step24) - `tools/import/core/allsr3.py`, `build_allsr3.py`, `sr3_art.py`
 User: "take liberties, so that all textures are SR3's high res ones". step24 holds no 1995 texel.
 Survey: `sr3_art.py <Track>` writes every texture of a track as PNG (`work/retex/art/`) and contact sheets
 (`work/retex/art_<Track>_gfx_N.png`); gridded close-ups `work/retex/pick_1..4.png`. Finding: SR3 has NO facade pictures.
@@ -117,7 +117,7 @@ Where things live (per course; Mountain uses `work/retex/`, the others `work/ret
 | `tile_labels.csv` | THE mapping table: `index, tile, class, sr3_track, sr3_texture_id, note` |
 | `work/courses/src_<N>.json` | per-course choices: `label_overrides` {index: class} (re-applied to the CSV on every build, so change a class HERE or delete the entry), `textures` {class: [track, id]} for the tiled classes, `art` (all-SR3 only) |
 | `work/retex/art/<Track>/<id>.png`, `work/retex/art_<Track>_gfx_N.png` | SR3 textures decoded from the user's game files, and contact sheets with the ids |
-| `work/scripts/allsr3.py` | composed pieces: `STYLES` (facade styles), `PIECES`, `BOARDS`, `CLASS_STYLES` |
+| `tools/import/core/allsr3.py` | composed pieces: `STYLES` (facade styles), `PIECES`, `BOARDS`, `CLASS_STYLES` |
 Classes allowed in the CSV column `class`:
 - tiled in metres with the texture of columns `sr3_track` / `sr3_texture_id` (hex id of a kind 4 chunk in that track's
   master_gfx file; empty = the class default from the JSON `textures` or `retex.SR3_FOR_CLASS`): rock, grass, dirt, sand,
@@ -131,14 +131,14 @@ JSON `art` keys: `rocks` [[track, id]..], `rock_tint`, `road_tarmac` / `road_dir
 pair listed in 10_surfaces.md: the ids select the physics), `tree_row` [track, id, width/height, v top, v bottom],
 `class_styles` {class: [style names]}, `pieces` {windows, doors: [[track, id, [x0, y0, x1, y1]]..], crown, tree, bush,
 ivy, wallfill, bark: [track, id, rect or null]}.
-Adding a new SR3 source texture: `python work/scripts/sr3_art.py <Track>` (decodes every texture of that track to
+Adding a new SR3 source texture: `python tools/import/core/sr3_art.py <Track>` (decodes every texture of that track to
 `work/retex/art/<Track>/<id>.png` and makes the sheets) -> read the 8-digit id under the picture ->
-`python work/scripts/art_grid.py out.png <Track>:<id>` for a gridded close-up when a sub-rectangle is needed -> put
+`python tools/import/core/art_grid.py out.png <Track>:<id>` for a gridded close-up when a sub-rectangle is needed -> put
 track + id in the CSV row (tiled classes) or in the JSON `textures` / `art` (per course) or in `allsr3.py` (pieces).
 The texture chunk is copied from that track's file at build time; nothing else to register.
-Rebuild + re-render one course variant: `python work/scripts/import_classic.py src <N> <mixed|allsr3>`
+Rebuild + re-render one course variant: `python tools/import/core/import_classic.py src <N> <mixed|allsr3>`
 (N = 1 Mountain, 2 Desert, 3 Lake Side, 4 Forest; writes `work/out/step.._<course>_<variant>_desert4` and
-`work/previews/final_<course>_<variant>_*.png`). Proof sheet of the composed bays: `python work/scripts/allsr3.py`.
+`work/previews/final_<course>_<variant>_*.png`). Proof sheet of the composed bays: `python tools/import/core/allsr3.py`.
 Known flaws, all-SR3 variant:
 - all courses: rock texture seams where the projection axis changes, stretched on slanted faces; boards readable from
   the road side only; composed bays repeat on long walls; lamp posts / guard rails are 1995 silhouettes (the darker

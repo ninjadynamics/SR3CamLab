@@ -910,12 +910,12 @@ function Update-TrackSounds([string]$tracks, $st) {
 #   keep the game's voice.
 #     sr2  SEGA Rally 2's: SR3CamLab\codriver\ (or codriver\sr2\ when that folder holds clips)
 #     src  SEGA Rally Championship's (1995): SR3CamLab\codriver\src\, made from your own ROM set by
-#          scripts\rom_tools\src_audio.py codriver
+#          tools\audio\src_audio.py codriver
 # state.json remembers the choice ("codriver"); the kept originals decide what is really in the game.
 $script:VoiceSources = [ordered]@{
     ''    = @{ Title = "SEGA Rally 3 (the game's own)" }
     'sr2' = @{ Title = 'SEGA Rally 2'; Hint = 'Its clips go in the codriver folder (one WAV per clip).' }
-    'src' = @{ Title = 'SEGA Rally Championship (1995)'; Hint = 'Make its clips from your ROM set: scripts\rom_tools\src_audio.py codriver' } }
+    'src' = @{ Title = 'SEGA Rally Championship (1995)'; Hint = 'Make its clips from your ROM set: tools\audio\src_audio.py codriver' } }
 function Test-HasWavs([string]$dir) { return [bool]((Test-Path -LiteralPath $dir -PathType Container) -and @(Get-ChildItem -LiteralPath $dir -Filter '*.wav' -File).Count) }
 function Get-CoDriverDir([string]$source = 'sr2') {
     $root = Join-Path $PSScriptRoot 'codriver'
@@ -1020,10 +1020,10 @@ function Set-CoDriver([string]$tracks, [bool]$on) { return ,(Set-CoDriverSource 
 # track (patch.ps1, Set-CourseTune). A course without a tune plays the Classic mode's own music, as it always did.
 #   src  SEGA Rally Championship's (1995): SR3CamLab\music\src\desert.wav, forest.wav, mountain.wav, lakeside.wav
 #        (any of them) and tunes.json (where each one's loop starts), made from your own ROM set by
-#        scripts\rom_tools\src_music.py
+#        tools\audio\src_music.py
 $script:MusicSources = [ordered]@{
     ''    = @{ Title = "SEGA Rally 3 (the game's own)" }
-    'src' = @{ Title = 'SEGA Rally Championship (1995)'; Hint = 'Make its tunes from your ROM set: scripts\rom_tools\src_music.py' } }
+    'src' = @{ Title = 'SEGA Rally Championship (1995)'; Hint = 'Make its tunes from your ROM set: tools\audio\src_music.py' } }
 $script:TuneCourses = @(@{ Key = 'desert'; Match = 'desert' }, @{ Key = 'forest'; Match = 'forest' }, @{ Key = 'mountain'; Match = 'mountain' }, @{ Key = 'lakeside'; Match = 'lake' })
 $script:ClassicMusicStream = 'hyper conditioned reflex_fullqualityversion'      # the stream the Classic mode's music event plays
 function Get-MusicDir([string]$source) { return (Join-Path $PSScriptRoot "music\$source") }
@@ -1106,7 +1106,7 @@ function Set-MusicSource([string]$tracks, [string]$source) {
 #   {"version": 1, "default": "src", "cars": {"ST205": "sr3"}, "flavors": {"src": {"digit": "1", "grip_file": true}}}
 # "default" is every car's flavor, "cars" the exceptions; no file = the game's own handling for every car. A flavor is a
 # folder of car files Main_release\car<digit> (and a grip file SurfacePairEffect<digit>) built on this PC from the game's
-# own files by scripts\handling\build_flavor.py (Python); the launcher points the game at it when a race loads.
+# own files by tools\handling\build_flavor.py (Python); the launcher points the game at it when a race loads.
 $script:HandlingFlavors = [ordered]@{
     'sr3'     = @{ Title = "SEGA Rally 3 (the game's own)" }
     'src'     = @{ Title = 'SEGA Rally Championship (1995)'; Digit = '1'; Grip = $true; Table = 'flavor_src.json' }
@@ -1155,14 +1155,14 @@ function Find-Python {
     foreach ($n in 'python', 'py') { $c = Get-Command $n -ErrorAction SilentlyContinue; if ($c) { return $c.Source } }
     return $null
 }
-# Builds a flavor's files from the game's own (scripts\handling\build_flavor.py into a folder of its own in TEMP) and puts
+# Builds a flavor's files from the game's own (tools\handling\build_flavor.py into a folder of its own in TEMP) and puts
 # them into the game: Main_release\car<digit>, SurfacePairEffect<digit>. Only these new folders are written; SEGA's files
 # are only read. Returns notes for the user.
 function Build-HandlingFlavor([string]$tracks, [string]$key) {
     $v = $script:HandlingFlavors[$key]; if (-not $v.Digit) { return ,@() }
     Assert-GameClosed
     $py = Find-Python; if (-not $py) { throw "Building $($v.Title) needs Python (python.org); nothing was changed." }
-    $dir = Join-Path $PSScriptRoot 'scripts\handling'; $game = Get-GameDir $tracks
+    $dir = Join-Path $PSScriptRoot 'tools\handling'; $game = Get-GameDir $tracks
     $stage = Join-Path ([IO.Path]::GetTempPath()) "SR3Lab_handling_$key"
     if (Test-Path -LiteralPath $stage) { [IO.Directory]::Delete($stage, $true) }
     $table = Join-Path $dir $v.Table

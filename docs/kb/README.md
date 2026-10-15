@@ -53,7 +53,7 @@ or L75 ...) are defined in [GLOSSARY.md](GLOSSARY.md). Everything still unknown 
 | [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) | Every UNKNOWN and unconfirmed LIKELY, grouped by game, with the test that would settle it where known |
 | work/out/README.txt | The ladder of built test tracks and what each one tests |
 | work/previews/ | Pictures: classic course, SR3 road/walls/scenery decoded back from the built files (list below) |
-| work/scripts/ | Python tools (reader/writer, parsers, builders, x86 helper, build_testtrack.py) |
+| tools/import/core/ | Python tools (reader/writer, parsers, builders, x86 helper, build_testtrack.py) |
 
 Related files written by other sessions (same folder):
 [game-runtime-and-frontend.md](game-runtime-and-frontend.md) (exe addresses, menus, track list in memory, card videos),
@@ -148,7 +148,7 @@ distance; the kind 11 chunk is the SCENERY tree, not collision; the kind 7 blob 
 the "route/spline" guess for the first chunk of master_xdata was wrong - it is the AI map. Stadium4 has no spline at all.
 
 ## Preview pictures (work/previews) - look at these first
-All Blender pictures are rendered headless (`work/scripts/render_all.py`, Blender 5.1 `-b --factory-startup`).
+All Blender pictures are rendered headless (`tools/import/core/render_all.py`, Blender 5.1 `-b --factory-startup`).
 Same nine camera positions in every set: `overview` and `road_1` .. `road_8` (driver height, along the centre line).
 - `final_<course>_<variant>_<n>_<view>.png` and `fly_<course>_allsr3.mp4` - every course and variant (14_importer.md).
 - `blender_final_1..9_*.png` - classic colour (left) against the ALL-SR3 version, step24 (right), 2560 px; `blender_allsr3_*.png` alone.

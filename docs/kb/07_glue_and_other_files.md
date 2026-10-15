@@ -32,7 +32,7 @@ ecdb142b root (03); 0b9214e0 `{1, ref x3}` camera lists; 20f93164 "Helicopter" `
   pobj_plac root 690c0d8f `{1, ref placement chunk}`. Placement and list chunks reference materials in master_gfx.
 - ArcadeDatabase track list (type 1bff7e65): see game-runtime-and-frontend.md.
 
-## Meshes (kind 1) - tool `work/scripts/meshgen.py`
+## Meshes (kind 1) - tool `tools/import/core/meshgen.py`
 Static scenery mesh with one LOD and one group (example Stadium4 79d17eed, 4520 bytes):
 | Part | Layout | Confidence |
 |---|---|---|
@@ -59,7 +59,7 @@ gbUberLMAP, gfLightmapOffsetAndScale ...). Texture refs at +0x1BC (diffuse, DXT1
 +0x27C, +0x32C (a light-map page shared with the road overlay pages), +0x33C. `clone_material` copies the chunk under
 a new id and swaps the diffuse ref (+0x1BC) - everything else stays borrowed. LIKELY sufficient; untested.
 
-## Material switches and alpha test (sixth package) - `work/scripts/matscan.py`
+## Material switches and alpha test (sixth package) - `tools/import/core/matscan.py`
 Materials of shader f398b7a8 and size 1848 (the "Uber" family; 363 opaque and 121 alpha-textured ones in Alpine4) hold a
 parameter record table `{ptr name, 0, 0, ptr value cell}`; boolean switches are 4-byte cells. Cells that matter:
 | Cell | Switch (by position in the name list) | Evidence (Alpine4, materials whose diffuse texture has transparent texels vs not) |

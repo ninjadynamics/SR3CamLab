@@ -2,7 +2,7 @@
 
 The owner asked for the route to be made fast ("turbo optimize everything in C. Multi threaded."), and chose R4 as the level every build
 is made at (25_verbatim_road_and_milestones.md). All times are wall-clock seconds on the owner's PC (i9-13900K, 8 + 16 cores, 64 GB),
-measured with nothing else running unless said. Scripts: `scripts/importer/rtbake/` (copies of the working files; they carry the
+measured with nothing else running unless said. Scripts: `tools/import/core/rtbake/` (copies of the working files; they carry the
 working folder's paths).
 
 ## The route

@@ -1,0 +1,15 @@
+{
+  "_comment": "Copy to settings.json (the stack window writes it for you). Empty = the default in brackets.",
+  "data_root": "",
+  "_data_root": "[<repo>\\data] builds, ROM extracts and textures go to <data_root>\\work and <data_root>\\classic",
+  "roms": "",
+  "_roms": "[<repo>\roms] the folder holding your own srallyc.zip",
+  "sr3_game": "",
+  "_sr3_game": "[the game: line of setup.yaml] SEGA Rally 3's folder, the one with Rally.exe",
+  "blender": "",
+  "_blender": "[none] blender.exe, only for the optional .blend exports",
+  "mame": "",
+  "_mame": "[none] mame.exe, only for recording the 1995 music",
+  "threads": "all_but_one",
+  "_threads": "all | all_but_one | a number"
+}

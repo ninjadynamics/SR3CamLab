@@ -1,6 +1,6 @@
 # 15 - Spectators (SR3's animated crowd) and the 1995 crowd table
 
-Tools: `work/scripts/crowd.py` (parsers, writers, 1995 table reader, builder), `work/scripts/check_crowd.py` (self-check).
+Tools: `tools/import/core/crowd.py` (parsers, writers, 1995 table reader, builder), `tools/import/core/check_crowd.py` (self-check).
 In-game result of the first build and its cause: section 4. Tags: VERIFIED (how), LIKELY, GUESS, UNKNOWN.
 
 ## 1. Where SR3 keeps a spectator

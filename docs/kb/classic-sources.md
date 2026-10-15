@@ -145,7 +145,7 @@ Outputs in `classic\music\` (sr2_music = exact cuts as .mp2 + index.csv, sr3_wav
 - No other object uses a course's sheet-1 tiles in local coordinates at scenery size: there is no table of placed rocks /
   bushes / houses. The only world-placed objects outside the course blocks are 171 (Desert, 2 boards) and 172 (Mountain,
   4 x 2 boards): CHECK POINT banners, 13 m x 1 m, 2.8 m above the road, sheet 0 tile x1280 y0 256x32. Exported as
-  `src_course<N>_props.obj` by `classic/courses/scripts/src_all.py props` (run it with work/scripts first on sys.path).
+  `src_course<N>_props.obj` by `tools/import/src/tracks/rom/src_all.py props` (it finds tools/import/core itself).
 - Mountain trees: about 900 of 1285 trunk groups have NO polygon under them in the 1995 data (red in
   `work/previews/missing_scenery_plan.png`). The original hides the bases behind the roadside wall / bank from its low
   camera. The island is a cliff ring (y 0..18.5) + a foliage shelf and tree wall up to y 39.7, all in backdrop object 1257,

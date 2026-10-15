@@ -134,4 +134,4 @@ A build is `python import_classic.py src 1 classic --norender --name <step> --se
   (SR3Lab plan, 2026-10-07).
 
 ## 7. Blender previews
-`work\scripts\preview_obj.py <step>` decodes a built track back to an OBJ (it reads the strips, so shared corners are fine). A Cycles flyover of the decoded track was rendered once; the settings that matched the user's Photoshop grade: sun 3 degrees wide, sky model at strength 0.03 (it is about 20 times brighter than a flat colour at 1.0), bounce from the un-darkened tiles through a light-path switch, Filmic high contrast, exposure +1.4.
+`tools\import\core\preview_obj.py <step>` decodes a built track back to an OBJ (it reads the strips, so shared corners are fine). A Cycles flyover of the decoded track was rendered once; the settings that matched the user's Photoshop grade: sun 3 degrees wide, sky model at strength 0.03 (it is about 20 times brighter than a flat colour at 1.0), bounce from the un-darkened tiles through a light-path switch, Filmic high contrast, exposure +1.4.

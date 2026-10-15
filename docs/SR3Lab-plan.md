@@ -82,7 +82,7 @@ What exists today and what it needs:
 |---|---|---|
 | Launcher and in-memory patches | PowerShell (`patch.ps1`, `setup.ps1`) | stays PowerShell: ships with Windows, readable, already standalone |
 | Settings app logic | PowerShell + C# compiled at run time (`extras.ps1`, `menuart.cs`, `ps3conv.cs`, `revofix.cs`) | UI moves to `SR3Lab.exe`; the converters become command-line tools in `scripts\` |
-| Classic course importer | about 40 Python files using numpy and Pillow, outside the repo (`SR3 track format\work\scripts`) | a standalone tool |
+| Classic course importer | about 40 Python files using numpy and Pillow, in the repo since 2026-10-15 (`tools\import\`) | a standalone tool |
 | ROM extraction (Model 2, Model 3) | Python, outside the repo | a standalone tool |
 | Audio tools (banks, co-driver, music) | Python + a C# port in progress | a standalone tool |
 | Blender | used only for preview renders and flyover videos | NOT needed by users: no build step depends on it |

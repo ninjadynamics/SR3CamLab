@@ -1,6 +1,6 @@
 # 01 - SBF container
 
-Tool: `work/scripts/sbfw.py` (`read_sbf`, `write_sbf`, `validate`). Older reader: `sbf3.py` (also big-endian PS3).
+Tool: `tools/import/core/sbfw.py` (`read_sbf`, `write_sbf`, `validate`). Older reader: `sbf3.py` (also big-endian PS3).
 
 ## File
 | Offset | Type | Meaning | Confidence |

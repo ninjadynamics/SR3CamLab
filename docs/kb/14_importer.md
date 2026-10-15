@@ -2,7 +2,7 @@
 Nothing here has been run in the game. Evidence is static (data, code reading, decode-back renders).
 
 ## One command
-`python work/scripts/import_classic.py <game> <course> <variant> [--export] [--norender] [--nobuild]`
+`python tools/import/core/import_classic.py <game> <course> <variant> [--export] [--norender] [--nobuild]`
 - game `src` (SEGA Rally Championship, Model 2A, ROM extracts in `work/tmp/m2`), course `1..4`,
   variant `classic` (1995 textures inside SR3 files) | `mixed` (SR3 surfaces, 1995 pictures) | `allsr3` (no 1995 texel).
 - Stages: export OBJ + coloured tiles from ROM (`classic_export.py`, `classic_tex.py`) -> labels (`retex.py`: CSV written
@@ -17,7 +17,7 @@ Nothing here has been run in the game. Evidence is static (data, code reading, d
   layer pairs, tree row, single pieces for windows / doors / bushes / trees). The texel pages are found automatically
   per course (`classic_tex.fit_pages`) and cached in `work/classic_tex/course<N>/pages.json`.
 - Collision and centre line are read from `classic/obj/src_course<N>_collision.obj` / `_centreline.csv` (written by the
-  other session's `classic/scripts/m2_collision.py`); the importer does not regenerate those two files.
+  other session's `tools/import/src/tracks/rom/m2_collision.py`); the importer does not regenerate those two files.
 
 ## The four courses (identified by eye from the coloured tiles and renders, and by the start table order)
 | ROM course | Object rows | Identity | Evidence | Ladder steps (classic, mixed, allsr3) |
@@ -97,7 +97,7 @@ The 1995 sky colours are therefore NOT in the tracks. Scaling the dome into the 
 cut through the course); replacing the root +0x10 mesh needs its vertex format and material, which are not decoded.
 Cut-outs: alpha-tested two-sided material (Mountain 29, Desert 69, Lake Side 47, Forest 9). Per-polygon brightness: not
 recovered (full brightness). Animals / animated objects: not present.
-Static checks: `python work/scripts/check_classic.py src <N>` reads the built files back:
+Static checks: `python tools/import/core/check_classic.py src <N>` reads the built files back:
 | Course | drivable 1995 area inside the 14 m road | road height error (95%) | upright scenery inside the road | start heading | grid cars to 1995 slots |
 |---|---|---|---|---|---|
 | Mountain | 98% | 0.06 m | 193 quads | matches | < 1.6 m |
@@ -110,7 +110,7 @@ road is drawn but has no collision.
 ---
 # The importer after the in-game work on Mountain (2026-10-07 / 08)
 This supersedes the sections above where they differ. Source: the docstrings and comments of `import_classic.py`,
-`build_classic.py` and the modules they call, the course settings file `work/courses/src_1.json`, and the owner's notes.
+`build_classic.py` and the modules they call, the course settings file `work/tools/import/src/tracks/courses/src_1.json`, and the owner's notes.
 Only Mountain (course 1, variant `classic`) follows all of this; the other courses and variants were last built earlier.
 
 ## Command
@@ -148,7 +148,7 @@ game's own axes. Mountain: ox 137.74, oz 52.84 (so SR3 x = OBJ x + 137.74, z = -
    the start / finish gate object (15).
 10. Camera lists removed (`cameras: "default"`); `texmap.json` written.
 
-## Course settings in `work/courses/src_1.json` (Mountain) and their notes
+## Course settings in `work/tools/import/src/tracks/courses/src_1.json` (Mountain) and their notes
 | Key | Value for Mountain | Note |
 |---|---|---|
 | `objects` | 1259..1318 | hi-detail object rows |
@@ -202,7 +202,7 @@ at the line, the half-lap checkpoint adds time, banking holds, the grass slows a
 
 ## Command and files
 `python import_classic.py daytona 1 classic --norender --name step99_daytona_threeseven_desert4` (course settings
-`courses\daytona_1.json`, every key with a note). `course.use_export` gives a game other than `src` its own folders
+`tools\import\daytona\tracks\courses\daytona_1.json`, every key with a note). `course.use_export` gives a game other than `src` its own folders
 (`classic_tex\daytona_course1`, `retex\daytona_1`, `tmp\classic_xform_daytona_1.json`) and no ROM tiles (`ROM_TILES`);
 `export_adapter.py` turns the export into the importer's input there: the OBJ with texture coordinates on every face (the
 flat-colour `col_` faces have none in the export), one 8 x 8 picture per flat colour, the centre line in the OBJ's axes (the
