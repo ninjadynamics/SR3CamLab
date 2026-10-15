@@ -6,6 +6,7 @@ and buf (the raw bytes: bytes, bytearray, or an mmap for big files). C helpers t
 
     a = npyio.load(path [, mmap=True])        d = npyio.loadz(path)       (a dict of Arr; members stored or deflated)
     npyio.save(path, a)                       npyio.savez(path, name=a, ...)   (stored, fixed timestamps: the same bytes each time)
+                                              npyio.savez_compressed(path, name=a, ...)   (deflated, as np.savez_compressed)
 
 numpy itself would be np.load / np.save / np.savez; it isn't used because the toolchain zip doesn't carry numpy (13 MB)
 any more for the processes that are done with it. save() writes the header exactly as numpy 1.24 does (the dict repr,
@@ -14,6 +15,8 @@ import ast, ctypes, mmap as _mmap, os, struct, zipfile
 
 ITEMSIZE = {'f8': 8, 'f4': 4, 'f2': 2, 'i8': 8, 'i4': 4, 'i2': 2, 'i1': 1, 'u8': 8, 'u4': 4, 'u2': 2, 'u1': 1, 'b1': 1}
 CODE = {'f8': 'd', 'f4': 'f', 'i8': 'q', 'i4': 'i', 'i2': 'h', 'i1': 'b', 'u8': 'Q', 'u4': 'I', 'u2': 'H', 'u1': 'B', 'b1': '?'}   # struct / memoryview
+
+_EMPTY = (ctypes.c_char * 16)()                                       # what ptr() gives for an array of no elements
 
 def itemsize(dtype):
     k = dtype[1:]
@@ -44,8 +47,9 @@ class Arr:
     def tolist(self): return self.view().tolist()
     def ptr(self):
         """the address of the data for a C helper; the buffer must be writable (bytearray, or an mmap opened copy-on-write)"""
+        if not self.nbytes: return ctypes.addressof(_EMPTY)              # (an empty array: a valid address C never reads; from_buffer needs a byte)
         if isinstance(self.buf, bytes): self.buf = bytearray(self.buf)
-        c = (ctypes.c_char * max(1, self.nbytes)).from_buffer(self.buf); self._keep = c
+        c = (ctypes.c_char * self.nbytes).from_buffer(self.buf); self._keep = c
         return ctypes.addressof(c)
     def __repr__(self): return 'Arr(%s, %s)' % (self.dtype, self.shape)
     def __reduce__(self): return (_arr, (self.dtype, self.shape, bytearray(memoryview(self.buf)[:self.nbytes])))      # (pickles: nfpickle.py)
@@ -103,9 +107,17 @@ def loadz(path):
 
 def savez(path, **arrays):
     """{name: Arr} -> an .npz file numpy reads; stored, members in the order given, every timestamp 1980-01-01"""
-    with zipfile.ZipFile(path, 'w', zipfile.ZIP_STORED, allowZip64=True) as z:
+    _savez(path, zipfile.ZIP_STORED, arrays)
+
+def savez_compressed(path, **arrays):
+    """np.savez_compressed: as savez, the members deflated as numpy's are (zipfile's default level), so each member's bytes are numpy's;
+    numpy's own file differs only in its timestamps (the time of writing)"""
+    _savez(path, zipfile.ZIP_DEFLATED, arrays)
+
+def _savez(path, method, arrays):
+    with zipfile.ZipFile(path, 'w', method, allowZip64=True) as z:
         for n, a in arrays.items():
-            zi = zipfile.ZipInfo(n + '.npy', (1980, 1, 1, 0, 0, 0)); zi.compress_type = zipfile.ZIP_STORED; zi.external_attr = 0o600 << 16
+            zi = zipfile.ZipInfo(n + '.npy', (1980, 1, 1, 0, 0, 0)); zi.compress_type = method; zi.external_attr = 0o600 << 16
             with z.open(zi, 'w', force_zip64=True) as o:
                 o.write(header(a.dtype, a.shape)); o.write(memoryview(a.buf)[:a.nbytes])
 

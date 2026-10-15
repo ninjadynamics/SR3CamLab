@@ -3,7 +3,8 @@
     BENCH_FLAGS_A / BENCH_FLAGS_B   extra compiler flags for the ray file / for rtg5.c ; BENCH_MAX = how many of the sample's batches"""
 import sys, os, pickle, time, ctypes, subprocess, hashlib, math
 import numpy as np
-D = pickle.load(open(sys.argv[1], 'rb')); SRC = os.path.abspath(sys.argv[2]); MODE = int(sys.argv[3]) if len(sys.argv) > 3 else 1; SAVE = sys.argv[4] if len(sys.argv) > 4 else None
+sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))); import nfpickle      # tools/import/core
+D = nfpickle.load(sys.argv[1], numpy=True); SRC = os.path.abspath(sys.argv[2]); MODE = int(sys.argv[3]) if len(sys.argv) > 3 else 1; SAVE = sys.argv[4] if len(sys.argv) > 4 else None
 GCC = r'C:\mingw64\bin\gcc.exe'; FA = os.environ.get('BENCH_FLAGS_A', '').split(); FB = os.environ.get('BENCH_FLAGS_B', '').split()
 srcs = [os.path.join(SRC, f) for f in ('rays.c', 'fastlm_rays.c', 'rtg2_rays.c', 'rtg5.c')]; h = hashlib.md5(' '.join(FA + ['|'] + FB).encode())
 for f in srcs: h.update(open(f, 'rb').read())

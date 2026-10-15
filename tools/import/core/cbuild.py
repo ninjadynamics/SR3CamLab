@@ -22,7 +22,7 @@ HELPERS = {
     'fastseal': dict(dir='.', units=[('fastseal.c', [])], hashed=['fastseal.c']),
     'rays':     dict(dir='.', units=[('rays.c', [])], hashed=['rays.c']),
     'fastlm':   dict(dir='.', units=[('fastlm_rays.c', []), ('fastlm.c', FOC)], hashed=['rays.c', 'fastlm_rays.c', 'fastlm.c']),
-    'rtg5':     dict(dir='rtbake', units=[('rtg2_rays.c', []), ('rtg5.c', FOC)], hashed=['rays.c', 'fastlm_rays.c', 'rtg2_rays.c', 'rtg5.c']),
+    'rtg5':     dict(dir='rtbake', units=[('rtg2_rays.c', []), ('rtg5.c', FOC), ('rtg5prep.c', FOC)], hashed=['rays.c', 'fastlm_rays.c', 'rtg2_rays.c', 'rtg5.c', 'rtg5prep.c']),
     'rtcompose': dict(dir='rtbake', units=[('rtcompose.c', FOC)], hashed=['rtcompose.c']),
     'audio_dsp': dict(dir='../../audio', units=[('audio_dsp.c', FOC)], hashed=['audio_dsp.c', 'pocketfft.h']),
 }

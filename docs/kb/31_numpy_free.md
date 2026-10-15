@@ -44,6 +44,20 @@ A full chain on an empty data folder, every Python process logging the modules i
   last bits, so numpy's own answer depends on the PC's core count. A C port uses the fixed formula and gives the same bits
   on every PC. The chain does not depend on it: with OPENBLAS_NUM_THREADS=8 it still gives v15's game files (checked
   2026-10-15).
+- `A @ s` also adds each row's sum to y = 0 (dgemv with beta 0), so a row whose sum is -0.0 comes out +0.0
+  (2 of 408,164 normals @ sun on Mountain). A port writes `0.0 + ((p0 + p2) + p1)`.
+- A 1-D sum (`np.sum`, the sum inside `np.mean` of a column, of a strided view, and `mean(0)` of an (n, 2) array, column
+  by column) is pairwise: below 8 elements one after the other from 0; up to 128 eight running sums added as
+  `((r0 + r1) + (r2 + r3)) + ((r4 + r5) + (r6 + r7))`, then the rest one by one; above that the two halves, cut at a
+  multiple of 8; the result added to 0. Measured 100% on 300 arrays per size from 5 to 1,000.
+- `np.cos` / `np.sin` of float64 arrays are the C runtime's (ucrtbase.dll; numpy's SVML loops need AVX-512, which this
+  PC lacks): the same bits as Python's `math.cos`. A C port calls ucrtbase's own `cos` / `sin` through GetProcAddress,
+  since gcc's or mingw's could differ. `np.hypot` is ucrtbase's `hypot` too; Python's `math.hypot` differs in 17% of
+  cases.
+- `np.percentile(v, 90)` ('linear'): the (n - 1) x 0.9-th sorted value, between its neighbours as numpy's `_lerp`:
+  `a + (b - a) * g` below g = 0.5, `b - (b - a) * (1 - g)` from there.
+- `np.random.RandomState(seed).rand()` is Python's `random.random()` once the state is numpy's: both are MT19937 and make
+  a 53-bit float from two draws the same way, but numpy seeds with init_genrand, so set it with `random.setstate`.
 - **`np.dot` of two 3-vectors depends on where the second one sits in memory** (OpenBLAS's small kernel): 16-byte
   aligned gives `(p0 + p2) + p1`, 8 bytes off gives `(p0 + p1) + p2`, each 100% (6,000 pairs per alignment class).
   `np.linalg.norm(v)` is `sqrt(v.dot(v))`, so it follows `v`'s alignment. A fresh numpy array is 16-byte aligned; the rows
@@ -62,6 +76,11 @@ arrays back through the unpickler's `find_class`. On the real 92 MB `faces.pkl`:
 | Process | Was | Now | Check |
 |---|---|---|---|
 | `rtbake\rt_compose_game.py` | numpy, 8 pages at a time through float32 temporaries: 6.1 s warm (8.9 s cold) | `rtbake\rtcompose.c` (`rtc_road`, `rtc_pages` one page per thread, `rtc_key`) + npyio / scenefile: 0.6 s warm (3.5 s cold) | the pages file byte for byte numpy's (277 MB), every table member identical, the same log line, numpy never loaded |
+| `rtbake\rt_bake_game5.py` | numpy around the C rays: 197.7 s on Mountain R4 (scene ready 4 s, cars 2 s, texel maths 1.3 s, store 9.4 s) | `rtbake\rtg5prep.c` (the scene's triangles, the once-edges under wall feet, normals and sun products, the cars' pages, the rectangles and their lattices, per batch the texels, fan turns, facing, other side and store) + plain Python (trees, skirts, buildings, page packing) + npyio / scenefile / nfpickle: 178.1 s (3 s, 1 s, 0.2 s, 0.2 s; the rays are the same C) | raw.npy byte for byte numpy's (646 MB), every member of pack.npz and carshade.npz identical (the deflated one too), every section's arrays equal numpy's at 11 checkpoints, the ray-bench dump equal in all 41 items, the same log lines, numpy blocked and never loaded |
+
+The bake reads the material classes straight from `retex`'s CSV and takes `PAGE = 2048` by value: `retex.py` and
+`lightmap1995.py` still import numpy. The two `.npz` files differ from numpy's only in their zip timestamps (numpy
+writes the time of writing, `npyio` 1980-01-01).
 
 The logged "mean light over the pages" is now summed in double (numpy summed in float32); it can differ in its last
 digit, and nothing reads it.
