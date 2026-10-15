@@ -272,3 +272,12 @@ failure for the tested attract-to-demo sequence; it is not yet a full-race or
 physical-controller validation. Promoted to the default runtime path after this
 result; SR3LAB_TEXTURE_REBIND is no longer needed. Mods-enabled confirmation of
 the default build is pending. Original game and baseline remain unchanged.
+
+Default-build mods-enabled confirmation passed (chat #177,
+SR3-investigation/exit-rebind-mods-test): the runtime log confirms the fix without
+an environment switch and the mod log reports the camera mod ACTIVE. At 110 s,
+descriptor 0x8134E0 and registry row 4 both hold the live texture 0x4007D1E0,
+software references remain 2, and Escape exits with code 0x00000000 and no dump.
+The code was committed as 9aee814. This closes the reproduced attract/demo
+shutdown regression with and without mods; full-race and physical-controller
+validation remain open.
