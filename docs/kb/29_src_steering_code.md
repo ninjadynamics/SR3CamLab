@@ -231,3 +231,116 @@ roms stand-ins), `tramp.py` (the capture routine), `chk_filter.py`, `chk_yaw.py`
 
 Open: the force-feedback formula (0x39C40); the drive / brake force and wheelspin in detail (0x3A320, 0x3B128, 0x3AA38);
 the suspension yaw terms in detail; the meaning of game state 9 and of record +0x2C; the hidden car's set not driven.
+
+## 12. The port: SRC's turning inside SEGA Rally 3 (2026-10-15)
+
+The owner: "I still feel this guessing numbers game isn't the way to go". So SR3 does not get fitted numbers for SRC. After
+every SR3 vehicle step, a car on the SRC handling gets its yaw rate and side velocity from the chain of sections 2 to 8.
+That chain runs on SR3's own state. Tags as above; "emulated" = checked on an emulated CPU (tools\srcport_emu.py) inside a
+copy of Rally.exe's image, not yet in a running game.
+
+What each game contributes:
+| From SRC (this page) | From SR3 |
+|---|---|
+| the steering filter (section 2) from the pad's two bytes: counts = 95 x stick (the pad's range in SRC), full lock 0.84 rad at 84 % of the stick | the speed along the car (engine, gears, brakes, drag: the SRC files' torque and gears) |
+| the slip of each wheel from the frame's displacement (section 4), SRC's wheel offsets (+-0.635 / +-0.66, +-1.25) | which wheels touch, and each wheel's surface, mapped to SRC's four records (section 5) |
+| load transfer with its lags and the 0.08 sin term (section 6) | the suspension compressions that feed it |
+| the tyre forces, friction circle, front-braking move (section 7) | the drive / brake force D: SR3's own change of speed along the car over the step, gravity taken out, x 1000 in SRC's units |
+| yaw torque / 1146, the +-0.1 clamp, the 7 % + 7 % damping (section 8) | vertical motion, pitch, roll, walls, the air, SR3's hit recovery |
+| the side force's change of the side velocity, and the front side force's drag (Fy_f sin d) | gravity along the car's x (a sideways slope) |
+
+Units: SRC's frame is 1 / 57.5 s (the cabinet), so one SR3 step of dt seconds is k = dt x 57.5 frames. Speeds become m /
+frame (/ 57.5) and the yaw rate rad / frame. Per-frame rules run for k frames: the filter and the lags as powers of k
+(0.1^k, K^k), the damping as 1 - 0.93^k, the torque and the forces x k. An SR3 car at 100 km/h is therefore SRC at
+104 km/h on its speedometer (SRC's km/h = m / frame x 216 assume 60 frames). Directions: SRC's body x = SR3's body x, and
+both are the car's right (SR3's wheel 0 has hub x -0.624 and is the front left). SRC's yaw rate is positive to the left:
+w_src = -(omega . up) / 57.5. Two sign switches in the data block, x_sign and yaw_sign, can turn either the right/left
+mapping or the yaw sense around. The live session checks both.
+
+Not ported: SRC's wheelspin w (the friction circle uses 1 + 0, because SR3 does the wheelspin); the suspension yaw terms
+(0x35E2C, small on level road); the low-speed alignment below 10 km/h (0x36BD4, it needs SRC's section headings); the
+hidden car's set.
+
+SR3's side (Rally.exe 3.8.4.1, static reading 2026-10-15, VERIFIED (code) unless marked):
+- The hook: CVehicle (RTTI, vtable 0x678864) slot 5 = 0x45C820 is the vehicle step (thiscall, one float: dt). It is
+  reached only through the vtable (no direct call), and patch.ps1 points the entry 0x678878 to the port, which calls
+  0x45C820 itself. The step works in sub-steps (count from 0x45C6B0). At its end it puts the body's position (+0x88) and
+  orientation (+0xA4, 0x45A7E0) back as they were, so the pose is moved afterwards from the velocities, by the collision
+  code. The port runs between the two, which is why SR3's walls stay SR3's. CVehicleSimple (0x678A10, slot 5 0x45D410)
+  is not hooked.
+- Body = [vehicle + 8] (CRigidBody3D, vtable 0x6786D4): +8 mass, +0xC 1 / mass, +0x7C local centre of mass, +0x88
+  position, +0xA4 3 x 3 rows = the body's x, y, z axes in the world, copied by 0x459F80 to +0xF8 (x, the right), +0xEC
+  (up), +0x104 (z, forward), +0x158 momentum, +0x170 velocity (m/s), +0x17C angular velocity (rad/s). The setters are
+  0x45A120 SetVelocity(&v) and 0x45A1A0 SetAngularVelocity(&w) (thiscall; they set the momenta too). The port uses them.
+- Wheels: [vehicle + 0x2C][i], i < [vehicle + 0x30] = 4: entry + 0xC suspension (CVehicleSuspension, vtable 0x678AEC;
+  +0x58 non-zero while touching, set by 0x44F740 SetContact with +0x5C.. contact, +0x6C.. the surface block, +0x8C /
+  +0x90 two floats; the port takes +0x8C as the compression: LIKELY, checked live), entry + 0x10 wheel (+0x184 lock,
+  +0x190 angle), entry + 0x14 tyre (+0x1C = the index of its surface-pair record: 0x451BC0, CVehicleTyre slot 11, walks
+  [0x7833CC] + 8 that many links; the chunk 0x6172A752 of the grip file, 102 records, +4 = count, name at record + 0x78).
+- Gravity: [0x78340C] vec3, set by 0x457A50; the force sum multiplies it by the mass (0x44D9E0). LIKELY (0, -9.81, 0).
+- The force model is at vehicle + 0x38 (kb 28). Its + 0x24 is SR3's hit flag. While it is set the port leaves the car
+  to SR3, so the wheels straighten after a crash as SR3 does it.
+- What the port replaces: it starts from the yaw rate and side velocity the car had BEFORE the step (they already hold
+  last frame's port values and SR3's collision response). Everything SR3 did to them inside the step is dropped: the
+  tyres' side forces, the force model's slide torque (PowerslideSteer) and its yaw cap. SR3's change of the forward speed
+  is kept. Emulated: +1 rad/s of yaw and +3 m/s sideways added inside the step leave the result the same to 1e-5; +0.5 m/s
+  forward is kept.
+
+Which car: a car whose tyres stand on Tyre_Road records. Only the SRC files use that tyre (flavor_src.json "tyre"), so
+SR3's own files and Realism (Tyre_Rally) are never touched (emulated). build_srcport.py writes a class table of the 102
+records into the blob, in file order (the flavor builder only changes the mu values, so the order is the same in every
+grip file). Each record is classed by its name: Grass / Swamp = D verge, Water = C, Tarmac / Cobbles / Bridge (no snow or
+ice) = A. The rest is classed by its Tyre_Rally grip against Tyre_Rally_Tarmac_Top: 0.92 and above A, 0.5 and above B,
+below that C (ice, slush). SRC's priority applies: D > C > B > A, under any touching wheel. The Classic courses' SR3
+surfaces are Safari tarmac (A) and Safari gravel (B) (importer, 14_importer.md). The player only (the human driver,
+vtable 0x6ED0C8). Computer cars only with ai = 1 (see below). Nothing in the air (no wheel touching) or during SR3's hit
+recovery, but the steering filter and the body slip keep running there, as in SRC. SRC's state (the filter, the body slip, the load
+transfer) starts afresh when the car moves more than 20 m between two steps (a new race, the car put back on the road).
+
+Checked on the emulated CPU, the blob as patch.ps1 relocates it, the game's own setters (tools\srcport_emu.py, 26 checks):
+- The chain itself (axle centres, one SRC frame per step): yaw rate and body slip the same as srcmodel.py to 1e-7 rad /
+  frame at 100 / 140 / 180 / 230 km/h and 10 to 80 counts.
+- As it runs in the game (4 wheels, SR3 steps of 1 / 60 s), steady turns, stick right, speed held (SRC km/h; yaw rate
+  rad/s / body slip deg). The same as section 10's table to 0.01 rad/s:
+
+| km/h | 5 | 10 | 20 | 30 | 48 | 80 |
+|---|---|---|---|---|---|---|
+| 100 | 0.12 / 1.8 | 0.26 / 3.2 | 0.49 / 6.5 | 0.63 / 9.0 | 0.70 / 10.7 | 0.55 / 8.3 |
+| 140 | 0.11 / 2.0 | 0.24 / 4.7 | 0.43 / 9.2 | 0.53 / 12.2 | 0.55 / 13.4 | 0.42 / 10.0 |
+| 180 | 0.10 / 2.5 | 0.22 / 5.7 | 0.38 / 10.9 | 0.45 / 14.1 | 0.45 / 14.9 | 0.34 / 10.8 |
+| 230 | 0.09 / 2.9 | 0.20 / 6.6 | 0.34 / 12.4 | 0.39 / 15.6 | 0.38 / 16.0 | 0.28 / 11.4 |
+
+  Small-stick gain 2.32 / 2.06 / 1.83 / 1.61 rad/s per full stick (section 10: 2.3 / 2.05 / 1.8 / 1.6), ceiling 0.70 /
+  0.55 / 0.45 / 0.39, body slip 9-16 degrees at 30 counts. Turn-in (200 km/h, a 20-count step): half the yaw rate after
+  2 steps, 90 % after 5, 25 % again 5 steps after the release. The peak is 45 % above the steady value (srcmodel.py:
+  46 % by the same measure; the "about 25 %" of section 10 was a looser reading). Gravel (record B) turns less than
+  tarmac; nose-down load transfer (0.1) turns more; stick right turns right with the velocity to the left of the nose.
+- Left alone: Tyre_Rally files, the air, the hit flag, a computer car with ai = 0, mode 0; mode 1 logs and changes
+  nothing.
+
+The tyre force model of the SRC files: back to 2 (PowerslideSteer, SR3's own). The port drops whatever the model does to
+the yaw inside the step, so for the player's car the model does not matter. The computer cars, though, keep SR3's turning
+on the SRC files (ai = 0), and with model 1 SR3's cars had no turning (kb 28). The rebuild (flavor_src.json force_model
+2) differs from the installed car1 files only in chunk 27 + 8, 1 -> 2, in all ten. The grip file is byte-identical. It is
+staged in scratchpad agent_srcport\stage_src\Rally, not installed yet.
+
+The computer's cars: the hook sees them too (they are CVehicles). With ai = 1 a computer car on the SRC files gets the same
+chain, with its steering value (controls + 8, a fraction of SR3's lock) taken as SRC's stick x ai_gain (1.8). That gain
+gives SRC's small-stick yaw per value about what SR3's own turning gives per value (3.7 rad/s at 120-150 km/h, kb 28), so
+the AI's own steering controller sees a car it knows. Its speed plan and braking stay SR3's. Taking SR3's lock as a wheel
+angle instead would have given the AI 4-5 times less yaw per value than it expects. Not applied (ai = 0) and not driven:
+whether the AI then keeps its line needs one race (its path, mean speed, resets).
+
+Files (repository): tools\srcport.c (the port, C, built with clang for i686), tools\build_srcport.py (build, surface
+table, --embed into patch.ps1), tools\srcmodel.py (the reference model), tools\srcport_emu.py, tools\srcport_mocktest.ps1;
+patch.ps1 Install-SrcPort / Remove-SrcPort (in Set-Handling when the SRC flavor is built; -Off removes it). The data block
+(blob + $SrcPortData, 0x23E0 in this build): +8 mode (0 off, 1 observe, 2 on), +0xC ai, +0x10 57.5, +0x14 95, offsets and sign switches,
++0x4C ai_gain, +0x50 the surface classes, +0xD0 counters, +0xDC last_err (1 not SRC files, 2 air, 3 hit recovery), +0xE0 eight per-car states, +0x1E0
+-> a ring of 256 player steps x 40 floats (stick, filter, slips, forces, torque, load transfer, D, SR3's own yaw rate and
+side velocity after its step, the hit timer ...). The live session (one race, about 4 minutes) is scratchpad
+agent_srcport\session.py: observe first, set the signs and the compression field from SR3's own motion, then weaves, a
+step and a short full stick with the port on, SR3's own for comparison, optionally (--ai) the opponent.
+
+Open: everything live (not yet run in the game: no SR3 launches on 2026-10-15 night): whether + 0x8C is the compression,
+the signs, the override holding to the next step, the gains in game against the table above, the AI with ai = 1;
+SR3's dt per step (1 / 60 assumed in the table).

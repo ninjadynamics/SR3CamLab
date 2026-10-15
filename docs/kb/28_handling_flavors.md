@@ -224,7 +224,7 @@ The names (Standard, SegaRally, PowerslideSteer, AlwaysSteer) are SR3's own clas
 - `handling.json` next to PLAY.bat (`handling.example.json`): `{version, default, cars{name: flavor}, flavors{name:
   {digit, grip_file}}}` (older files' steer_rate / steer_return_s / steer_linear are ignored: every handling steers with SEGA's own steering).
 
-### The launcher (patch.ps1: Read-Handling, Set-Handling, Sync-RaceFlavor, Remove-SteerHook)
+### The launcher (patch.ps1: Read-Handling, Set-Handling, Sync-RaceFlavor, Remove-SteerHook, Install-SrcPort)
 | What | Where |
 |---|---|
 | all ten known cars on one flavor | the 's' of "cars" at 0x6C631D -> the digit |
@@ -232,7 +232,9 @@ The names (Standard, SegaRally, PowerslideSteer, AlwaysSteer) are SR3's own clas
 | added cars (Hornet) | the 's' at 0x6C6371, one flavor for all of them |
 | grip file | the 's' of "Effects" at 0x6C6176, when a flavor in use has one (one per race) |
 | steering | SEGA's own for every handling. The STEER hook of 2026-10-14 / 15 (0x5CFF32 `call 0x448C00` -> a routine of ours: steering return, then 1:1, then a steering rate) is gone; Remove-SteerHook writes SEGA's call back when a game still holds it (PLAY.bat run again on a game an earlier launcher had hooked) |
-All take effect when the next race loads. A missing folder or car file: that car keeps SEGA's file (Log line).
+| turning of the SRC handling | CVehicle vtable 0x678864 slot 5, the entry 0x678878 (= 0x45C820, the vehicle step) -> SRCPORT (toolsuild_srcport.py from tools\srcport.c, about 9.5 KB plus a zero-filled log, relocated by Install-SrcPort): after each step, a car whose tyres stand on Tyre_Road records (the SRC files) gets SRC's yaw rate and side velocity (29_src_steering_code.md section 12). Installed by Set-Handling when the SRC flavor is built, taken out when it is not and by -Off. Log: "SRC turning: in (0x...)" |
+All but the turning take effect when the next race loads. A missing folder or car file: that car keeps SEGA's file (Log line).
+The turning acts at once on any car that loaded the SRC files.
 
 ### One handling per race, the stick 1:1 for SRC (2026-10-14)
 The owner: "Ok, let's give SRC handling a chance, but only if the 'pace' applies to all cars in the race (balance) and you fix
@@ -305,6 +307,30 @@ the SRC option (key 2)". C = kb 29's cheap experiment: SR3's own tyre force mode
   only newer files there are the added Hornet's); a car on SR3 loads SEGA's paths (flag 0 / 's'), and no steering hook.
 - Not yet driven in game.
 
+### SRC's turning from SRC's code, in SR3 (2026-10-15, "option B")
+The owner: "I still feel this guessing numbers game isn't the way to go". So after every SR3 vehicle step, the player's car
+on the SRC files gets its yaw rate and side velocity from SRC's own chain (29_src_steering_code.md sections 2-8). That chain
+runs on SR3's speed, surfaces and suspension. SR3 keeps the speed along the car (the SRC files' engine and gears, SR3's
+brakes), pitch, roll, walls, the air and its hit recovery. How it works, the SR3 objects it uses and the checks:
+29_src_steering_code.md section 12.
+- Which car: the port recognises the SRC files by their tyre (Tyre_Road), so SR3's own files and Realism are never touched.
+  It runs for the player's car; the computer's cars only with ai = 1 (data block + 0xC, not set by the launcher).
+- The force model of the SRC files goes back to 2 (PowerslideSteer). The port throws away what the model does to the yaw
+  inside the step, so the player's car does not depend on it, but the computer cars keep SR3's turning on these files
+  and model 1 left SR3's cars without turning (above). Built (flavor_src.json force_model 2) into scratchpad
+  agent_srcport\stage_src\Rally. Against the installed car1 files the only change is chunk 27 + 8, 1 -> 2, in all ten;
+  the grip file is byte-identical. NOT installed yet: it needs the owner's OK.
+- Emulated (the blob in a copy of Rally.exe's image, the game's own setters): kb 29's steady-turn table to 0.01 rad/s
+  (small-stick gain 2.32 / 2.06 / 1.83 / 1.61 rad/s per full stick at 100 / 140 / 180 / 230 km/h, ceiling 0.70 / 0.55 /
+  0.45 / 0.39, body slip 9-16 degrees), turn-in in 2 / 5 steps (half / 90 %), srcmodel.py frame for frame. Not yet in the game.
+- The computer's cars on the SRC files: with ai = 0 they keep SR3's turning with SRC's engine and gears (driven before,
+  section above). With ai = 1 the port turns them too, taking their steering value as SRC's stick x 1.8 (the gain that gives
+  them about SR3's yaw per steering value, so their own controller copes). Not driven yet: one race tells whether they
+  keep their line.
+- Live check, one race of about 4 minutes: scratchpad agent_srcport\session.py (observe with SR3's own turning first,
+  settle the signs and the compression field, then the port on: weaves, a step, a short full stick; SR3's own for
+  comparison; --ai for the opponent).
+
 ### Live keys (owner, 2026-10-14: "Do A and A+, assign to num keys. Live labels ... (camlab style)")
 Whenever a flavor is built (Main_release\car1 / car2), the per-car routine and the steering hook go in even with no
 handling.json (every car on SEGA's handling), and while the game window is in front ([0x728CF4] = the foreground window):
@@ -358,6 +384,7 @@ factor cannot make up (the model assumes 4WD traction; SEGA's file for it is 4WD
 the trimmed Bowler.
 
 ## 4. Open
+The SRC turning in the game (the session above) and the staged model-2 SRC files' install; the AI with the SRC turning;
 SR3's own cornering grip and slip curve; the SegaRally force model's behaviour; caching of car / grip files between races;
 the force models 0 / 1 / 3 for SR3's longer yaw lag; SR2 driving data (Supermodel with an external reader); per-car
 grip for Realism (a free tyre class or a per-car grip field still to be found).

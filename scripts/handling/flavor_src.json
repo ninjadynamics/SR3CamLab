@@ -11,7 +11,7 @@
   "gearbox": {"forward_kmh_per_1000rpm": [11.8, 23.0, 26.4, 29.2], "slip_note": "SRC targets 9.6 / 18.9 / 22.7 / 26.6 divided by what test 2 measured of its design (0.81 / 0.82 / 0.86 / 0.91: SR3 tyres run 10-20 % slip when traction-limited)", "keep_final_drive": true, "reverse_ratio": -3.545,
               "upshift_fraction": 0.91, "upshift_fraction_per_gear": [0.89, 0.823, 0.91], "upshift_note": "test 3: 1->2 at 82.9 km/h, 2->3 at 165.9 km/h with 0.91 (2nd runs 20.7 km/h per 1000 rpm at speed); SRC 81 / 150 / 181", "downshift_fraction": 0.65, "downshift_margin": 0.08},
   "engine": {"max_rpm": 8800, "torque_scale": 2.5, "torque_curve": null},
-  "force_model": 1,
+  "force_model": 2,
   "force_model_options": {"0": "Standard", "1": "SegaRally", "2": "PowerslideSteer (SR3)", "3": "AlwaysSteer"},
   "tyre": {"name": "Tyre_Road", "grip_scale": 1.35,
            "surface_ratio_to_tarmac": {"tarmac": 1.0, "gravel": 0.87, "dirt": 0.89, "sand": 0.87},
@@ -20,7 +20,7 @@
                       "dirt": ["DryMud", "DampMud", "GrassySwamp"],
                       "sand": ["Sand"]},
            "keep_sr3_ratio": ["Cobbles", "WoodenBridge", "WetTarmac", "WetMud", "Ice", "SnowTarmac", "SnowVolcanicAsh", "10mmSnow", "20mmSnow", "ShallowSnow", "SuperSlush"]},
-    "steering": "SEGA Rally 3's own steering (the owner, 2026-10-15: \"remove the rads tuning\"); the tyre force model is SEGA's own SegaRally (1) instead of SR3's PowerslideSteer (2): \"install C on the SRC option\", kb 29",
+    "steering": "SEGA Rally 3's own steering chain for the wheels; the TURNING (yaw rate, side velocity) of a car on these files is SEGA Rally Championship's own, set after every vehicle step by the launcher's SRC port (tools/srcport.c, kb 29 section 12), which recognises these files by their Tyre_Road tyre. Force model back to SR3's PowerslideSteer (2): the port replaces the model's turning, and model 1 (SegaRally) left the cars without turning (owner, 2026-10-15)",
   "calibration_targets": {"0_100_s": 1.2, "0_200_s_mountain": 5.2, "sustained_lat_g_tarmac": 2.70, "sustained_lat_g_gravel": 2.35,
                           "slip_deg_at_1g": 5.3, "slip_deg_above_1.6g": 9.6}
 }
