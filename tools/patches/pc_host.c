@@ -25,7 +25,8 @@ unsigned ph_front(GameMem *m) { (void)m; return (unsigned)(uintptr_t)GetForegrou
 /* ---------------------------------------------------------------- the screen grab */
 /* patches.dll sets this to the TeknoParrot-free runtime's sr3rt_grab_backbuffer (Codex's, standalone\capture.c): the
  * game's own back buffer, which exclusive fullscreen keeps from GDI. 1 = a top-down tight BGRA8 picture the caller frees
- * with HeapFree(GetProcessHeap(), 0, ..); 0 = none (within 250 ms), and the GDI grab is used. */
+ * with HeapFree(GetProcessHeap(), 0, ..); 0 = none (within 250 ms): then no picture, logged as such (Codex, chat #86:
+ * GDI would give a black one of a game in exclusive fullscreen and call it a success). Not set (no runtime): GDI. */
 int (__cdecl *ph_grab_hook)(void **bgra, int *w, int *h);
 static HBITMAP held; static void *bits, *hookbits; static int gw, gh;
 static const GUID CLSID_WICImagingFactory_ = {0xcacaf262, 0x9370, 0x4615, {0xa1, 0x3b, 0x9f, 0x55, 0x39, 0xda, 0x4c, 0x0a}};
@@ -41,7 +42,14 @@ static void let_go(void) {
 static int grab(void) {
     HDC scr, dc; BITMAPINFO bi; HGDIOBJ old;
     let_go();
-    if (ph_grab_hook) { void *b = NULL; int w = 0, h = 0; if (ph_grab_hook(&b, &w, &h) && b && w > 0 && h > 0) { hookbits = bits = b; gw = w; gh = h; return 1; } }
+    if (ph_grab_hook) {                 /* the runtime's back buffer: when it has none, no picture (GDI would give a black one of a fullscreen game) */
+        void *b = NULL; int w = 0, h = 0; DWORD e;
+        SetLastError(0);
+        if (ph_grab_hook(&b, &w, &h) && b && w > 0 && h > 0) { hookbits = bits = b; gw = w; gh = h; return 1; }
+        e = GetLastError(); if (b) HeapFree(GetProcessHeap(), 0, b);
+        pc_logf("Screenshot: the game's back buffer could not be read (sr3rt_grab_backbuffer gave none within 250 ms, error %lu); no picture.", e);
+        return 0;
+    }
     if (!(scr = GetDC(NULL))) return 0;
     gw = GetSystemMetrics(SM_CXSCREEN); gh = GetSystemMetrics(SM_CYSCREEN);
     memset(&bi, 0, sizeof bi); bi.bmiHeader.biSize = sizeof bi.bmiHeader; bi.bmiHeader.biWidth = gw; bi.bmiHeader.biHeight = -gh;   /* top-down rows */

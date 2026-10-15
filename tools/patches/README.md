@@ -31,17 +31,21 @@ Settings: the `patches:` section of `settings.yaml` (`mod_folder`, `camera_profi
 **Done (step 1, 2026-10-15): the cameras.** The chase camera's cave and hooks (`$Patches`) and the camera cycle block
 (`Install-Cycle`).
 
-**Done (step 2, 2026-10-15): the live loop, in C and in lockstep, not yet run by the front ends.** `pc_live.c` is
+**Done (step 2, 2026-10-15): the live loop, in C and in lockstep, run by both front ends.** `pc_live.c` is
 `Release-StuckKeys`' middle: `Set-MenuTimers`, `Set-CarLists` (+ `Complete-CarLists`, `Open-CarCards`), `Set-Handling`
 (flavors, per-car path routine, the added cars, grip file, SRC turning, steering hook removal) and `Watch-Tracks`
 (track switcher with folder routine, card videos, announcer, sounds, tunes, checkpoint times, shadows, road, shader
 test, scenery visibility, popups, START screenshot with its JSON, VIEW CHANGE race exit, handling keys,
 `Sync-RaceFlavor`). The outside world goes through GameMem too (`now`, `sleep`, `pad`, `key`, `front`, `shot`,
-`news`), real in `pc_host.c` (XInput, GDI grab, PNG by WIC with the tEXt chunk), fake in the tests. `pc_json.c` reads
-switch.json / handling.json (JSON's grammar, keys case-insensitive as PowerShell's). To do: `sr3mods attach` and
-patches.dll run it; the back buffer grab of Codex's runtime (`sr3rt_grab_backbuffer`) in patches.dll's `shot`; the
-watchdog as `sr3mods watch <pid>` (watchdog.cs in C); the re-attach path (PLAY.bat run again on a running game:
-tuning update, a newer block); then `PLAY.bat` and play.ps1 switch to sr3mods.exe.
+`news`), real in `pc_host.c` (GDI grab, or the runtime's back buffer in patches.dll; PNG by WIC with the tEXt chunk),
+fake in the tests. START and View Change are the game's own inputs (entries 53 and 15 at 0x9DBAD0), not a pad.
+`pc_json.c` reads switch.json / handling.json (JSON's grammar, keys case-insensitive as PowerShell's).
+`sr3mods attach` runs the loop until the game closes (then releases stuck modifier keys, as PLAY.bat); patches.dll's
+worker runs it after the cameras for the game's life. In the game (sr3mods attach, TeknoParrot route, 2026-10-15): the
+live loop's start-up, the Classic popup stepping three tracks, a Classic race on track5 with its checkpoint times and
+road, a START screenshot (3840x2160, SR3Lab chunk), VIEW CHANGE held leaving the race. To do: the watchdog as
+`sr3mods watch <pid>` (watchdog.cs in C; patches.dll starts it beside the game); the re-attach path (PLAY.bat run again
+on a running game: tuning update, a newer block); then `PLAY.bat` and play.ps1 switch to sr3mods.exe.
 
 ## Lockstep with patches.ps1
 
