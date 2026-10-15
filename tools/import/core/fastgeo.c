@@ -19,6 +19,39 @@ typedef long long i64;
 
 EXPORT int fg_threads(void) { return omp_get_max_threads(); }
 
+/* Packed mesh metadata uses float32 operations, including the addition before
+   halving its bounding-box centre. Load through memcpy for arbitrary alignment. */
+EXPORT void fg_mesh_bounds(const unsigned char *v, i64 nv, float *out)
+{
+    float lo[3], hi[3]; memcpy(lo,v,12); memcpy(hi,v,12);
+    for (i64 k=1; k<nv; ++k) {
+        float p[3]; memcpy(p,v+48*k,12);
+        for (int a=0; a<3; ++a) {
+            if (!isnan(lo[a]) && !(lo[a]<p[a])) lo[a]=p[a];
+            if (!isnan(hi[a]) && !(hi[a]>p[a])) hi[a]=p[a];
+        }
+    }
+    for (int a=0; a<3; ++a) { out[a]=lo[a]; out[3+a]=hi[a]; out[6+a]=(lo[a]+hi[a])/2.0f; }
+}
+
+EXPORT int fg_mesh_winding(const unsigned char *v, i64 nv, const unsigned short *idx, i64 ni, i64 *score)
+{
+    *score=0;
+    for (i64 k=0; k+2<ni; ++k) {
+        unsigned a=idx[k],b=idx[k+1],c=idx[k+2];
+        if (a==b || a==c || b==c) continue;
+        if (a>=nv || b>=nv || c>=nv) return 1;
+        float va[7],vb[7],vc[7],x[3],y[3],n[3],s[3];
+        memcpy(va,v+48*a,28); memcpy(vb,v+48*b,28); memcpy(vc,v+48*c,28);
+        for(int j=0;j<3;++j) { x[j]=vb[j]-va[j]; y[j]=vc[j]-va[j]; s[j]=(va[4+j]+vb[4+j])+vc[4+j]; }
+        n[0]=x[1]*y[2]-x[2]*y[1]; n[1]=x[2]*y[0]-x[0]*y[2]; n[2]=x[0]*y[1]-x[1]*y[0];
+        if(k&1) for(int j=0;j<3;++j) n[j]=-n[j];
+        float dot=(n[0]*s[0]+n[1]*s[1])+n[2]*s[2];
+        *score += dot>0 ? 1 : -1;
+    }
+    return 0;
+}
+
 /* meshgen.make_verts_safe: axis=1 norm sums three products left-to-right.
    Keep the cross and normalization in double, then store each f4 field once.
    memcpy avoids imposing float alignment or aliasing rules on packed records. */
