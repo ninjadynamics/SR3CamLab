@@ -33,8 +33,9 @@ def tile_alpha(mat):
         for d in _texdirs():
             p = os.path.join(d, mat + '.png')
             if os.path.exists(p):
-                from PIL import Image
-                _ALPHA[mat] = np.array(Image.open(p).convert('RGBA'))[:, :, 3] > 127; break
+                from fillimages import load_alpha
+                image = load_alpha(p)
+                _ALPHA[mat] = np.frombuffer(image.buf, dtype=np.bool_).reshape(image.shape).copy(); break
     return _ALPHA[mat]
 _RGB = {}
 def tile_rgb(mat):
@@ -44,8 +45,9 @@ def tile_rgb(mat):
         for d in _texdirs():
             p = os.path.join(d, mat + '.png')
             if os.path.exists(p):
-                from PIL import Image
-                _RGB[mat] = np.array(Image.open(p).convert('RGBA')); break
+                from fillimages import load_rgba
+                image = load_rgba(p)
+                _RGB[mat] = np.frombuffer(image.buf, dtype=np.uint8).reshape(image.shape).copy(); break
     return _RGB[mat]
 def _leaf_row(mat, v, u0, u1):
     """True when the opaque texels of tile row v between u0 and u1 are leaf green (a crown, not a stem)"""
@@ -143,7 +145,7 @@ def _stem_runs(al, row, u0, u1):
     import filltex
     return filltex.stem_runs(filltex.image_buffer(al, True), row, u0, u1)
 
-def hanging_boards(faces, gap=1.0, ix=None, sunk=1.5):
+def _hanging_boards_numpy(faces, gap=1.0, ix=None, sunk=1.5):
     """upright cut-out boards whose tile shows something (a trunk, a post) on the board's lowest edge and that have
     nothing under that edge within `gap` m: no lying face (one up to `sunk` m ABOVE the edge counts: the foot is in the
     ground), no upright face reaching lower.
@@ -171,8 +173,18 @@ def hanging_boards(faces, gap=1.0, ix=None, sunk=1.5):
     INFO['hanging_tiles'] = dict(tiles)
     return out
 
+def hanging_boards(faces, gap=1.0, ix=None, sunk=1.5):
+    """Checked buffer detector, retaining the legacy index/debug contracts."""
+    import fastgeo
+    if not fastgeo.ON or fastgeo.CHECK:
+        return _hanging_boards_numpy(faces, gap, ix, sunk)
+    import fillboards
+    out, tiles = fillboards.hanging_boards(faces, tile_alpha, gap, ix, sunk)
+    INFO['hanging_tiles'] = tiles
+    return out
+
 # ---------------------------------------------------------------- smeared tiles
-def unsmear(faces, origin=None, skip=(), ratio=10.0, min_area=10.0, classes=('rock', 'grass', 'dirt', 'sand', 'gravel')):
+def _unsmear_numpy(faces, origin=None, skip=(), ratio=10.0, min_area=10.0, classes=('rock', 'grass', 'dirt', 'sand', 'gravel')):
     """-> (faces, n). 1995 polygons of natural ground whose tile is stretched more than `ratio` times further one way than the other
     (the end caps of the cliff curtains of sections 1284 / 1285: 6 texels across 12 m, 256 texels up 30 m - a face of horizontal
     streaks, user 2026-10-08, shot 001437) get the density of their GOOD direction both ways. The picture keeps its place at the
@@ -190,6 +202,17 @@ def unsmear(faces, origin=None, skip=(), ratio=10.0, min_area=10.0, classes=('ro
         if sv[1] > 1e-9 and sv[0] / sv[1] <= ratio: out.append(fc); continue
         M2 = (a @ np.diag([sv[0], sv[0]]) @ bt) / np.array([[tw], [th]]); U2 = U.mean(0) + (Q - Q.mean(0)) @ M2.T
         out.append((mat, sec, P, [tuple(map(float, u)) for u in U2])); n += 1
+    INFO['unsmear'] = n
+    return out, n
+
+def unsmear(faces, origin=None, skip=(), ratio=10.0, min_area=10.0, classes=('rock', 'grass', 'dirt', 'sand', 'gravel')):
+    """Same correction and INFO result; shared exact solver for 3..8 corners."""
+    # Keep the existing larger-system behavior until nplapack covers that domain.
+    if any(len(fc[2]) > 8 for fc in faces):
+        return _unsmear_numpy(faces, origin, skip, ratio, min_area, classes)
+    import fillunsmear, retex, overlay_bake as OB
+    out, n = fillunsmear.unsmear(faces, {k: v[0] for k, v in retex.labels().items()},
+                                OB.ORIGIN if origin is None else origin, skip, ratio, min_area, classes)
     INFO['unsmear'] = n
     return out, n
 
@@ -258,7 +281,7 @@ def _ears(Q):
         else: break
     if len(idx) == 3: tri.append(tuple(idx))
     return tri
-def island_cap(backdrop_faces, sink=None, inset=2.0, min_length=80.0, min_turn=150.0):
+def _island_cap_numpy(backdrop_faces, sink=None, inset=2.0, min_length=80.0, min_turn=150.0):
     """-> extra faces: a lid on every run (>= min_length m) of upright cut-out boards of the backdrop whose TOP edges join
     into a loop or an open arc (an arc is closed with a straight chord): the castle island's tree wall. The lid lies
     `sink` of the wall's height below its top (default: where the wall's tile rows become 90 % opaque + 8 %; the rows
@@ -304,6 +327,16 @@ def island_cap(backdrop_faces, sink=None, inset=2.0, min_length=80.0, min_turn=1
             if _normal(np.array([(q[0], y, q[1]) for q in T]))[1] < 0: T = T[::-1]
             out.append((mat, 'island_cap', [(float(q[0]), y, float(q[1])) for q in T], [uvf(q) for q in T]))
         caps.append(dict(points=len(ch), closed=closed, length=round(L), turn=round(turn), sink=round(sk, 2), y=round(y, 2), tile=mat, rows=(round(r0), round(r1)), triangles=len(_ears(Q))))
+    INFO['island'] = caps
+    return out
+
+def island_cap(backdrop_faces, sink=None, inset=2.0, min_length=80.0, min_turn=150.0):
+    """Build backdrop lids and preserve the public island diagnostics."""
+    import fastgeo
+    if not fastgeo.ON or fastgeo.CHECK:
+        return _island_cap_numpy(backdrop_faces, sink, inset, min_length, min_turn)
+    import fillisland
+    out, caps = fillisland.island_cap(backdrop_faces, tile_alpha, sink, inset, min_length, min_turn)
     INFO['island'] = caps
     return out
 
@@ -372,7 +405,7 @@ def write_handfill(path, faces, rd, zs, texdir='textures'):
         for mat in sorted(mats): fm.write('newmtl %s\nKd 0.8 0.8 0.8\nmap_Kd %s/%s.png\n' % (mat, texdir, mat))
 
 _SEA_ALL = [False]                                                     # sea_clip: True = every face goes through the loop (the reference run of SR3_FASTGEO_CHECK)
-def sea_clip(sea, land, level, cell, sub=10.0, step=2.5, max_h=25.0):
+def _sea_clip_numpy(sea, land, level, cell, sub=10.0, step=2.5, max_h=25.0):
     """the sea sheet without the water that lies under land. sea: quads of `cell` m with uv 0..1 (import_classic); land:
     faces. A point is land when an opaque lying face up to max_h m above the sea covers it (2.5 m lattice; higher land is the
     mountain ribbon, and the water under it is seen from the side). Each quad is cut into
@@ -385,7 +418,7 @@ def sea_clip(sea, land, level, cell, sub=10.0, step=2.5, max_h=25.0):
     if fastgeo.ON and len(land) and not _SEA_ALL[0]:                   # the tests of the loop below for all faces at once: only faces that pass them (a tenth: most hold no point of the 2.5 m lattice) go through the loop
         G_ = fastgeo.prep(land); a_ = np.clip(np.ceil((G_.lo[:, [0, 2]] - [x0, z0]) / step).astype(int), 0, [nx - 1, nz - 1]); b_ = np.clip(np.floor((G_.hi[:, [0, 2]] - [x0, z0]) / step).astype(int), 0, [nx - 1, nz - 1])
         go_ = ~np.fromiter((str(fc[0]).endswith('_t') for fc in land), bool, len(land)) & ~(np.abs(G_.nr[:, 1]) < 0.3) & ~(G_.hi[:, 1] <= level) & ~(G_.lo[:, 1] > level + max_h) & ~(b_ < a_).any(1)
-        if fastgeo.CHECK: _SEA_ALL[0] = True; ref_ = sea_clip(sea, land, level, cell, sub, step, max_h); _SEA_ALL[0] = False
+        if fastgeo.CHECK: _SEA_ALL[0] = True; ref_ = _sea_clip_numpy(sea, land, level, cell, sub, step, max_h); _SEA_ALL[0] = False
         land = [land[i] for i in np.nonzero(go_)[0].tolist()]
     for mat, sec, Q, UV in land:
         if str(mat).endswith('_t'): continue
@@ -415,6 +448,14 @@ def sea_clip(sea, land, level, cell, sub=10.0, step=2.5, max_h=25.0):
                 out.append((mat, sec, [(xa, level, za), (xb, level, za), (xb, level, zb), (xa, level, zb)], [(a / m, b / m), ((a + 1) / m, b / m), ((a + 1) / m, (b + 1) / m), (a / m, (b + 1) / m)]))
     if ref_ is not None: fastgeo.note('fill1995.sea_clip', ref_ == (out, int(drop.sum() * sub * sub)), (len(ref_[0]), len(out)))
     return out, int(drop.sum() * sub * sub)
+
+def sea_clip(sea, land, level, cell, sub=10.0, step=2.5, max_h=25.0):
+    """Clip sea through the buffer helper, retaining the original debug path."""
+    import fastgeo
+    if not fastgeo.ON or fastgeo.CHECK:
+        return _sea_clip_numpy(sea, land, level, cell, sub, step, max_h)
+    import fillsea
+    return fillsea.sea_clip(sea, land, level, cell, sub, step, max_h)
 
 # ---------------------------------------------------------------- 4. skirts
 def _label_tile(faces, classes=('grass', 'rock')):
@@ -516,7 +557,7 @@ def _overlap2d(A, B, shrink=0.02):
             ax = np.array([-e[1], e[0]]) / ln; a = P @ ax; b = Q @ ax
             if a.max() - b.min() < shrink or b.max() - a.min() < shrink: return False
     return True
-def coplanar_report(old, new, tol=0.02):
+def _coplanar_report_numpy(old, new, tol=0.02):
     """number of pairs (a new face, any other face) that lie in ONE plane (normals parallel, within tol) and overlap by
     more than 2 cm: what would z-fight. 0 wanted."""
     allf = list(old) + list(new); recs = []
@@ -540,6 +581,16 @@ def coplanar_report(old, new, tol=0.02):
                     if _overlap2d(np.stack([P @ e1, P @ e2], 1), np.stack([P2 @ e1, P2 @ e2], 1)): bad.add((min(i, j), max(i, j)))
     INFO['coplanar'] = [(allf[i][0], allf[j][0]) for i, j in list(bad)[:6]]
     return len(bad)
+
+def coplanar_report(old, new, tol=0.02):
+    """Return the overlap count and preserve the public material sample."""
+    import fastgeo
+    if not fastgeo.ON or fastgeo.CHECK:
+        return _coplanar_report_numpy(old, new, tol)
+    import fillcheck
+    count, sample = fillcheck.coplanar_report(old, new, tol)
+    INFO['coplanar'] = sample
+    return count
 
 # ---------------------------------------------------------------- self-test
 def _write_obj(path, faces, rd, zs, texdirs):
