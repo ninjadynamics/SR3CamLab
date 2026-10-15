@@ -223,4 +223,4 @@ def scan(faces, rd, title=''):
 
 if __name__ == '__main__':
     import pickle
-    d = pickle.load(open(sys.argv[1], 'rb')); scan(d['faces'] + d['sky'] + d['extra'], d['rd'], sys.argv[2] if len(sys.argv) > 2 else '')
+    import nfpickle; d = nfpickle.load(sys.argv[1], numpy=True); scan(d['faces'] + d['sky'] + d['extra'], d['rd'], sys.argv[2] if len(sys.argv) > 2 else '')

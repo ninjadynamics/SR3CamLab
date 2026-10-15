@@ -18,7 +18,7 @@ def inside(poly, x, z):
 
 def main(dump, out, title=''):
     from PIL import Image, ImageDraw
-    d = pickle.load(open(dump, 'rb')); rd = d['rd']; land = [f for f in d['faces'] + d['sky'] + d['extra'] if f[1] != 'sea'] + F.road_faces(rd)
+    import nfpickle; d = nfpickle.load(dump, numpy=True); rd = d['rd']; land = [f for f in d['faces'] + d['sky'] + d['extra'] if f[1] != 'sea'] + F.road_faces(rd)
     sea = min([f[2][0][1] for f in d['sky'] if f[1] == 'sea'] or [-0.5]); ix = F.Index(land); cen = np.asarray(rd['V'][:, rd['hw']], float); loop = cen[::10][:, [0, 2]]
     size = 1500; sc = size / 1500.0; px = lambda x, z: (size / 2 + x * sc, size / 2 - z * sc); im = Image.new('RGB', (size, size), (60, 95, 170)); dr = ImageDraw.Draw(im)
     for mat, sec, P, UV in land:

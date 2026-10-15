@@ -11,7 +11,7 @@ import fill1995 as F, overlay_bake as OB, gapfill_weld as GW
 def main(dump, title=''):
     import retex, course
     course.use('src', '1'); lab = {k: v[0] for k, v in retex.labels().items()}
-    d = pickle.load(open(dump, 'rb')); rd = d['rd']; faces = [f for f in d['faces'] + d['sky'] + d['extra'] if f[1] != 'sea']; allf = faces + F.road_faces(rd)
+    import nfpickle; d = nfpickle.load(dump, numpy=True); rd = d['rd']; faces = [f for f in d['faces'] + d['sky'] + d['extra'] if f[1] != 'sea']; allf = faces + F.road_faces(rd)
     from common import CLASSIC, TMP; F.TEXDIRS[:] = [os.path.join(CLASSIC, 'courses', 'src', 'course1_mountain', 'textures'), os.path.join(TMP, 'bake_src_mountain')]; F._ALPHA.clear()
     hang = [fi for fi, a, b in F.hanging_boards(allf, 0.05) if lab.get(allf[fi][0]) in ('trunk', 'bare', 'lamp', 'tree')]
     fill = [f for f in faces if str(f[1]).startswith('hf_')]; tiles = collections.Counter(f[0] for f in fill)

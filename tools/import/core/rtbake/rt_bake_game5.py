@@ -58,7 +58,7 @@ class Scene:
         LIB.rx_cast(self.x, 1 if MODE else 0, _p(o), _p(d), n, float(tmax), _p(hit), _p(t), ctypes.byref(fell)); return hit, t
 D = np.load(PATH + '.lm.npz'); P = D['P'].astype(float); I = D['I'].astype(float); U2 = D['U'].astype(bool); GRP = D['G'].astype(np.int64) if 'G' in D.files else np.zeros(len(P), np.int64)
 import scenefile; S = scenefile.load(PATH + '.scene', numpy=True); SUN = np.asarray(S['sun'], float); SUN /= np.linalg.norm(SUN); PAGE = LM.PAGE
-G = pickle.load(open(DUMP, 'rb')); rd = G['rd']; origin = G.get('origin', {}); lab = {k: v[0] for k, v in retex.labels().items()}
+import nfpickle; G = nfpickle.load(DUMP, numpy=True); rd = G['rd']; origin = G.get('origin', {}); lab = {k: v[0] for k, v in retex.labels().items()}
 FS = [fc for fc in G['faces'] + G['sky'] + G['extra'] if not (str(fc[1]) == 'sea' or len(fc[2]) < 3)]      # the faces the rays can hit, in their order
 KEYS = [str(fc[0]) for fc in FS]; BASE = [k_.split('|')[0] for k_ in KEYS]
 names = []; seen = {}

@@ -13,7 +13,7 @@ step, dump, out = sys.argv[1], sys.argv[2], sys.argv[3]
 if os.path.isdir(os.path.join(out, 'tex')):                          # pictures of an EARLIER decode in this folder must go: light-map pages keep their ids from build to build, and a kept page under new uv showed a tower lit from all sides (2026-10-13)
     import shutil; shutil.rmtree(os.path.join(out, 'tex'))
 os.makedirs(os.path.join(out, 'tex'), exist_ok=True)
-rd = pickle.load(open(dump, 'rb'))['rd']; ox, oz = float(rd['ox']), float(rd['oz'])
+import nfpickle; rd = nfpickle.load(dump, numpy=True)['rd']; ox, oz = float(rd['ox']), float(rd['oz'])
 tf = track_files(os.path.join(OUT, step, 'Desert4')); f = sbfw.read_sbf(tf['master_gfx_xdata']); by = f.byid(); r = f.chunks[-1]; s = scene11.parse11(by[r.u32(4)])
 mids = []; seen = set()
 for nd in s.nodes:

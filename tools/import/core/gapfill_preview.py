@@ -36,7 +36,7 @@ print('done')
 '''
 def main(dump, prefix, slices=()):
     import fill1995 as F, json
-    d = pickle.load(open(dump, 'rb')); rd = d['rd']; faces = d['faces'] + d['sky'] + d['extra'] + F.road_faces(rd); zs = -1.0
+    import nfpickle; d = nfpickle.load(dump, numpy=True); rd = d['rd']; faces = d['faces'] + d['sky'] + d['extra'] + F.road_faces(rd); zs = -1.0
     tmp = os.path.join(WORK, 'tmp', 'gapfill_preview'); os.makedirs(tmp, exist_ok=True); obj = os.path.join(tmp, prefix + 'scene.obj')
     tex = [os.path.join(CLASSIC, 'courses', 'src', 'course1_mountain', 'textures'), os.path.join(WORK, 'tmp', 'bake_src_mountain'), os.path.join(WORK, 'classic_tex', 'course1', 'textures')]
     F._write_obj(obj, sorted(faces, key=lambda f: f[0]), rd, zs, tex)

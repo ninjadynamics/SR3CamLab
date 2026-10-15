@@ -48,6 +48,11 @@ class Arr:
         c = (ctypes.c_char * max(1, self.nbytes)).from_buffer(self.buf); self._keep = c
         return ctypes.addressof(c)
     def __repr__(self): return 'Arr(%s, %s)' % (self.dtype, self.shape)
+    def __reduce__(self): return (_arr, (self.dtype, self.shape, bytearray(memoryview(self.buf)[:self.nbytes])))      # (pickles: nfpickle.py)
+
+def _arr(dtype, shape, data):
+    """an Arr from a pickle (nfpickle.py writes numpy arrays this way)"""
+    return Arr(dtype, shape, data)
 
 def header(dtype, shape):
     """numpy 1.24's .npy header, version 1.0: magic, version, length, the dict, spaces to a multiple of 64, newline"""

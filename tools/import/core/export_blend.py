@@ -60,8 +60,8 @@ def main(what, game, crs, name, G, out):
         blender('blendpatch/bl_obj_to_blend.py', out, *[o for o in objs if os.path.exists(o)])
     elif what in ('patch', 'round'):
         p = os.path.join(G, 'patched.pkl') if what == 'patch' and os.path.exists(os.path.join(G, 'patched.pkl')) else os.path.join(G, 'faces.pkl')
-        D = pickle.load(open(p, 'rb')); faces = D['faces'] + D.get('sky', []) + D.get('extra', [])
-        baked = D.get('baked') or pickle.load(open(os.path.join(G, 'faces.pkl'), 'rb')).get('baked', {})     # the patch dump has no composed tiles: the same run's round dump has them
+        import nfpickle; D = nfpickle.load(p, numpy=True); faces = D['faces'] + D.get('sky', []) + D.get('extra', [])
+        baked = D.get('baked') or nfpickle.load(os.path.join(G, 'faces.pkl'), numpy=True).get('baked', {})     # the patch dump has no composed tiles: the same run's round dump has them
         blender('blendpatch/bl_obj_to_blend.py', out, faces_obj(faces, baked, work, '%s_%s' % (name, what)))
     elif what == 'rt':
         r = subprocess.run([sys.executable, os.path.join(HERE, 'rtbake', 'asbuilt_decode.py'), name, os.path.join(G, 'faces.pkl'), work], cwd=HERE)

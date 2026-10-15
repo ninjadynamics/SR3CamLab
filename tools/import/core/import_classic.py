@@ -421,7 +421,7 @@ def stage_build(cfg, variant, name):
                 import crowd as _cw
                 if str(cfg['course']) in _cw.SRC_TABLES: keep_ = [s_[:3] for s_ in _cw.classic_spots(str(cfg['course']), np.asarray(rd['V'][:, rd['hw']], float), rd['ox'], rd['oz'], zs=BC.ZS)]
             if __import__('os').environ.get('ROUND_IN'):                # (debug) what the rounding is given, to try it on its own; ROUND_IN_STOP=1 ends the import there
-                __import__('pickle').dump(dict(faces=faces + sky + extra, road=np.asarray(rd['V'], float), keep=keep_), open(__import__('os').environ['ROUND_IN'], 'wb'))
+                __import__('nfpickle').dump(dict(faces=faces + sky + extra, road=np.asarray(rd['V'], float), keep=keep_), __import__('os').environ['ROUND_IN'])      # (no numpy objects inside: kb 31)
                 if __import__('os').environ.get('ROUND_IN_STOP'): raise SystemExit(0)
             if cfg.get('round_mode', 'outward') == 'outward':          # (owner, 2026-10-14: "rounded outwards (or remain straight) unless something is clearly concave in low-poly"; round_mode 'shrink' = the rule set before)
                 all_, ri_ = round1995.round_outward(faces + sky + extra, level=lv_, log=log, exclude=cfg.get('round_exclude', ()), road=np.asarray(rd['V'], float), keep_at=keep_,
@@ -457,9 +457,9 @@ def stage_build(cfg, variant, name):
             import bake1995, atexit; BC.BAKE_TABLE = bake1995.load_table(cfg['bake_table']); BC.BAKE_MODE = cfg.get('bake_mode', 'shadows'); BC.BAKE_SHADE = float(cfg.get('bake_shade', 0.42)); BC.BAKE_STRENGTH = float(cfg.get('bake_strength', 1.0))
             atexit.register(lambda: print('       baked light (%s): %d vertices found by place only, %d not found at all (those are lit as if in the open)' % (BC.BAKE_MODE, BC.BAKE_TABLE['miss'][0], BC.BAKE_TABLE['miss'][1])))
         if os.environ.get('GAPFILL_DUMP'):
-            import pickle
+            import nfpickle
             import overlay_bake as _OBd
-            pickle.dump(dict(faces=faces, sky=sky, extra=extra, rd=rd, baked=dict(BC.BAKED), origin=dict(_OBd.ORIGIN), **DUMP_EXTRA, pairs=[k for k, fc in enumerate(faces + sky + extra) if id(fc) in BC.PAIRS]), open(os.environ['GAPFILL_DUMP'], 'wb'))
+            nfpickle.dump(dict(faces=faces, sky=sky, extra=extra, rd=rd, baked=dict(BC.BAKED), origin=dict(_OBd.ORIGIN), **DUMP_EXTRA, pairs=[k for k, fc in enumerate(faces + sky + extra) if id(fc) in BC.PAIRS]), os.environ['GAPFILL_DUMP'])      # (no numpy objects inside: kb 31)
         if float(cfg.get('light_contrast', 0.0)) > 0 and cfg.get('lit_sides', True):      # lighting by the sun: every opaque polygon wound towards the side it is seen from (lightside.py). "lit_sides": false (2026-10-13) leaves every polygon as it is:
             # turning a polygon round reverses its corners, and a four-corner polygon is drawn as two triangles along corners 0 - 2 - reversed, it is cut along the OTHER diagonal. On a twisted polygon (37% of Mountain's are, some by metres) that is another surface:
             # it no longer met its neighbours and no longer was where the light had been baked. With light maps as the only lighting nothing needs a seen side.

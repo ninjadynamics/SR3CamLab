@@ -37,6 +37,25 @@ A full chain on an empty data folder, every Python process logging the modules i
   `np.linalg.norm(N, axis=1)` is `sqrt((x*x + y*y) + z*z)`; a short sum over the last axis of a big array is
   `(p0 + p1) + p2` (checked on real data: the composed pages are byte for byte).
 - `np.round` rounds half to even (`rint` / `rintf`); `np.maximum` and `np.min` pass a NaN on.
+- numpy's matrix products go through OpenBLAS. Measured on a million random rows (numpy 1.24.3, this PC), each 100%:
+  `(A * s).sum(1)` and `A @ M` (matrix x matrix, any thread count) are `(p0 + p1) + p2`; `np.dot(a, b)` of two 3-vectors
+  and `A @ s` (matrix x vector) with OpenBLAS on 1 to 16 threads are `(p0 + p2) + p1`, the middle term last, no fused
+  multiply-add. **At 32 threads `A @ s` changes**: from 20,000 rows up some thread chunks run another kernel and give other
+  last bits, so numpy's own answer depends on the PC's core count. A C port uses the fixed formula and gives the same bits
+  on every PC. The chain does not depend on it: with OPENBLAS_NUM_THREADS=8 it still gives v15's game files (checked
+  2026-10-15).
+- **`np.dot` of two 3-vectors depends on where the second one sits in memory** (OpenBLAS's small kernel): 16-byte
+  aligned gives `(p0 + p2) + p1`, 8 bytes off gives `(p0 + p1) + p2`, each 100% (6,000 pairs per alignment class).
+  `np.linalg.norm(v)` is `sqrt(v.dot(v))`, so it follows `v`'s alignment. A fresh numpy array is 16-byte aligned; the rows
+  of an (n, 3) array alternate (24-byte rows). So a port reads each site: which operand is fresh, which is a row.
+
+## Pickles
+
+A pickle holding numpy objects needs numpy to load. `core\nfpickle.py` writes the stack's dumps (`faces.pkl`,
+`patched.pkl`) without any: the pickler's `reducer_override` turns each numpy array into an `npyio.Arr` and each numpy
+scalar into a Python number (the same bits), without walking the data; `load(numpy=True)` gives numpy readers numpy
+arrays back through the unpickler's `find_class`. On the real 92 MB `faces.pkl`: the same values, dump 0.9 s, load
+1.0 s (1.2 s with numpy=True), as fast as pickle was. The whole chain with it: v15's game files.
 
 ## Done
 
