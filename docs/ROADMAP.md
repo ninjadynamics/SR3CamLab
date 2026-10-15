@@ -43,7 +43,13 @@ In-memory patching (as patch.ps1 does today) or more side-loaded DLLs, on the Te
    - **The exception: CamLab** (`camlab.exe`) stays a shipped binary, as it is now, and CamLab is not to be changed (owner,
      2026-10-15).
    - Default: setup unpacks the toolchain zip (Python with numpy and Pillow, MinGW-w64 gcc) into the mod folder, offline.
-     Option: winget installs Python and WinLibs gcc, and pip the pinned numpy / Pillow.
+     Option: everything obtainable via winget with curl fallbacks (owner, 2026-10-15): winget installs Python and WinLibs gcc
+     + clang, pip the pinned numpy / Pillow; where winget is missing or fails, curl fetches python.org's embeddable Python,
+     the wheels from PyPI and WinLibs' exact gcc 13.2.0 + LLVM 17.0.6 build from its GitHub releases (setup_toolchain.ps1
+     -Online). Pinned versions, SHA-256 checked.
+   - 32-bit code (Rally.exe is 32-bit: the planned sr3lab.dll that carries the in-memory patches) is built with clang + lld
+     from the same WinLibs package; import libraries come from our own .def files (llvm-dlltool), no C runtime. Shown
+     2026-10-15: a 32-bit DLL built this way loads in a 32-bit process and its export runs.
    - Status (2026-10-15): the import stack works this way (tools\release.py makes both zips; tools\setup_toolchain.ps1).
      Not yet: patch.ps1 still carries its machine code as hex made on the author's PC (the sources and their build scripts,
      tools\build_*.py, ship; they need keystone and clang, which the toolchain zip does not have yet).

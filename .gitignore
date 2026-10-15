@@ -16,6 +16,7 @@ dist/
 # the toolchain zip, unpacked (tools/setup_toolchain.ps1): Python and gcc are binaries, never committed
 /tools/python/
 /tools/mingw/
+/tools/mingw64/
 
 # tools/ outputs
 __pycache__/

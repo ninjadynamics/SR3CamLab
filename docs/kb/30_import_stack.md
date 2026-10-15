@@ -51,7 +51,7 @@ Each runs in a thread beside the next step and Blender packs every picture.
 
 The only binaries SR3Lab ships are Python and a C compiler, in `SR3Lab-<date>-toolchain.zip` (`tools\release.py`), optional:
 setup (`tools\setup_toolchain.ps1`, the window's "Python and gcc...") unpacks it offline into `tools\python` and `tools\mingw`;
-`-Winget` fetches Python 3.11.3, gcc (WinLibs) and the pinned numpy / Pillow instead, and the zip can go. The mod zip itself holds
+`-Online` fetches Python 3.11.3, gcc + clang (WinLibs) and the pinned numpy / Pillow instead (winget first, curl as the fallback, SHA-256 checked), and the zip can go. The mod zip itself holds
 no binary (release.py refuses to stage one). The C helpers are compiled on the user's PC on first use from `core\cbuild.py`'s
 table (sources, per-unit flags, the files that name each DLL); `python core\cbuild.py` builds them all and prints the commands.
 

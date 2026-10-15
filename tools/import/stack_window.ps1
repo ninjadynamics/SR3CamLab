@@ -244,11 +244,11 @@ $bHv.Add_Click({ $c = Current; if ($c) { Start-Py @((Join-Path $Here 'core\hd_te
 $bAc.Add_Click({ Start-Py @((Join-Path $Repo 'tools\audio\src_audio.py'), 'codriver') (Join-Path $Repo 'tools\audio') $null })
 $bAm.Add_Click({ if (-not $Boxes.mame.Text.Trim()) { [Windows.Forms.MessageBox]::Show('Set MAME in the folders first.') | Out-Null; return }; Start-Py @((Join-Path $Repo 'tools\audio\src_music.py'), 'all') (Join-Path $Repo 'tools\audio') $null })
 $bTools.Add_Click({
-    $m = "SR3Lab's own Python and C compiler are in the toolchain zip that comes with it.`n`nYes: unpack them from the zip (recommended - nothing is downloaded or installed in Windows).`nNo: fetch them with winget instead (python.org's Python, WinLibs' gcc, numpy and Pillow from PyPI); the zip is not needed then.`nCancel: leave things as they are."
+    $m = "SR3Lab's own Python and C compiler are in the toolchain zip that comes with it.`n`nYes: unpack them from the zip (recommended - nothing is downloaded or installed in Windows).`nNo: fetch them online instead, each from its own publisher (winget first, curl when winget is not there or fails: python.org's Python, numpy and Pillow from PyPI, WinLibs' gcc and clang); the zip is not needed then.`nCancel: leave things as they are."
     $a = [Windows.Forms.MessageBox]::Show($m, 'Python and gcc', 'YesNoCancel', 'Question')
     if ($a -eq 'Cancel') { return }
     $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $argv = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $Repo 'tools\setup_toolchain.ps1')) + $(if ($a -eq 'No') { @('-Winget') } else { @() })
+    $argv = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $Repo 'tools\setup_toolchain.ps1')) + $(if ($a -eq 'No') { @('-Online') } else { @() })
     Start-Tool $ps $argv $Repo { param($code) $script:S = Read-Settings; Update-Tools }
 })
 $F.Add_FormClosing({ if ($script:Proc -and -not $script:Proc.HasExited) { & taskkill.exe /T /F /PID $script:Proc.Id | Out-Null } })

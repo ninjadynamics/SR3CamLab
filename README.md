@@ -162,7 +162,8 @@ Each profile sets `strength`, `fadeInStartKmh`, `fadeInFullKmh`, `stiffnessMin`,
   investigate the game.
 - [tools/import/](tools/import/README.md): other SEGA games' courses in SEGA Rally 3, made from
   your own ROM sets (`IMPORT.bat`). It needs Python and a C compiler: the optional
-  `SR3Lab-<date>-toolchain.zip` brings both and needs no internet, or winget can fetch them.
+  `SR3Lab-<date>-toolchain.zip` brings both and needs no internet, or setup fetches them from their
+  publishers (winget, with curl as the fallback).
   Those are the only binaries anywhere in the mod; everything else is scripts and C sources,
   built on your PC. [docs/ROADMAP.md](docs/ROADMAP.md) says where all this is going.
 
