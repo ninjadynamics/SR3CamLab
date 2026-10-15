@@ -36,9 +36,10 @@ Main program (epr-17888c.12 + epr-17889c.13, 16-bit halves of 32-bit words; RAM 
                  0x5BB700 the same for the other value of the mode flag 0x202230
 """
 import os, sys, re, csv, struct, zipfile, argparse, wave
-import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import audio_dsp as dsp
 REPO = os.path.dirname(os.path.dirname(HERE))
 import os as _os, sys as _sys; _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '..', 'import', 'core')); import common as _cm   # tools/import/settings.json
 _TMP = _cm.TMP.replace('\\', '/'); _DATA = _cm.DATA.replace('\\', '/')
@@ -62,12 +63,15 @@ class SrcRom:
                 c = [n for n in names if os.path.basename(n).lower().startswith(prefix)]
                 if len(c) != 1: raise SystemExit("%s: expected one file starting with '%s', found %s" % (path, prefix, c))
                 return z.read(c[0])
-            swap = lambda b: np.frombuffer(b, np.uint8).reshape(-1, 2)[:, ::-1].tobytes()
+            # This can actually be done with numpy the following way: u8.reshape(-1,2)[:,::-1];
+            # it's done this way because byte slices need no numeric package.
+            def swap(b):
+                out=bytearray(len(b));out[0::2]=b[1::2];out[1::2]=b[0::2];return bytes(out)
             self.snd = swap(get("epr-17890."))
-            self.smp = np.frombuffer(b"".join(swap(get(p)) for p in ("mpr-17756.", "mpr-17757.", "mpr-17886.", "mpr-17887.")), np.int8)
-            lo = np.frombuffer(get("epr-17888c."), "<u2"); hi = np.frombuffer(get("epr-17889c."), "<u2")
-            m = np.zeros(2 * len(lo), "<u2"); m[0::2] = lo; m[1::2] = hi
-            self.main = m.tobytes()
+            self.smp = b"".join(swap(get(p)) for p in ("mpr-17756.", "mpr-17757.", "mpr-17886.", "mpr-17887."))
+            lo=get("epr-17888c.");hi=get("epr-17889c.")
+            m=bytearray(2*len(lo));m[0::4]=lo[0::2];m[1::4]=lo[1::2];m[2::4]=hi[0::2];m[3::4]=hi[1::2]
+            self.main=bytes(m)
         if struct.unpack_from(">II", self.snd, 0) != (0x5000, 0x600100): raise SystemExit("epr-17890 is not the sound program this tool knows")
     # sound program (big-endian, 68000 addresses)
     def w(self, a): return struct.unpack_from(">H", self.snd, a - SND_BASE)[0]
@@ -82,7 +86,7 @@ class SrcRom:
             st, ln, ls, ll, env = struct.unpack_from(">5I", self.snd, SAMPLE_TABLE + 2 - SND_BASE + 20 * i)
             out.append(dict(index=i, start=st, length=ln, loop_start=ls, loop_length=ll, env=env, rom=st - SMP_BASE))
         return out
-    def pcm(self, s): return self.smp[s["rom"]: s["rom"] + s["length"]].astype(np.float64) * 256.0
+    def pcm(self, s): return dsp.from_pcm(self.smp[s["rom"]: s["rom"] + s["length"]], 8)
 
     def requests(self):
         """[{number, name, code (3 bytes)}] from the main program's sound-test tables"""
@@ -189,79 +193,38 @@ class SrcRom:
         return {COURSES[c]: (names[self.ml(TUNE_TABLE + 4 * c)], names[self.ml(TUNE_TABLE_2 + 4 * c)]) for c in range(4)}
 
 
-# ---------------------------------------------------------------- audio helpers (numpy only)
-def resample_long(x, src, dst, edge=0.93):
-    """Band-limited rate change of long audio (minutes) through one Fourier transform: the spectrum is kept up to
-    `edge` of the narrower band and rolled off to nothing at its end (raised cosine), then read back at the new rate.
-    x: float array (frames, channels). The result has round(len * dst / src) frames."""
-    from math import gcd
-    g = gcd(int(src), int(dst)); L = int(dst) // g; M = int(src) // g
-    k = 1
-    while M * k < len(x) + 4096: k *= 2                             # M * 2^k input samples <-> L * 2^k output samples, both quick to transform
-    nin, nout = M * k, L * k; keep = min(nin, nout) // 2            # bins below the narrower band's end
-    f = np.arange(keep + 1) / keep
-    w = np.where(f <= edge, 1.0, 0.5 * (1 + np.cos(np.pi * np.clip((f - edge) / (1 - edge), 0, 1))))
-    out = np.zeros((int(round(len(x) * L / M)), x.shape[1]))
-    for ch in range(x.shape[1]):
-        X = np.fft.rfft(x[:, ch], nin)[:keep + 1] * w
-        out[:, ch] = np.fft.irfft(X, nout)[:len(out)] * (nout / nin)
-    return out
+# ---------------------------------------------------------------- audio helpers (C + Python)
+# This can actually be done with numpy the following way: vectorized sinc/FFT,
+# reduction and np.tanh; it's done this way because the C loops avoid large
+# temporaries and the NumPy runtime. Operation order is documented in audio_dsp.
+resample_long = dsp.resample_long
+resample = dsp.resample
 
-def resample(x, src, dst, taps=64, att=80.0):
-    """Band-limited rate change. Short clips: polyphase Kaiser-windowed sinc, `taps` per phase, stop band `att` dB;
-    long audio goes to resample_long. x: float array, mono or (frames, channels); round(len * dst / src) frames come back."""
-    from math import gcd
-    x = np.asarray(x, np.float64)
-    if src == dst: return x.copy()
-    if len(x) * taps * dst / src > 8_000_000: return resample_long(x[:, None], src, dst)[:, 0] if x.ndim == 1 else resample_long(x, src, dst)
-    g = gcd(int(src), int(dst)); L = int(dst) // g; M = int(src) // g
-    beta = 0.1102 * (att - 8.7) if att > 50 else 0.5842 * (att - 21) ** 0.4 + 0.07886 * (att - 21)
-    width = (att - 7.95) / (2.285 * 2 * np.pi * taps)                # transition width, in cycles per input sample
-    fc = min(0.5, 0.5 * L / M) - width / 2                           # cut-off, cycles per input sample (centre of the transition)
-    n = np.arange(taps * L) - (taps * L) // 2                        # centred on a whole sample: no delay in the result
-    h = 2 * fc * np.sinc(2 * fc * n / L) * np.kaiser(taps * L + 1, beta)[:-1]   # prototype at L times the input rate
-    mono = x.ndim == 1
-    if mono: x = x[:, None]
-    nout = int(round(len(x) * L / M)); pad = taps + 1
-    xp = np.concatenate([np.zeros((pad, x.shape[1])), x, np.zeros((pad + M, x.shape[1]))])
-    out = np.zeros((nout, x.shape[1])); c = (taps * L) // 2
-    H = h.reshape(taps, L).T.copy(); H /= H.sum(axis=1, keepdims=True)      # H[phase, tap], every phase with gain 1
-    q, r = np.divmod(np.arange(nout, dtype=np.int64) * M + c, L)
-    idx = q[:, None] - np.arange(taps)[None, :] + pad
-    for ch in range(x.shape[1]): out[:, ch] = np.einsum("ij,ij->i", xp[idx, ch], H[r])
-    return out[:, 0] if mono else out
-
-def loud_half_rms(x, rate, frame=0.05):
-    """level of the louder half of the frames (50 ms for speech, 1 s for music: the measure the SEGA Rally 2 clips and
-    tunes were matched with before); all channels of a frame count together"""
-    x = np.asarray(x, np.float64)
-    n = int(frame * rate); k = len(x) // n
-    if k < 2: return float(np.sqrt(np.mean(x ** 2)) + 1e-9)
-    e = np.sort(np.sqrt(np.mean(x[:k * n].reshape(k, -1) ** 2, axis=1)))[k // 2:]
-    return float(np.sqrt(np.mean(e ** 2)) + 1e-9)
-def soft_limit(x): return 32000.0 * np.tanh(np.asarray(x, np.float64) / 32000.0)
+def loud_half_rms(x, rate, frame=0.05): return dsp.loud(x, rate, frame)
+def soft_limit(x): return dsp.scale(x, 1., True)
 def match_level(x, target, rate, frame=0.05, always_limit=True):
     """gain x to the target level. Speech goes through the soft ceiling as a whole (the gain is corrected for what the
     ceiling takes, 3 rounds); music only when its peaks would clip (always_limit=False)."""
     g = target / loud_half_rms(x, rate, frame)
-    if not always_limit and np.abs(x).max() * g <= 32000.0: return x * g, g
+    if not always_limit and dsp.peak(x) * g <= 32000.0: return dsp.scale(x, g), g
     for _ in range(3):
-        y = soft_limit(x * g); got = loud_half_rms(y, rate, frame)
+        y = dsp.scale(x, g, True); got = loud_half_rms(y, rate, frame)
         if abs(got / target - 1) < 0.02: break
         g *= target / got
     return y, g
 def trim(x, rate, pad_ms=15.0, ramp_ms=4.0):
     """cut the silence before and after a clip (threshold 3 % of its peak), keep a short pad, ramp both ends"""
-    e = np.abs(x); thr = max(e.max() * 0.03, 250.0); idx = np.nonzero(e > thr)[0]
-    if len(idx) == 0: return x[:0]
-    p = int(pad_ms * rate / 1000); a = max(0, idx[0] - p); b = min(len(x), idx[-1] + p)
+    thr = max(dsp.peak(x) * 0.03, 250.0); first = dsp.crossing(x, thr)
+    if first == len(x): return x[:0]
+    last = dsp.crossing(x, thr, True)
+    p = int(pad_ms * rate / 1000); a = max(0, first - p); b = min(len(x), last + p)
     y = x[a:b].copy(); n = min(int(ramp_ms * rate / 1000), len(y) // 2)
-    if n: r = np.linspace(0, 1, n); y[:n] *= r; y[-n:] *= r[::-1]
+    if n: dsp.ramp(y[:n]); dsp.ramp(y[-n:], True)
     return y
 def write_wav(path, x, rate):
-    x = np.asarray(x); ch = 1 if x.ndim == 1 else x.shape[1]
+    ch = x.channels
     with wave.open(path, "wb") as w:
-        w.setnchannels(ch); w.setsampwidth(2); w.setframerate(int(rate)); w.writeframes(np.clip(np.round(x), -32768, 32767).astype("<i2").tobytes())
+        w.setnchannels(ch); w.setsampwidth(2); w.setframerate(int(rate)); w.writeframes(dsp.wav_bytes(x))
 def safe_name(stream): return re.sub(r'[<>:"/\\|?*]', "_", stream)
 
 
@@ -337,13 +300,13 @@ def render(clips_pcm, slot_samples, target, out_rate=32000):
     parts = []
     for i, (x, rate) in enumerate(clips_pcm):
         y = resample(trim(x, rate), int(round(rate)), out_rate)
-        if i: parts.append(np.zeros(int(GAP_S * out_rate)))
+        if i: parts.append(dsp.PCM(int(GAP_S * out_rate)))
         parts.append(y)
-    y = np.concatenate(parts); natural = len(y) / out_rate; fit = "fits"
+    y = dsp.concat(parts); natural = len(y) / out_rate; fit = "fits"
     if len(y) > slot_samples:
-        over = y[slot_samples:]; lost = float(np.sum(over ** 2) / (np.sum(y ** 2) + 1e-9))
+        over = y[slot_samples:]; lost = dsp.sumsq(over) / (dsp.sumsq(y) + 1e-9)
         if lost > 0.02: return None, natural, 0.0, "too long for the clip it would replace (%.2f s in %.2f s)" % (natural, slot_samples / out_rate)
-        y = y[:slot_samples].copy(); n = min(int(0.03 * out_rate), len(y)); y[-n:] *= np.linspace(1, 0, n); fit = "tail cut (quiet part only)"
+        y = y[:slot_samples].copy(); n = min(int(0.03 * out_rate), len(y)); dsp.ramp(y[-n:], 2); fit = "tail cut (quiet part only)"
     y, g = match_level(y, target, out_rate)
     return y, natural, g, fit
 
@@ -370,7 +333,7 @@ class Sr3Clips:
     def original(self, s):
         p = [f for f in self.backup.get(self.name(s).lower(), []) if os.path.getsize(f) == s["nbytes"]]     # a name can be a clip and a tune
         raw = open(p[0], "rb").read() if p else self.sb.original_samples(s)
-        return np.frombuffer(raw, "<i2").astype(np.float64).reshape(-1, s["ch"])
+        return dsp.from_pcm(raw, 16, s["ch"])
 
 def build_codriver(rom, sr3, out_dir, log=print):
     os.makedirs(out_dir, exist_ok=True)

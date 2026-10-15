@@ -1,0 +1,41 @@
+{
+  "short-mono": {
+    "frames": 726,
+    "sha256": "b8b6c6bfbf740f518af9e8d1e7d41204ec64ea6665a169a10daf30325eebcd16"
+  },
+  "short-stereo-up": {
+    "frames": 2852,
+    "sha256": "6399befb96541a8b8c9b7c975a6d75a68d6bf5c15827cabfa51a3920943a7647"
+  },
+  "same-rate": {
+    "frames": 1001,
+    "sha256": "46044e0db30e38219ee799c53b7f80fde89a1a1bf3717b263aeefbffe8709ff6"
+  },
+  "fft-mono": {
+    "frames": 2178,
+    "sha256": "c7c3896ecaea6a59cdf2025a3b39e4a26ce063375c7251a277fc24a9db4d0ab4"
+  },
+  "fft-stereo-up": {
+    "frames": 4276,
+    "sha256": "9c80a81cc23a17bf2d74b09820b69a9523df140664d756deb8024aac885fa358"
+  },
+  "limited": {
+    "frames": 10001,
+    "sha256": "e43f2259fefbed71c465715cc5c0360817812fd63b2463f0c25da20e73fd0f32"
+  },
+  "trimmed": {
+    "frames": 10001,
+    "sha256": "5629b51bb23d508bf140e37b986e6f56dc838038e0a59e57c0e8f15b4287a086"
+  },
+  "loud": {
+    "1": 20000.000000001,
+    "7": 19709.954769101816,
+    "8": 19661.756216066748,
+    "127": 14337.01562390265,
+    "128": 14297.030373473668,
+    "129": 14257.152964974992,
+    "4096": 11505.584691358497
+  },
+  "rounding": "0080fefffeff0000000002000200ff7f",
+  "reference": "NumPy 1.24.3; source baseline saved before this port; PCM bytes after ties-to-even rounding and clipping."
+}

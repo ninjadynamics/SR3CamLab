@@ -40,8 +40,9 @@ start" (routine 0x5681C0), so with the loop start of tunes.json the tune goes ro
 it: first part once, then the loop. Both seams are blended over 20 ms into the samples that precede the second pass.
 """
 import os, sys, re, csv, argparse, subprocess, wave, time
-import numpy as np
+import statistics
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
+import audio_dsp as dsp
 import src_audio as sa
 
 import os as _os, sys as _sys; _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '..', 'import', 'core')); import common as _cm   # tools/import/settings.json
@@ -237,17 +238,15 @@ class Recording:
         self.n = self.w.getnframes()
     def get(self, t0, t1):
         a = max(0, int(round(t0 * RATE))); b = min(self.n, int(round(t1 * RATE)))
-        if b <= a: return np.zeros((0, 2))
-        self.w.setpos(a); return np.frombuffer(self.w.readframes(b - a), "<i2").astype(np.float64).reshape(-1, 2)
+        if b <= a: return dsp.PCM(0, 2)
+        self.w.setpos(a); return dsp.from_pcm(self.w.readframes(b - a), 16, 2)
 
-def onset(x, lead=64):
-    """index where the sound begins (2 % of the level of the loud passages), a few samples early"""
-    e = np.abs(x).max(axis=1); thr = max(0.02 * np.percentile(e, 99.5), 8.0)
-    idx = np.nonzero(e > thr)[0]
-    return max(0, int(idx[0]) - lead) if len(idx) else 0
-def envelope(x, hop=441):
-    k = len(x) // hop; return np.sqrt(np.mean(x[:k * hop].reshape(k, hop, -1) ** 2, axis=(1, 2)))
-def rms(x): return float(np.sqrt(np.mean(np.asarray(x, np.float64) ** 2))) if len(x) else 0.0
+# This can actually be done with numpy the following way: percentile/max,
+# sqrt(mean(x*x)), and frame reshapes; it's done this way because contiguous C
+# scans avoid intermediate arrays while retaining the same frame boundaries.
+onset = dsp.onset
+def envelope(x, hop=441): return dsp.envelope(x, hop)
+rms = dsp.rms
 
 def entry_times(rom, it, tunes):
     """[(seconds from the tune's start by the ROM's lengths, seconds from its start as logged)] of the list entries of a recorded tune, and how many were played"""
@@ -273,9 +272,13 @@ def recording_clock(rom, items):
     tunes = {t["name"]: t for t in rom.tunes()}; num = den = 0.0; n = 0
     for it in items:
         if it["group"] != 0x10 or it["stop"] is None: continue
-        p = np.array(entry_times(rom, it, tunes)[0], float)
+        p = entry_times(rom, it, tunes)[0]
         if len(p) < 3: continue
-        x = p[:, 0] - p[:, 0].mean(); y = p[:, 1] - p[:, 1].mean(); num += float(x @ y); den += float(x @ x); n += len(p)
+        # This can actually be done with numpy the following way: (p-p.mean(0)).T @ (p-p.mean(0));
+        # it's done this way because these lists contain only a few dozen entries.
+        mx=sum(a for a,b in p)/len(p); my=sum(b for a,b in p)/len(p)
+        x=[a-mx for a,b in p]; y=[b-my for a,b in p]
+        num += sum(a*b for a,b in zip(x,y)); den += sum(a*a for a in x); n += len(p)
     k = num / den if den > 100.0 and n >= 6 else 1.0
     return k if 0.95 < k < 1.05 else 1.0
 
@@ -286,7 +289,7 @@ def check_recording(rom, items, rec, log=print, clock=1.0):
         if it["group"] != 0x10: continue
         t = tunes[it["name"]]; pts, played = entry_times(rom, it, tunes)
         dev = [got - clock * want for want, got in pts]
-        worst = max(abs(d - np.median(dev)) for d in dev) if dev else 9.9
+        worst = max(abs(d - statistics.median(dev)) for d in dev) if dev else 9.9
         good = len(dev) >= min(played, 2) and worst < 0.06
         ok &= good
         log("   %-18s %3d list entries logged, %3d match the ROM's lengths; worst difference %.0f ms (a frame is 17 ms)  %s" % (it["name"], len(it["lists"]), len(dev), 1000 * worst, "ok" if good else "NOT AS EXPECTED"))
@@ -304,23 +307,22 @@ def check_recording(rom, items, rec, log=print, clock=1.0):
                 # agreement must be AT the computed place (a pass begins with the ring of other notes than the first did, so the curves are
                 # alike, not equal: 0.77 to 0.97 on the first real recording, against 0.02 to 0.34 a second off)
                 a = envelope(rec.get(it["start"] + first + 0.3, it["start"] + first + 0.3 + span)); best = (-2.0, 0.0); c = 0.0
-                for sh in np.arange(-2.0, 2.0001, 0.01):
+                for shift in range(401):
+                    sh = -2.0 + shift * (-1.99 - -2.0)  # np.arange retains the rounded step
                     b = envelope(rec.get(it["start"] + first + loop + 0.3 + sh, it["start"] + first + loop + 0.3 + sh + span)); m = min(len(a), len(b))
-                    cc = float(np.corrcoef(a[:m], b[:m])[0, 1]) if m > 10 else 0.0
+                    cc = dsp.correlation(a[:m], b[:m]) if m > 10 else 0.0
                     if abs(sh) < 0.005: c = cc
                     if cc > best[0]: best = (cc, float(sh))
                 good = c > 0.6 and abs(best[1]) <= 0.025; ok &= good
                 log("   %-18s the loop comes round after %.3f s: loudness curves of the two passes agree %.2f there, and best (%.2f) at %+.2f s from there  %s" % ("", loop, c, best[0], best[1], "ok" if good else "NOT AS EXPECTED"))
     v = [it for it in items if it["group"] != 0x10]
     if v:
-        it = v[0]; clip = rom.voice_clips()[it["name"]]; x = rec.get(it["start"] - 0.05, it["stop"] + 0.5).mean(axis=1)
+        it = v[0]; clip = rom.voice_clips()[it["name"]]; x = rec.get(it["start"] - 0.05, it["stop"] + 0.5).column(-1)
         res = {}
         for rate in (11025, 22050, 44100):
             ref = sa.resample(clip["pcm"], rate, RATE, taps=32)
             if len(ref) + 10 >= len(x): res[rate] = 0.0; continue
-            n = 1 << int(np.ceil(np.log2(len(x) + len(ref)))); c = np.fft.irfft(np.fft.rfft(x, n) * np.conj(np.fft.rfft(ref, n)), n)[:len(x) - len(ref)]
-            k = int(np.argmax(c)); seg = x[k:k + len(ref)]
-            res[rate] = float(np.dot(seg, ref) / (np.linalg.norm(seg) * np.linalg.norm(ref) + 1e-9))
+            res[rate] = dsp.voice_score(x, ref)
         best = max(res, key=res.get); good = best == int(round(clip["rate"])) and res[best] > 0.8
         ok &= good
         log("   co-driver clip %s as the emulator plays it against the ROM clip at 11025 / 22050 / 44100 Hz: %.2f / %.2f / %.2f -> %d Hz  %s"
@@ -340,9 +342,9 @@ def tune_file(x, t, clock=1.0):
     a = 16 * int(round(n_first * r / 16)); length = 16 * int(round(n_loop * r / 16)); s2 = a + int(round(n_loop * r))
     head = y[:a].copy(); body = y[s2:s2 + length].copy(); n = min(int(SEAM * 32000), a, length)
     if n:
-        w = np.linspace(0.0, 1.0, n)[:, None]; before = y[s2 - n:s2]
-        head[-n:] = head[-n:] * (1 - w) + before * w; body[-n:] = body[-n:] * (1 - w) + before * w
-    return np.concatenate([head, body]), a
+        before = y[s2 - n:s2]
+        dsp.blend(head[-n:], before); dsp.blend(body[-n:], before)
+    return dsp.concat([head, body]), a
 
 def build(rom, sr3, work, out_dir, log=print):
     import json
@@ -367,12 +369,12 @@ def build(rom, sr3, work, out_dir, log=print):
             rows.append([key + ".wav", course, t["name"], "", "", "", "", note]); log("   %-13s %s" % (key + ".wav", note)); ok = False; continue
         y, g = sa.match_level(y, target, 32000, 1.0, always_limit=False)
         sa.write_wav(os.path.join(out_dir, key + ".wav"), y, 32000)
-        step = float(np.abs(y[-1] - y[start]).max()); usual = float(np.percentile(np.abs(np.diff(y[max(0, start - 3200):start + 3200], axis=0)), 95)) + 1.0
+        step, usual = dsp.seam(y, start)
         notes[key] = dict(file=key + ".wav", course=course, tune=t["name"], frames=int(len(y)), loop_start=int(start), seconds=round(len(y) / 32000.0, 3),
                           loop_seconds=round((len(y) - start) / 32000.0, 3), gain=round(g, 3))
         holds = "first part %.2f s, then the loop %.2f s (loop start at frame %d); step at the seam %.0f against %.0f between neighbouring samples" % (start / 32000.0, (len(y) - start) / 32000.0, start, step, usual)
-        rows.append([key + ".wav", course, t["name"], "%.3f" % (len(y) / 32000.0), "%.3f" % (start / 32000.0), "%.2f" % g, "%.0f" % np.abs(y).max(), holds])
-        log("   %-13s <- %-18s gain %.2f, peak %5.0f; %s" % (key + ".wav", t["name"], g, np.abs(y).max(), holds))
+        rows.append([key + ".wav", course, t["name"], "%.3f" % (len(y) / 32000.0), "%.3f" % (start / 32000.0), "%.2f" % g, "%.0f" % dsp.peak(y), holds])
+        log("   %-13s <- %-18s gain %.2f, peak %5.0f; %s" % (key + ".wav", t["name"], g, dsp.peak(y), holds))
     with open(os.path.join(out_dir, "tunes.json"), "w", encoding="utf-8") as f: json.dump(notes, f, indent=1)
     with open(os.path.join(out_dir, "mapping.csv"), "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f); w.writerow(["file", "src_1995_course", "src_1995_tune", "seconds", "loop_start_seconds", "gain", "peak", "what_the_file_holds"]); w.writerows(rows)
