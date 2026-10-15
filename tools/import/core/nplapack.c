@@ -10,6 +10,7 @@
      dgemv 'N'  y_i = 0 + the products added one after another; dger A_ij += (alpha y_j) x_i; drot c x + s y, c y - s x
      dgemm TN   0 + the products added one after another (fitted k < 8; dlalsd's 8 x 8 checked through whole dgelsd calls)
      dlartg     LAPACK 3.10's: d = sqrt(f f + g g), p = 1 / d, c = |f| p, s = g sign(p, f), r = sign(d, f)
+   np.linalg.svd (dgesdd, JOBZ 'A') the same way: np_svd, for m >= n below dgesdd's QR threshold (every square matrix).
    Sizes: m <= 8 rows (dnrm2's order is known below 8), n <= m (the overdetermined / square path, the one numpy takes for these).
    Plain C, no SIMD: the cost is a few hundred flops a system; -ffp-contract=off (no fused multiply-add, like the kernels). */
 #include <stdlib.h>
@@ -291,9 +292,18 @@ static void dlasr_lv(char direct, int m, int n, const double *cs, const double *
             for (int i = 1; i <= n; i++) { double t = A_(j + 1, i); A_(j + 1, i) = ct * t - st * A_(j, i); A_(j, i) = st * t + ct * A_(j, i); }
     }
 }
-/* dbdsqr, UPLO 'U', NRU = 0: the singular values of the n x n upper bidiagonal (d, e) with VT (ncvt columns) and C (ncc columns)
-   updated; work >= 4 (n - 1). Returns info (0 = converged). */
-static int dbdsqr_u(int n, int ncvt, int ncc, double *d, double *e, double *vt, int ldvt, double *c, int ldc, double *work)
+static void dlasr_rv(char direct, int m, int n, const double *cs, const double *sn, double *a, int lda)
+{   /* SIDE 'R', PIVOT 'V': A P^T, the rotations between columns j and j + 1 */
+    for (int jj = 1; jj <= n - 1; jj++) {
+        int j = direct == 'F' ? jj : n - jj;
+        double ct = cs[j - 1], st = sn[j - 1];
+        if (ct != 1.0 || st != 0.0)
+            for (int i = 1; i <= m; i++) { double t = A_(i, j + 1); A_(i, j + 1) = ct * t - st * A_(i, j); A_(i, j) = st * t + ct * A_(i, j); }
+    }
+}
+/* dbdsqr, UPLO 'U': the singular values of the n x n upper bidiagonal (d, e) with VT (ncvt columns), U (nru rows) and C (ncc
+   columns) updated; work >= 4 (n - 1). Returns info (0 = converged). */
+static int dbdsqr_u(int n, int ncvt, int nru, int ncc, double *d, double *e, double *vt, int ldvt, double *u, int ldu, double *c, int ldc, double *work)
 {
     const int maxitr = 6; int info = 0;
     if (n == 0) return 0;
@@ -332,6 +342,7 @@ static int dbdsqr_u(int n, int ncvt, int ncc, double *d, double *e, double *vt, 
                 dlasv2(d[m - 2], e[m - 2], d[m - 1], &sigmn, &sigmx, &sinr, &cosr, &sinl, &cosl);
                 d[m - 2] = sigmx; e[m - 2] = 0.0; d[m - 1] = sigmn;
                 if (ncvt > 0) k_rot(ncvt, &vt[(m - 2)], ldvt, &vt[(m - 1)], ldvt, cosr, sinr);
+                if (nru > 0) k_rot(nru, &u[(long)(m - 2) * ldu], 1, &u[(long)(m - 1) * ldu], 1, cosl, sinl);
                 if (ncc > 0) k_rot(ncc, &c[(m - 2)], ldc, &c[(m - 1)], ldc, cosl, sinl);
                 m = m - 2; continue;
             }
@@ -373,6 +384,7 @@ static int dbdsqr_u(int n, int ncvt, int ncc, double *d, double *e, double *vt, 
                     }
                     h = d[m - 1] * cs; d[m - 1] = h * oldcs; e[m - 2] = h * oldsn;
                     if (ncvt > 0) dlasr_lv('F', m - ll + 1, ncvt, &work[0], &work[n - 1], &vt[ll - 1], ldvt);
+                    if (nru > 0) dlasr_rv('F', nru, m - ll + 1, &work[nm12], &work[nm13], &u[(long)(ll - 1) * ldu], ldu);
                     if (ncc > 0) dlasr_lv('F', m - ll + 1, ncc, &work[nm12], &work[nm13], &c[ll - 1], ldc);
                     if (fabs(e[m - 2]) <= thresh) e[m - 2] = 0.0;
                 } else {
@@ -385,6 +397,7 @@ static int dbdsqr_u(int n, int ncvt, int ncc, double *d, double *e, double *vt, 
                     }
                     h = d[ll - 1] * cs; d[ll - 1] = h * oldcs; e[ll - 1] = h * oldsn;
                     if (ncvt > 0) dlasr_lv('B', m - ll + 1, ncvt, &work[nm12], &work[nm13], &vt[ll - 1], ldvt);
+                    if (nru > 0) dlasr_rv('B', nru, m - ll + 1, &work[0], &work[n - 1], &u[(long)(ll - 1) * ldu], ldu);
                     if (ncc > 0) dlasr_lv('B', m - ll + 1, ncc, &work[0], &work[n - 1], &c[ll - 1], ldc);
                     if (fabs(e[ll - 1]) <= thresh) e[ll - 1] = 0.0;
                 }
@@ -404,6 +417,7 @@ static int dbdsqr_u(int n, int ncvt, int ncc, double *d, double *e, double *vt, 
                     }
                     e[m - 2] = f;
                     if (ncvt > 0) dlasr_lv('F', m - ll + 1, ncvt, &work[0], &work[n - 1], &vt[ll - 1], ldvt);
+                    if (nru > 0) dlasr_rv('F', nru, m - ll + 1, &work[nm12], &work[nm13], &u[(long)(ll - 1) * ldu], ldu);
                     if (ncc > 0) dlasr_lv('F', m - ll + 1, ncc, &work[nm12], &work[nm13], &c[ll - 1], ldc);
                     if (fabs(e[m - 2]) <= thresh) e[m - 2] = 0.0;
                 } else {
@@ -421,6 +435,7 @@ static int dbdsqr_u(int n, int ncvt, int ncc, double *d, double *e, double *vt, 
                     e[ll - 1] = f;
                     if (fabs(e[ll - 1]) <= thresh) e[ll - 1] = 0.0;
                     if (ncvt > 0) dlasr_lv('B', m - ll + 1, ncvt, &work[nm12], &work[nm13], &vt[ll - 1], ldvt);
+                    if (nru > 0) dlasr_rv('B', nru, m - ll + 1, &work[0], &work[n - 1], &u[(long)(ll - 1) * ldu], ldu);
                     if (ncc > 0) dlasr_lv('B', m - ll + 1, ncc, &work[0], &work[n - 1], &c[ll - 1], ldc);
                 }
             }
@@ -434,6 +449,7 @@ static int dbdsqr_u(int n, int ncvt, int ncc, double *d, double *e, double *vt, 
         if (isub != n + 1 - i) {
             d[isub - 1] = d[n - i]; d[n - i] = smin;
             if (ncvt > 0) k_swap(ncvt, &vt[isub - 1], ldvt, &vt[n - i], ldvt);
+            if (nru > 0) k_swap(nru, &u[(long)(isub - 1) * ldu], 1, &u[(long)(n - i) * ldu], 1);
             if (ncc > 0) k_swap(ncc, &c[isub - 1], ldc, &c[n - i], ldc);
         }
     }
@@ -442,15 +458,16 @@ fail:
     for (int i = 1; i <= n - 1; i++) if (e[i - 1] != 0.0) info++;
     return info;
 }
-static int dlasdq_u(int n, int ncvt, int ncc, double *d, double *e, double *vt, int ldvt, double *c, int ldc, double *work)
-{   /* SQRE 0, UPLO 'U', NRU 0: dbdsqr, then the singular values sorted (one transposition per vector) */
-    int info = dbdsqr_u(n, ncvt, ncc, d, e, vt, ldvt, c, ldc, work);
+static int dlasdq_u(int n, int ncvt, int nru, int ncc, double *d, double *e, double *vt, int ldvt, double *u, int ldu, double *c, int ldc, double *work)
+{   /* SQRE 0, UPLO 'U': dbdsqr, then the singular values sorted (one transposition per vector) */
+    int info = dbdsqr_u(n, ncvt, nru, ncc, d, e, vt, ldvt, u, ldu, c, ldc, work);
     for (int i = 1; i <= n; i++) {
         int isub = i; double smin = d[i - 1];
         for (int j = i + 1; j <= n; j++) if (d[j - 1] < smin) { isub = j; smin = d[j - 1]; }
         if (isub != i) {
             d[isub - 1] = d[i - 1]; d[i - 1] = smin;
             if (ncvt > 0) k_swap(ncvt, &vt[isub - 1], ldvt, &vt[i - 1], ldvt);
+            if (nru > 0) k_swap(nru, &u[(long)(isub - 1) * ldu], 1, &u[(long)(i - 1) * ldu], 1);
             if (ncc > 0) k_swap(ncc, &c[isub - 1], ldc, &c[i - 1], ldc);
         }
     }
@@ -498,7 +515,7 @@ static int dlalsd_small(int n, int nrhs, double *d, double *e, double *b, int ld
     dlascl_g(orgnrm, 1.0, n, 1, d, n); dlascl_g(orgnrm, 1.0, nm1, 1, e, nm1);
     int nwork = n * n;                                                /* WORK(1 + N*N) */
     for (int j = 0; j < n; j++) for (int i = 0; i < n; i++) work[i + j * n] = i == j ? 1.0 : 0.0;
-    info = dlasdq_u(n, n, nrhs, d, e, work, n, b, ldb, work + nwork);
+    info = dlasdq_u(n, n, 0, nrhs, d, e, work, n, NULL, 1, b, ldb, work + nwork);
     if (info != 0) return info;
     double tol = rcnd * fabs(d[k_iamax(n, d, 1) - 1]);
     for (int i = 1; i <= n; i++) {
@@ -546,6 +563,49 @@ static int dgelsd_(int m, int n, int nrhs, double *a, int lda, double *b, int ld
     return 0;
 }
 
+static void dorm2r_ln(int m, int n, int k, double *a, int lda, const double *tau, double *c, int ldc, double *work)
+{   /* SIDE 'L', TRANS 'N': H(k) first */
+    for (int i = k; i >= 1; i--) {
+        double aii = A_(i, i); A_(i, i) = 1.0; dlarf('L', m - i + 1, n, &A_(i, i), 1, tau[i - 1], &C_(i, 1), ldc, work); A_(i, i) = aii;
+    }
+}
+static void dorml2_rn(int m, int n, int k, double *a, int lda, const double *tau, double *c, int ldc, double *work)
+{   /* SIDE 'R', TRANS 'N': H(k) first */
+    for (int i = k; i >= 1; i--) {
+        double aii = A_(i, i); A_(i, i) = 1.0; dlarf('R', m, n - i + 1, &A_(i, i), lda, tau[i - 1], &C_(1, i), ldc, work); A_(i, i) = aii;
+    }
+}
+/* dbdsdc, UPLO 'U', COMPQ 'I', n <= SMLSIZ (25): U and VT start as identities, dlasdq, then the selection sort (decreasing) */
+static int dbdsdc_ui(int n, double *d, double *e, double *u, int ldu, double *vt, int ldvt, double *work)
+{
+    if (n == 1) { u[0] = sgn(1.0, d[0]); vt[0] = 1.0; d[0] = fabs(d[0]); return 0; }
+    for (int j = 0; j < n; j++) for (int i = 0; i < n; i++) { u[i + (long)j * ldu] = i == j ? 1.0 : 0.0; vt[i + (long)j * ldvt] = i == j ? 1.0 : 0.0; }
+    int info = dlasdq_u(n, n, n, 0, d, e, vt, ldvt, u, ldu, NULL, 1, work);
+    for (int ii = 2; ii <= n; ii++) {                                  /* label 40 */
+        int i = ii - 1, kk = i; double p = d[i - 1];
+        for (int j = ii; j <= n; j++) if (d[j - 1] > p) { kk = j; p = d[j - 1]; }
+        if (kk != i) { d[kk - 1] = d[i - 1]; d[i - 1] = p; k_swap(n, &u[(long)(i - 1) * ldu], 1, &u[(long)(kk - 1) * ldu], 1); k_swap(n, &vt[i - 1], ldvt, &vt[kk - 1], ldvt); }
+    }
+    return info;
+}
+/* dgesdd, JOBZ 'A', m >= n with m < MNTHR = INT(n 11 / 6) (path 5a: no QR first; every square matrix): A = U S VT. Returns info;
+   -100 = outside what this file models. */
+static int dgesdd_a(int m, int n, double *a, int lda, double *s, double *u, int ldu, double *vt, int ldvt)
+{
+    if (n < 1 || m < n || m > MAXM || m >= (int)(imin(m, n) * 11.0 / 6.0)) return -100;
+    double smlnum = sqrt(SFMIN) / EPS_P, bignum = 1.0 / smlnum, anrm = dlange_m(m, n, a, lda);
+    if (isnan(anrm)) return -4;
+    if ((anrm > 0.0 && anrm < smlnum) || anrm > bignum) return -100;
+    double e[MAXM], tauq[MAXM], taup[MAXM], wk[8 * MAXM * MAXM];
+    dgebd2_up(m, n, a, lda, s, e, tauq, taup, wk);
+    for (int j = 0; j < m; j++) for (int i = 0; i < m; i++) u[i + (long)j * ldu] = 0.0;
+    int info = dbdsdc_ui(n, s, e, u, ldu, vt, ldvt, wk);
+    for (int j = n; j < m; j++) u[j + (long)j * ldu] = 1.0;           /* U's lower right corner: identity */
+    dorm2r_ln(m, m, n, a, lda, tauq, u, ldu, wk);                      /* dormbr 'Q' 'L' 'N': nq = m >= k = n -> dormqr -> dorm2r */
+    if (n > 1) dorml2_rn(n, n - 1, n - 1, &A_(1, 2), lda, taup, &vt[ldvt], ldvt, wk);   /* dormbr 'P' 'R' 'T': nq = n <= k -> dormlq 'N' on columns 2.. -> dorml2 */
+    return info;
+}
+
 /* ---------------------------------------------------------------- what Python calls */
 /* np.linalg.lstsq(A, B, rcond=None)[0] for `count` systems of one shape: A (count, m, n) and B (count, m, nrhs) row-major
    (numpy's C order), X (count, n, nrhs). info per system (0 = done, -100 = not modelled, else dbdsqr's count). Each system gets
@@ -569,6 +629,26 @@ __declspec(dllexport) int np_lstsq(int count, int m, int n, int nrhs, const doub
     }
     return bad;
 }
+/* np.linalg.svd(A) (full_matrices, compute_uv) for `count` systems of one shape: A (count, m, n) row-major -> U (count, m, m),
+   S (count, n), Vh (count, n, n) row-major. numpy's layout: one 16-byte aligned block of A, S, U, VT (column-major). */
+__declspec(dllexport) int np_svd(int count, int m, int n, const double *A, double *U, double *S, double *Vh, int *info)
+{
+    if (n < 1 || m < n || m > MAXM) return -100;
+    int bad = 0;
+#pragma omp parallel for schedule(static) reduction(+:bad) if(count > 4000)
+    for (int k = 0; k < count; k++) {
+        double blk[MAXM * MAXM * 3 + MAXM] __attribute__((aligned(16))), *a = blk, *s = a + m * n, *u = s + n, *vt = u + m * m;
+        const double *Ak = A + (long)k * m * n;
+        for (int j = 0; j < n; j++) for (int i = 0; i < m; i++) a[i + j * m] = Ak[i * n + j];
+        int r = dgesdd_a(m, n, a, m, s, u, m, vt, n);
+        for (int i = 0; i < m; i++) for (int j = 0; j < m; j++) U[(long)k * m * m + i * m + j] = u[i + j * m];
+        for (int i = 0; i < n; i++) S[(long)k * n + i] = s[i];
+        for (int i = 0; i < n; i++) for (int j = 0; j < n; j++) Vh[(long)k * n * n + i * n + j] = vt[i + j * n];
+        if (info) info[k] = r;
+        bad += r != 0;
+    }
+    return bad;
+}
 /* the pieces, for the tests against numpy's DLL (column-major, the caller's memory) */
 __declspec(dllexport) void npl_dlarfg(int n, double *alpha, double *x, int incx, double *tau) { dlarfg(n, alpha, x, incx, tau); }
 __declspec(dllexport) void npl_dgeqr2(int m, int n, double *a, int lda, double *tau) { double w[MAXM * 4]; dgeqr2(m, n, a, lda, tau, w); }
@@ -576,8 +656,11 @@ __declspec(dllexport) void npl_dgebd2(int m, int n, double *a, int lda, double *
 __declspec(dllexport) void npl_dlasv2(double f, double g, double h, double *o) { dlasv2(f, g, h, o, o + 1, o + 2, o + 3, o + 4, o + 5); }
 __declspec(dllexport) void npl_dlas2(double f, double g, double h, double *o) { dlas2(f, g, h, o, o + 1); }
 __declspec(dllexport) void npl_dlartg(double f, double g, double *o) { dlartg(f, g, o, o + 1, o + 2); }
-__declspec(dllexport) int npl_dbdsqr(int n, int ncvt, int ncc, double *d, double *e, double *vt, int ldvt, double *c, int ldc) { double w[4 * MAXM * 4]; return dbdsqr_u(n, ncvt, ncc, d, e, vt, ldvt, c, ldc, w); }
-__declspec(dllexport) int npl_dlasdq(int n, int ncvt, int ncc, double *d, double *e, double *vt, int ldvt, double *c, int ldc) { double w[4 * MAXM * 4]; return dlasdq_u(n, ncvt, ncc, d, e, vt, ldvt, c, ldc, w); }
+__declspec(dllexport) int npl_dbdsqr(int n, int ncvt, int ncc, double *d, double *e, double *vt, int ldvt, double *c, int ldc) { double w[4 * MAXM * 4]; return dbdsqr_u(n, ncvt, 0, ncc, d, e, vt, ldvt, NULL, 1, c, ldc, w); }
+__declspec(dllexport) int npl_dlasdq(int n, int ncvt, int ncc, double *d, double *e, double *vt, int ldvt, double *c, int ldc) { double w[4 * MAXM * 4]; return dlasdq_u(n, ncvt, 0, ncc, d, e, vt, ldvt, NULL, 1, c, ldc, w); }
+__declspec(dllexport) int npl_dbdsqr_u(int n, int ncvt, int nru, int ncc, double *d, double *e, double *vt, int ldvt, double *u, int ldu, double *c, int ldc) { double w[4 * MAXM * 4]; return dbdsqr_u(n, ncvt, nru, ncc, d, e, vt, ldvt, u, ldu, c, ldc, w); }
+__declspec(dllexport) int npl_dbdsdc(int n, double *d, double *e, double *u, int ldu, double *vt, int ldvt) { double w[4 * MAXM * 4]; return dbdsdc_ui(n, d, e, u, ldu, vt, ldvt, w); }
+__declspec(dllexport) int npl_dgesdd(int m, int n, double *a, int lda, double *s, double *u, int ldu, double *vt, int ldvt) { return dgesdd_a(m, n, a, lda, s, u, ldu, vt, ldvt); }
 __declspec(dllexport) int npl_dlalsd(int n, int nrhs, double *d, double *e, double *b, int ldb, double rcond, int *rank) { double w[MAXM * MAXM + MAXM * MAXRHS + 64]; return dlalsd_small(n, nrhs, d, e, b, ldb, rcond, rank, w); }
 __declspec(dllexport) int npl_dgelsd(int m, int n, int nrhs, double *a, int lda, double *b, int ldb, double *s, double rcond, int *rank) { return dgelsd_(m, n, nrhs, a, lda, b, ldb, s, rcond, rank); }
 __declspec(dllexport) double npl_dnrm2(int n, const double *x, int inc) { return k_nrm2(n, x, inc); }

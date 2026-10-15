@@ -78,7 +78,10 @@ A full chain on an empty data folder, every Python process logging the modules i
   two big values meet). The LAPACK routines are the reference ones (dlartg the 3.10 form: p = 1 / d, c = |f| p, s = g sign(p, f)),
   each checked against the DLL's (0 mismatches in 70,000+ cases), the whole against `np.linalg.lstsq`: the 9,074 systems of a
   Desert build and 110,000 random / 1995-like ones (`core\test_nplapack.py`). numpy's wrapper puts A and B in ONE malloc'ed
-  block, B right after A, and that layout matters (dgemv's peel), so nplapack.c builds the same block.
+  block, B right after A, and that layout matters (dgemv's peel), so nplapack.c builds the same block. `np.linalg.svd` (full
+  matrices) is dgesdd JOBZ 'A'; nplapack's `svd` covers m >= n below dgesdd's QR threshold INT(n x 11 / 6) (every square matrix;
+  fill1995.unsmear's 2 x 2): dgebd2, dbdsdc's small branch (dlasdq with U and VT, its selection sort), the Q and P reflectors on
+  U and VT, in numpy's block (A, S, U, VT); U, S and Vh the same bits as numpy's on 63,000 matrices of 7 shapes.
 - **The x87 precision is per thread.** Python's threads start with control word 0x27F (53 bits), gcc's OpenMP workers with 64
   bits; nplapack's dnrm2 ran x87 code and gave other sums in 1,399 of 8,911 systems until it set 53 bits itself for those
   instructions. Any C port of an x87 kernel has to do the same.
