@@ -41,7 +41,7 @@ static unsigned ex_alloc(GameMem *m, unsigned n) { (void)m; return (unsigned)(ui
 static void ex_suspend(GameMem *m) { (void)m; if (ntsuspend) ntsuspend(game); }
 static void ex_resume(GameMem *m) { (void)m; if (ntresume) ntresume(game); }
 static int ex_alive(GameMem *m) { (void)m; return WaitForSingleObject(game, 0) == WAIT_TIMEOUT; }
-static GameMem outside = {ex_read, ex_write, ex_alloc, ex_suspend, ex_resume, ex_alive, NULL};
+static GameMem outside = {ex_read, ex_write, ex_alloc, ex_suspend, ex_resume, ex_alive, ph_now, ph_sleep, ph_pad, ph_key, ph_front, ph_shot, NULL, NULL};
 
 static DWORD find_game(void) {
     HANDLE s = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0); PROCESSENTRY32W e; DWORD pid = 0; e.dwSize = sizeof e;

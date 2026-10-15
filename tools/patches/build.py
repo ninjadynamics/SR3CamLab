@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.join(TOOLS, 'import', 'core')); sys.path.insert(0, os
 import cbuild, implib
 GCC = cbuild.GCC
 X86 = ['-m32', '-march=pentium4', '-msse2', '-mfpmath=sse', '-ffreestanding', '-D_UCRT', '-D__USE_MINGW_ANSI_STDIO=0', '-D_CRT_SECURE_NO_WARNINGS',
-       '-O2', '-std=c11', '-ffunction-sections', '-Wall', '-Wno-unused-function']
+       '-O2', '-std=c11', '-ffunction-sections', '-fno-asynchronous-unwind-tables', '-Wall', '-Wno-unused-function']   # (no .eh_frame: plain C, SEH on x86 is on the stack; 8 KB less)
 def run(cmd, **k):
     r = subprocess.run(cmd, capture_output=True, text=True, **k)
     if r.returncode: raise SystemExit('failed: %s\n%s' % (' '.join(cmd), (r.stdout + r.stderr)[-3000:]))
@@ -16,24 +16,28 @@ def run(cmd, **k):
 def main(argv):
     out = argv[argv.index('--out') + 1] if '--out' in argv else os.path.join(HERE, 'build'); os.makedirs(out, exist_ok=True)
     run([sys.executable, os.path.join(HERE, 'gen_blobs.py'), os.path.join(out, 'blobs.h')])
-    units = [(os.path.join(HERE, 'patchcore.c'), 'patchcore.o'), (os.path.join(HERE, 'patches.c'), 'patches.o'), (os.path.join(HERE, 'sr3mods.c'), 'sr3mods.o'),
-             (os.path.join(STAND, 'settings.c'), 'settings.o'), (os.path.join(STAND, 'ucrt_stdio.c'), 'ucrt_stdio.o'), (os.path.join(TOOLS, 'x86', 'builtins.c'), 'builtins.o')]
+    units = [(os.path.join(HERE, 'patchcore.c'), 'patchcore.o'), (os.path.join(HERE, 'pc_live.c'), 'pc_live.o'), (os.path.join(HERE, 'pc_json.c'), 'pc_json.o'),
+             (os.path.join(HERE, 'pc_host.c'), 'pc_host.o'), (os.path.join(HERE, 'patches.c'), 'patches.o'), (os.path.join(HERE, 'sr3mods.c'), 'sr3mods.o'),
+             (os.path.join(STAND, 'settings.c'), 'settings.o'), (os.path.join(STAND, 'ucrt_stdio.c'), 'ucrt_stdio.o'), (os.path.join(TOOLS, 'x86', 'builtins.c'), 'builtins.o'),
+             (os.path.join(HERE, 'livetest.c'), 'livetest.o')]                    # (livetest.exe: the live loop on fake games, for live_lockstep.py; never shipped)
     maps = ['-ffile-prefix-map=%s=.' % p for p in (out, HERE, STAND, os.path.join(TOOLS, 'x86'))]          # no build paths in the DLL
     o = {}
     for src, name in units:
         op = os.path.join(out, name); run([GCC] + X86 + maps + ['-I', out, '-I', STAND, '-I', HERE, '-c', src, '-o', op]); o[name] = op
-    shared = [o['patchcore.o'], o['settings.o'], o['ucrt_stdio.o'], o['builtins.o']]       # patchcore: the one implementation both run
+    shared = [o[k] for k in ('patchcore.o', 'pc_live.o', 'pc_json.o', 'pc_host.o', 'settings.o', 'ucrt_stdio.o', 'builtins.o')]   # patchcore: the one implementation both run
     imp = os.path.join(out, 'imp')
-    if implib.main(['--out', imp, '--dll', 'kernel32', '--dll', 'user32', '--dll', 'shell32', '--dll', 'ucrtbase'] + list(o.values())): raise SystemExit('implib: unresolved imports')
+    if implib.main(['--out', imp] + sum((['--dll', d] for d in ('kernel32', 'user32', 'gdi32', 'ole32', 'shell32', 'ucrtbase')), []) + list(o.values())): raise SystemExit('implib: unresolved imports')
     libs = ['-l' + f[3:-2] for f in sorted(os.listdir(imp)) if f.startswith('lib') and f.endswith('.a')]
     link = [GCC, '-m32', '-nostdlib', '-nostartfiles', '-s', '-Wl,--no-insert-timestamp,--gc-sections']
     dll = os.path.join(out, 'patches.dll'); exe = os.path.join(out, 'sr3mods.exe')
     run(link + ['-shared', '-Wl,-e,_DllMain@12', '-Wl,--kill-at,--exclude-all-symbols,--image-base,0x63000000', o['patches.o']] + shared + ['-L', imp] + libs + ['-o', dll])
     run(link + ['-Wl,-e,_entry@0', o['sr3mods.o']] + shared + ['-L', imp] + libs + ['-o', exe])
+    run(link + ['-Wl,-e,_entry@0', o['livetest.o']] + shared + ['-L', imp] + libs + ['-o', os.path.join(out, 'livetest.exe')])
     print('patches.dll: %d bytes, sr3mods.exe: %d bytes -> %s' % (os.path.getsize(dll), os.path.getsize(exe), out))
-    if '--no-lockstep' not in argv:                                     # the DLL must plan exactly what patches.ps1 does, or the build fails
-        import lockstep
+    if '--no-lockstep' not in argv:                                     # the DLL must do exactly what patches.ps1 does, or the build fails
+        import lockstep, live_lockstep
         if lockstep.main(['--dll', dll]): raise SystemExit('lockstep: patches.dll and patches.ps1 differ; nothing is to be installed')
+        if live_lockstep.main(['--exe', os.path.join(out, 'livetest.exe')]): raise SystemExit('live lockstep: pc_live.c and patches.ps1 differ; nothing is to be installed')
     return dll
 if __name__ == '__main__':
     main(sys.argv[1:])

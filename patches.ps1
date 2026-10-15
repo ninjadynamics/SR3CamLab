@@ -588,7 +588,7 @@ function Read-TrackSwitch([string]$gameExe) {
     $file = Join-Path $dir 'Main_release\tracks\_SR3Extras\switch.json'
     if (-not (Test-Path -LiteralPath $file)) { return $null }
     try { $j = [IO.File]::ReadAllText($file) | ConvertFrom-Json } catch { Log "Alternative tracks: $file can't be read; ignoring it."; return $null }
-    $slots = @{}
+    $slots = [ordered]@{}                                            # (in switch.json's order: pc_live.c goes through them the same way)
     foreach ($p in $j.slots.PSObject.Properties) {
         $list = New-Object System.Collections.ArrayList
         [void]$list.Add(@{ Title = "$($p.Value.title)"; Dir = 's'; Video = ''; Speech = "$($p.Value.speech)"; Ambience = ''; Music = ''; Events = ''; Tune = $null })   # 0 = the game's own track
@@ -756,7 +756,8 @@ function Set-ShadowParams($h, [string]$gameDir, [string]$slot, [string]$dir) {
     if (-not (Test-Path -LiteralPath $file)) { return }
     $v = @(([IO.File]::ReadAllText($file)).Trim() -split '\s+')
     $a = 0.0; $b = 0.0; $inv = [Globalization.CultureInfo]::InvariantCulture; $any = [Globalization.NumberStyles]::Float
-    if ($v.Count -lt 2 -or -not [double]::TryParse($v[0], $any, $inv, [ref]$a) -or -not [double]::TryParse($v[1], $any, $inv, [ref]$b) -or $a -le 0 -or $a -gt 0.01 -or $b -lt 1 -or $b -gt 200) { Log "Car shadows: $file not used (expected two numbers, e.g. 0.0002 30)."; return }
+    # (NaN refused by name: every comparison with it is false, so "NaN 30" got through the range checks before 2026-10-15)
+    if ($v.Count -lt 2 -or -not [double]::TryParse($v[0], $any, $inv, [ref]$a) -or -not [double]::TryParse($v[1], $any, $inv, [ref]$b) -or [double]::IsNaN($a) -or [double]::IsNaN($b) -or $a -le 0 -or $a -gt 0.01 -or $b -lt 1 -or $b -gt 200) { Log "Car shadows: $file not used (expected two numbers, e.g. 0.0002 30)."; return }
     $old = [Sr3Mem]::Read($h, 0x9F106C, 8); if ($null -eq $old) { return }
     $script:ShadowOrig = $old
     $new = New-Object byte[] 8; [Array]::Copy([BitConverter]::GetBytes([single]$a), 0, $new, 0, 4); [Array]::Copy([BitConverter]::GetBytes([single]$b), 0, $new, 4, 4)
@@ -829,11 +830,12 @@ function Set-ShaderTest($h, [string]$gameDir, [string]$slot, [string]$dir) {
     }
     if ($null -eq $base) { Log "Shader experiment: ubershadergame.fx is not in the effect list ($n effects): nothing changed."; return }
     $c1 = & $u32 $base; $c2 = & $u32 ($base + 0x70E4 + 8); $c3 = & $u32 ($base + $rec); $c4 = if ($c3) { & $u32 ($base + $code) } else { $null }
-    if ($c1 -ne 0x02D604CD -or $c2 -ne ($base + 0xABFC) -or $c3 -ne ($base + $code) -or $c4 -ne 0xFFFF0300) {
+    if ($c1 -ne 0x02D604CD -or $c2 -ne ($base + 0xABFC) -or $c3 -ne ($base + $code) -or $c4 -ne 4294902528) {      # 0xFFFF0300 (written so: the literal 0xFFFF0300 is the int -64768 in PowerShell, so this check could never pass before 2026-10-15)
         Log ("Shader experiment: the effect at 0x{0:X} is not the one this was written for (checks {1:X} {2:X} {3:X} {4:X}; shader library 2 instead of 3?): nothing changed." -f $base, $c1, $c2, $c3, $c4); return
     }
     $va = $base + $rec + 0x10; $a = [Sr3Mem]::Read($h, $va, 4); $b = [Sr3Mem]::Read($h, ($base + 0x8DFC + 0x10), 4)
-    if ($null -eq $a -or $null -eq $b -or [BitConverter]::ToUInt32($a, 0) -eq 0 -or [BitConverter]::ToUInt32($b, 0) -eq 0) { Log "Shader experiment: a shader pointer is empty (walls $([BitConverter]::ToUInt32($a, 0)), plain $([BitConverter]::ToUInt32($b, 0))): nothing changed."; return }
+    $wa = if ($a) { [BitConverter]::ToUInt32($a, 0) } else { 0 }; $wb = if ($b) { [BitConverter]::ToUInt32($b, 0) } else { 0 }    # (an unreadable one is 0: ToUInt32 of nothing threw and stopped the loop)
+    if ($wa -eq 0 -or $wb -eq 0) { Log "Shader experiment: a shader pointer is empty (walls $wa, plain $wb): nothing changed."; return }
     [Sr3Mem]::Write($h, $va, $b, $true); $script:ShaderSwap = @{ Va = $va; Old = $a }
     $back = [Sr3Mem]::Read($h, $va, 4)
     Log ("Shader experiment: effect at 0x{0:X}; wall pixel shader 0x{1:X} replaced by the untextured one 0x{2:X} (read back 0x{3:X}). Imported scenery should show without its pictures." -f $base, [BitConverter]::ToUInt32($a, 0), [BitConverter]::ToUInt32($b, 0), [BitConverter]::ToUInt32($back, 0))
@@ -900,7 +902,7 @@ function Get-ShotInfo($h, [long]$base, [string]$track, [string]$dir, [string]$ti
             if ($idx -eq 0) { $nm = Read-GameString $h ($base + 0x100) 32 }
             elseif ($idx -gt $ng -and ($idx - $ng) -lt $ns) { $nm = Read-GameString $h ($base + 0x100 + 32 * ($idx - $ng)) 32 }
             else {
-                $off = $drawn - $mgr; if ($idx -eq (Read-GameInt $h ($base + 0x225C))) { $off = $off -bor 0x80000000 }
+                $off = $drawn - $mgr; if ($idx -eq (Read-GameInt $h ($base + 0x225C))) { $off = $off -bor [long]2147483648 }   # (the literal 0x80000000 is the int -2147483648 in PowerShell: -bor set every high bit and nothing matched)
                 for ($i = 0; $i -lt $CycleGameCams; $i++) { if ((Read-GamePtr $h ($base + 0x21B0 + 4 * $i)) -eq $off) { $nm = Read-GameString $h ($base + 0x2000 + 32 * $i) 32 } }
             }
         }
@@ -994,7 +996,7 @@ function Request-RaceExit($h, [datetime]$now) {
     if ($null -eq $st -or [BitConverter]::ToInt32($st, 0) -ne 0x27 -or [BitConverter]::ToInt32($st, 4) -ne 0x27) { Undo-RaceExit $h $x 'the race ended just then'; return }
     Write-GameInt $h $RaceExitFlagVA 1
     $script:RaceExit = $x
-    Log ("Race exit: VIEW CHANGE held {0} s: leaving the {1} for the main menu." -f $StartHoldSeconds, $RaceModes[$mode])
+    Log "Race exit: VIEW CHANGE held $StartHoldSeconds s: leaving the $($RaceModes[$mode]) for the main menu."          # ("$x" writes a number the same in every culture, -f does not)
 }
 function Undo-RaceExit($h, $x, [string]$why) {
     Write-GameInt $h $RaceExitFlagVA 0
@@ -1069,7 +1071,10 @@ function Wait-GameExit($game) {
 }
 
 # Runs until the game closes.
-function Watch-Tracks($game, [string]$gameExe) {
+# What the loop asks of the world outside the game's memory, each in a function of its own: the mock tests and the trace
+# lockstep (tools\patches\live_lockstep.py) put fakes in their place, and patchcore (pc_live.c) asks its GameMem the same
+# questions (now, pad, key, front, shot). The pad: XInput pad 0's buttons, 0 without a pad.
+function Initialize-Host {
     Add-Type -AssemblyName System.Drawing, System.Windows.Forms
     if (-not ('Sr3Pad' -as [type])) {
         Add-Type @'
@@ -1084,9 +1089,27 @@ public static class Sr3Pad {
 '@
     }
     [Sr3Pad]::SetProcessDPIAware() | Out-Null
+}
+function Get-Now { return (Get-Date) }
+function Get-PadButtons { $pad = New-Object Sr3Pad+XState; if ([Sr3Pad]::XInputGetState(0, [ref]$pad) -eq 0) { return [int]$pad.Buttons }; return 0 }
+function Test-KeyDown([int]$vk) { return ([Sr3Pad]::GetAsyncKeyState($vk) -band 0x8000) -ne 0 }
+function Get-FrontWindow { return [long][Sr3Pad]::GetForegroundWindow() }
+function New-ScreenGrab {                                          # the whole primary screen, as it is now
+    $sb = [Windows.Forms.Screen]::PrimaryScreen.Bounds; $bmp = New-Object Drawing.Bitmap $sb.Width, $sb.Height
+    $gr = [Drawing.Graphics]::FromImage($bmp); $gr.CopyFromScreen($sb.Location, [Drawing.Point]::Empty, $sb.Size); $gr.Dispose()
+    return $bmp
+}
+function Save-ScreenGrab($bmp, [string]$path, $info) {             # as PNG, with the shot's info in a tEXt chunk (Add-PngText)
+    $ms = New-Object IO.MemoryStream; $bmp.Save($ms, [Drawing.Imaging.ImageFormat]::Png); $png = $ms.ToArray(); $ms.Dispose()
+    if ($info) { $png = Add-PngText $png 'SR3Lab' $info }
+    [IO.File]::WriteAllBytes($path, $png)
+}
+function Close-ScreenGrab($bmp) { if ($bmp) { $bmp.Dispose() } }
+function Watch-Tracks($game, [string]$gameExe) {
+    Initialize-Host
     $start = New-StartState; $script:RaceExit = $null; $shotUntil = [datetime]::MinValue; $shotName = ''; $shotHeld = $null; $shotInfo = $null
     $slots = Read-TrackSwitch $gameExe
-    if (-not $slots) { $slots = @{} }                                # no alternative tracks: the loop still runs for START (screenshot, race exit)
+    if (-not $slots) { $slots = [ordered]@{} }                                # no alternative tracks: the loop still runs for START (screenshot, race exit)
     $h = [Sr3Mem]::Open($game.Id)
     try {
         $base = Find-Cycle $h
@@ -1101,7 +1124,7 @@ public static class Sr3Pad {
         $cardsOpen = (Open-CarCards $h $base) -ne $false                 # before the first menus: the car select looks its cards up when they are built
         $text = $base + $SwitchTextOff
         [Sr3Mem]::Write($h, $text + 0x40, (Str 'Press VIEW CHANGE to select alternative tracks' 64), $true)
-        $choice = @{}; foreach ($s in $slots.Keys) { $choice[$s] = 0 }
+        $choice = [ordered]@{}; foreach ($s in $slots.Keys) { $choice[$s] = 0 }
         $soundNow = '//'; $tuneNow = ''; $script:TuneOwn = $null; $ids = @{}; $pvsHeld = $false; $pvsWas = 0
         $modeSeen = $null; $modeLast = $null; $nameWas = ''; $classicVal = $null
         $classicFile = Join-Path (Split-Path -Parent $gameExe) 'Main_release\tracks\_SR3Extras\classic_mode.txt'
@@ -1132,14 +1155,14 @@ public static class Sr3Pad {
             if ($hi -ne -1) { if (-not $ids.ContainsKey($hi)) { $ids = Read-TrackNames $h }; $hiName = "$($ids[$hi])" }
             $stage = $stage -and $hiName
             $hlist = if ($stage) { $slots[$hiName] } else { $null }
-            $down = ([Sr3Mem]::Read($h, 0x9DBB0C, 1)[0] -ne 0)
+            $vb = [Sr3Mem]::Read($h, 0x9DBB0C, 1); $down = [bool]($vb -and $vb[0] -ne 0)     # (unreadable = not held; indexing nothing threw and stopped the loop)
             if ($hlist -and $down -and -not $wasDown) {
                 $choice[$hiName] = ($choice[$hiName] + 1) % $hlist.Count
                 Set-CardTrack $h $base $hiName $hlist[$choice[$hiName]] ($choice[$hiName] -eq 0)
             }
             # Classic has no stage select: its tracks (the Desert4 slot) are stepped through on the first menu,
             # the one with Championship / Quick Race / Classic (3 entries, before the car and gearbox menus)
-            $mode = $menu -and (-not $deep) -and $count -eq 3 -and $slots.ContainsKey($ClassicSlot)
+            $mode = $menu -and (-not $deep) -and $count -eq 3 -and $slots.Contains($ClassicSlot)
             # ... and only while that menu is on Classic. Which of the selector's values is Classic is learnt
             # the first time Classic is picked (the current track becomes Desert4 right after) and kept in
             # tracks\_SR3Extras\classic_mode.txt; until then the text shows on all three.
@@ -1201,46 +1224,42 @@ public static class Sr3Pad {
                 [Sr3Mem]::Write($h, 0xA65794, ([BitConverter]::GetBytes([int]$pvsWas)), $true); $pvsHeld = $false
             }
             # in a race: START takes a screenshot when it is let go, VIEW CHANGE held leaves the race (Step-Start)
-            $pad = New-Object Sr3Pad+XState
-            $padOk = [Sr3Pad]::XInputGetState(0, [ref]$pad) -eq 0
-            $startDown = $padOk -and (($pad.Buttons -band 0x10) -ne 0); $viewDown = $padOk -and (($pad.Buttons -band 0x1000) -ne 0)
-            foreach ($act in (Step-Start $start $startDown $viewDown $menu (Get-Date))) {
+            $buttons = Get-PadButtons
+            $startDown = ($buttons -band 0x10) -ne 0; $viewDown = ($buttons -band 0x1000) -ne 0
+            foreach ($act in (Step-Start $start $startDown $viewDown $menu (Get-Now))) {
                 if ($act -eq 'grab') {
                     try {
-                        $sb = [Windows.Forms.Screen]::PrimaryScreen.Bounds; $shotHeld = New-Object Drawing.Bitmap $sb.Width, $sb.Height
-                        $gr = [Drawing.Graphics]::FromImage($shotHeld); $gr.CopyFromScreen($sb.Location, [Drawing.Point]::Empty, $sb.Size); $gr.Dispose()
+                        $shotHeld = New-ScreenGrab
                         $shotInfo = $null
-                        try { $shotInfo = Get-ShotInfo $h $base $name $dir $(if ($cur) { $cur.Title } else { '' }) (Get-Date) } catch { Log "Screenshot: no coordinates ($($_.Exception.Message))" }
-                    } catch { Log "Screenshot failed: $($_.Exception.Message)"; if ($shotHeld) { $shotHeld.Dispose() }; $shotHeld = $null; $start.HeldAt = $null }
+                        try { $shotInfo = Get-ShotInfo $h $base $name $dir $(if ($cur) { $cur.Title } else { '' }) (Get-Now) } catch { Log "Screenshot: no coordinates ($($_.Exception.Message))" }
+                    } catch { Log "Screenshot failed: $($_.Exception.Message)"; Close-ScreenGrab $shotHeld; $shotHeld = $null; $start.HeldAt = $null }
                 } elseif ($act -eq 'save' -and $shotHeld) {
                     try {
                         $shotDir = Join-Path (Split-Path -Parent $PSScriptRoot) 'Screenshots'; New-Item -ItemType Directory -Force $shotDir | Out-Null
                         $shotName = 'SR3_{0:yyyyMMdd_HHmmss}.png' -f $start.ShotAt
-                        $ms = New-Object IO.MemoryStream; $shotHeld.Save($ms, [Drawing.Imaging.ImageFormat]::Png); $png = $ms.ToArray(); $ms.Dispose()
-                        if ($shotInfo) { $png = Add-PngText $png 'SR3Lab' $shotInfo }                # where the picture was taken (Get-ShotInfo)
-                        [IO.File]::WriteAllBytes((Join-Path $shotDir $shotName), $png)
-                        $shotUntil = (Get-Date).AddSeconds(3); Log "Screenshot: $shotName"
+                        Save-ScreenGrab $shotHeld (Join-Path $shotDir $shotName) $shotInfo          # where the picture was taken (Get-ShotInfo)
+                        $shotUntil = (Get-Now).AddSeconds(3); Log "Screenshot: $shotName"
                     } catch { Log "Screenshot failed: $($_.Exception.Message)" }
-                    $shotHeld.Dispose(); $shotHeld = $null
-                } elseif ($act -eq 'drop' -and $shotHeld) { $shotHeld.Dispose(); $shotHeld = $null }  # that START began a new game
-                elseif ($act -eq 'exit') { Request-RaceExit $h (Get-Date); if ($script:RaceExit) { Undo-ViewStep $h $base } }
+                    Close-ScreenGrab $shotHeld; $shotHeld = $null
+                } elseif ($act -eq 'drop' -and $shotHeld) { Close-ScreenGrab $shotHeld; $shotHeld = $null }  # that START began a new game
+                elseif ($act -eq 'exit') { Request-RaceExit $h (Get-Now); if ($script:RaceExit) { Undo-ViewStep $h $base } }
             }
-            if ($script:RaceExit) { Step-RaceExit $h (Get-Date) }
+            if ($script:RaceExit) { Step-RaceExit $h (Get-Now) }
             Show-WatchdogNews
-            if ($script:Handling -and $script:Handling.Flavors.Count -and [Sr3Pad]::GetForegroundWindow() -eq [IntPtr][long](Read-GamePtr $h $GameWindowVA)) {     # the handling keys (Set-Handling)
+            if ($script:Handling -and $script:Handling.Flavors.Count -and (Get-FrontWindow) -eq (Read-GamePtr $h $GameWindowVA)) {     # the handling keys (Set-Handling)
                 foreach ($vk in $HandlingKeyCodes) {
-                    $dn = ([Sr3Pad]::GetAsyncKeyState($vk) -band 0x8000) -ne 0
+                    $dn = Test-KeyDown $vk
                     if ($dn -and -not $keysDown[$vk]) {
                         $car = Get-KeyCar $h $base $menu; $lines = $null
                         if (-not $car) { $lines = @('No car yet', 'pick one on the car select') }
                         elseif ($HandlingKeys.ContainsKey($vk)) { $lines = Set-CarHandlingLive $h $car $HandlingKeys[$vk] }
                         else { $lines = Show-CarHandling $h $car }
-                        if ($lines) { $labelLines = $lines; $labelUntil = (Get-Date).AddSeconds(2.5) }
+                        if ($lines) { $labelLines = $lines; $labelUntil = (Get-Now).AddSeconds(2.5) }
                     }
                     $keysDown[$vk] = $dn
                 }
             }
-            if ($labelUntil -gt (Get-Date)) {                         # a handling key's label, over everything else for 2.5 s
+            if ($labelUntil -gt (Get-Now)) {                          # a handling key's label, over everything else for 2.5 s
                 $lt = $labelLines -join '|'
                 if ($lt -ne $shown) { [Sr3Mem]::Write($h, $text, (Str $labelLines[0] 48), $true); [Sr3Mem]::Write($h, $text + 0x80, (Str $labelLines[1] 64), $true); $shown = $lt }
                 [Sr3Mem]::Write($h, $base + 0x50, ([BitConverter]::GetBytes([int]$text)), $true)
@@ -1267,7 +1286,7 @@ public static class Sr3Pad {
                 [Sr3Mem]::Write($h, $base + 0xFA0, ([BitConverter]::GetBytes([int]1)), $true)
                 [Sr3Mem]::Write($h, $base + 0x10, ([BitConverter]::GetBytes([int]20)), $true)
                 $showing = $true
-            } elseif ($shotUntil -gt (Get-Date)) {
+            } elseif ($shotUntil -gt (Get-Now)) {
                 if ($shotName -ne $shown) { [Sr3Mem]::Write($h, $text, (Str $shotName 48), $true); $shown = $shotName }
                 [Sr3Mem]::Write($h, $base + 0x50, ([BitConverter]::GetBytes([int]$text)), $true)
                 [Sr3Mem]::Write($h, $base + 0xE60, ([BitConverter]::GetBytes([uint32]4294967295)), $true)
@@ -1503,13 +1522,13 @@ function Read-Handling([string]$gameExe) {
     }
     $want = @{}
     if ($j.cars) { foreach ($p in $j.cars.PSObject.Properties) { $want[$p.Name.ToLower()] = "$($p.Value)".ToLower() } }
-    $cars = @{}                                                       # car -> its data file name
+    $cars = [ordered]@{}                                              # car -> its data file name (SEGA's ten, then the added ones as the folder lists them)
     foreach ($c in $HandlingCarNames) { $cars[$c] = "$($c.ToLower())bespoke_data.sbf" }
     foreach ($f in @(Get-ChildItem -LiteralPath (Join-Path $gameDir 'Main_release\cars') -Filter '*gravel_data.sbf' -ErrorAction SilentlyContinue)) {
         $n = $f.Name -replace '(?i)gravel_data\.sbf$', ''
         if ($HandlingCarNames -notcontains $n) { $cars[$n] = $f.Name }   # an added car (SEGA's per-surface leftovers of the ten are skipped)
     }
-    $plan = @{}; $any = $false
+    $plan = [ordered]@{}; $any = $false
     foreach ($c in @($cars.Keys)) {
         $f = $default; if ($want.ContainsKey($c.ToLower())) { $f = $want[$c.ToLower()] }
         if ($f -ne 'sr3') {
@@ -1588,7 +1607,7 @@ $HandlingKeys = @{ 0x31 = 'sr3'; 0x32 = 'src'; 0x33 = 'realism'; 0x61 = 'sr3'; 0
 $InfoKeys = @(0x30, 0x60)
 $CarTitles = @{ C4 = 'Citroen C4 WRC'; RSFocus = 'Ford Focus RS WRC 07'; SubaruImpreza = 'Subaru Impreza WRC2008'; SX4 = 'Suzuki SX4 WRC'; MitsubishiEvo = 'Mitsubishi Lancer Evolution X'; '207' = 'Peugeot 207 Super 2000'; ST205 = 'Toyota Celica ST205'; Delta_HF = 'Lancia Super Delta HF integrale'; Bowler = 'Bowler Nemesis'; Enduro = 'McRae Enduro' }
 function Get-CarTitle([string]$car) { if ($CarTitles.ContainsKey($car)) { return $CarTitles[$car] }; return (Get-Culture).TextInfo.ToTitleCase($car) }      # the labels' names: the menu's
-$HandlingKeyCodes = @($HandlingKeys.Keys) + $InfoKeys
+$HandlingKeyCodes = @(0x31, 0x32, 0x33, 0x61, 0x62, 0x63) + $InfoKeys                     # in this order (a hashtable's keys come in no set order; pc_live.c goes through them the same way)
 $FlavorTitles = [ordered]@{ sr3 = "SEGA Rally 3's own"; src = 'SEGA Rally Championship'; realism = 'Realism' }
 $DefaultFlavors = [ordered]@{ src = @{ Digit = '1'; Grip = $true }; realism = @{ Digit = '2'; Grip = $false } }
 # no handling.json (or nothing on a flavor): the flavors that are built, every car on SEGA's handling; $null when none is built
@@ -1602,7 +1621,7 @@ function New-HandlingLive([string]$gameExe) {
         }
     }
     if (-not $fl.Count) { return $null }
-    $plan = @{}; foreach ($c in $HandlingCarNames) { $plan[$c] = 'sr3' }
+    $plan = [ordered]@{}; foreach ($c in $HandlingCarNames) { $plan[$c] = 'sr3' }
     foreach ($f in @(Get-ChildItem -LiteralPath (Join-Path $gameDir 'Main_release\cars') -Filter '*gravel_data.sbf' -ErrorAction SilentlyContinue)) {
         $n = $f.Name -replace '(?i)gravel_data\.sbf$', ''; if ($HandlingCarNames -notcontains $n) { $plan[$n] = 'sr3' }
     }

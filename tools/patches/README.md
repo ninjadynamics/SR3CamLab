@@ -29,8 +29,19 @@ Settings: the `patches:` section of `settings.yaml` (`mod_folder`, `camera_profi
 `mouse_smoothing`, `camera_blend`, `canary`, `watchdog`; `enabled` is the runtime's), read with `standalone\settings.c`.
 
 **Done (step 1, 2026-10-15): the cameras.** The chase camera's cave and hooks (`$Patches`) and the camera cycle block
-(`Install-Cycle`). To do: the Classic tracks (track folder, switcher), cars and handling (car lists, cards, flavors,
-SRC turning), the rest (START screenshots, race exit, watchdog).
+(`Install-Cycle`).
+
+**Done (step 2, 2026-10-15): the live loop, in C and in lockstep, not yet run by the front ends.** `pc_live.c` is
+`Release-StuckKeys`' middle: `Set-MenuTimers`, `Set-CarLists` (+ `Complete-CarLists`, `Open-CarCards`), `Set-Handling`
+(flavors, per-car path routine, the added cars, grip file, SRC turning, steering hook removal) and `Watch-Tracks`
+(track switcher with folder routine, card videos, announcer, sounds, tunes, checkpoint times, shadows, road, shader
+test, scenery visibility, popups, START screenshot with its JSON, VIEW CHANGE race exit, handling keys,
+`Sync-RaceFlavor`). The outside world goes through GameMem too (`now`, `sleep`, `pad`, `key`, `front`, `shot`,
+`news`), real in `pc_host.c` (XInput, GDI grab, PNG by WIC with the tEXt chunk), fake in the tests. `pc_json.c` reads
+switch.json / handling.json (JSON's grammar, keys case-insensitive as PowerShell's). To do: `sr3mods attach` and
+patches.dll run it; the back buffer grab of Codex's runtime (`sr3rt_grab_backbuffer`) in patches.dll's `shot`; the
+watchdog as `sr3mods watch <pid>` (watchdog.cs in C); the re-attach path (PLAY.bat run again on a running game:
+tuning update, a newer block); then `PLAY.bat` and play.ps1 switch to sr3mods.exe.
 
 ## Lockstep with patches.ps1
 
@@ -46,6 +57,21 @@ The owner (2026-10-15): every change must reach both variants, checked by a scri
   through `patches_plan()` (`plan32.exe`, the code `patches_start` runs), and `sr3mods.exe plan` with the same settings
   as switches (CamLab's way). Every site, hook, pointer, the camera block's 16 KB image, the profile and the camera list
   must be the same, three ways. `build.py` runs it; a difference fails the build.
+- **The live loop is checked write for write**: `live_lockstep.py` runs both on five scripted fake games (`switch`:
+  alternative tracks, Classic learnt, tunes, checkpoint times, shadows, road, shader test, card videos loaded on request;
+  `start`: screenshots and their JSON, race exits taken, withdrawn and refused; `handling`: handling.json with good and bad
+  flavors, the keys on the car select and in a race, two keys at once; `late`: car lists completed when the menus close, a
+  car card opened; `odd`: unexpected bytes and broken files everywhere). `patches.ps1` runs through `live_ps1.ps1` (its
+  own code, `[Sr3Mem]` and the outside world faked), `pc_live.c` through `livetest.exe` (`livetest.c`'s fake GameMem, the
+  same game: keep the two fakes alike). Every write (address, keep-writable, bytes), suspend / resume, allocation, log
+  line, screen grab and frame mark must be the same, and handling.json (by value) and classic_mode.txt after. A wrong
+  byte shows as e.g. `trace line 78 (after F 3): ps1 W 20000E60 1 3aff9cff | c W 20000E60 1 3bff9cff`. `build.py` runs
+  it after `lockstep.py`. PowerShell's own ways that show in the writes are kept on purpose in the C (case-insensitive
+  string compares and keys, ASCII `?` for other characters, `[long]` addresses, .NET number text); where patches.ps1 had
+  no set order (a hashtable's keys) it was given one ([ordered], file order), and four defects found on the way were
+  fixed in it (the shader test's `0xFFFF0300` check and the screenshot's patched-cockpit name could never match, as
+  PowerShell reads those literals as negative ints; two unreadable-memory cases stopped the loop; NaN got through
+  shadow.txt's range checks).
 - **Checked in the running game** (TeknoParrot route, 2026-10-15): the game patched by `PLAY.bat`, then patched by
   `patches.dll` (loaded in and started): every site, hook and pointer the same; the camera block the same but for 80
   bytes in its run-time state (0x2275-0x2278 the cockpit-seat copy, 0x2440-0x246e and 0x2500-0x251f smoothing and blend
