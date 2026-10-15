@@ -1884,6 +1884,40 @@ if ($Cores -gt 0 -and $Cores -lt [Environment]::ProcessorCount) {
     try { $proc.ProcessorAffinity = [IntPtr]$mask; Log ("Game limited to {0} of {1} CPU threads (keeps its video decoders' memory down)." -f $Cores, [Environment]::ProcessorCount) }
     catch { Log "Could not limit the game's CPU cores: $($_.Exception.Message)" }
 }
+# The in-game part runs from sr3mods.exe (tools\patches: the same C as patches.dll, in lockstep with this script's own code
+# below, checked at every build by tools\patches\lockstep.py and live_lockstep.py): it waits for the game, patches the
+# cameras and, for a game this script started, runs the live loop and the watchdog (Ctrl+Scroll Lock too) until the game
+# closes, then releases stuck modifier keys. This script's own code stays the reference those checks compare with, and runs
+# instead only for -Off and when sr3mods.exe is not built or was built from another patches.ps1 (python
+# tools\patches\build.py builds it; PLAY.bat never builds on its own).
+$sr3mods = Join-Path $PSScriptRoot 'tools\patches\build\sr3mods.exe'
+$useExe = $false
+if (-not $Off) {
+    if (Test-Path -LiteralPath $sr3mods) {
+        $want = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $PSScriptRoot 'patches.ps1')).Hash.ToLower()
+        $got = ("$(& $sr3mods source 2>$null)" -replace '^\s*\[[^\]]*\]\s*', '').Trim()           # its one line: [hh:mm:ss] <sha256>
+        if ($got -eq $want) { $useExe = $true }
+        else { Log 'sr3mods.exe was built from another patches.ps1 (python tools\patches\build.py builds it again); the PowerShell patches run this time.' }
+    } else { Log 'sr3mods.exe is not built yet (python tools\patches\build.py); the PowerShell patches run this time.' }
+}
+if ($useExe) {
+    $a = @('attach', "$($proc.Id)", '--delay', "$DelaySeconds", '--mod', $PSScriptRoot)
+    if ($CameraProfile) { $a += '--camera-profile', $CameraProfile }
+    if ($ProfilesFile) { $a += '--profiles-file', $ProfilesFile }
+    if ($Overlay -ge 0) { $a += '--overlay', "$Overlay" }
+    if ($MouseSmoothing -ge 0) { $a += '--mouse-smoothing', "$MouseSmoothing" }                    # ("$x": the same number text in every culture)
+    if ($CameraBlend -ge 0) { $a += '--camera-blend', "$CameraBlend" }
+    if ($Canary) { $a += '--canary' }
+    if ($NoWatchdog) { $a += '--no-watchdog' }
+    if (-not $launched) { $a += '--no-live' }                                                      # (the run that started the game keeps its live loop)
+    & $sr3mods @a | ForEach-Object {                                                              # its lines carry their own time
+        Write-Host $_
+        if ($script:PlayLog) { try { [IO.File]::AppendAllText($script:PlayLog, "$_`r`n") } catch { } }
+    }
+    $code = $LASTEXITCODE
+    if ($code -ne 0) { throw "sr3mods.exe stopped with exit code $code (the lines above say why: 1 settings, 2 the game's bytes or no game, 3 the game closed or could not be opened)." }
+    return
+}
 $h = [Sr3Mem]::Open($proc.Id)
 try {
     $t0 = Get-Date

@@ -69,6 +69,7 @@ static int run(void) {
     SetProcessDPIAware();             /* the screen's own pixels for the START screenshot (patches.ps1's Initialize-Host; 2560x1440 of a 4K screen at 150 % without it) */
     GetModuleFileNameA(NULL, mod, MAX_PATH); if ((s = strrchr(mod, '\\'))) *s = 0;          /* (default mod folder: beside the exe) */
     memset(&sw, 0, sizeof sw); sw.overlay = -1; sw.mouse = -1; sw.blend = -1; sw.canary = -1;
+    if (argc >= 2 && !wcscmp(av[1], L"source")) { pc_logf("%s", pc_source()); return 0; }   /* the SHA-256 of the patches.ps1 it was built from (PLAY.bat uses it only when that is today's) */
     if (argc < 2 || (wcscmp(av[1], L"attach") && wcscmp(av[1], L"plan"))) {
         pc_logf("sr3mods attach [<pid>] [--settings <yaml>] [--mod <dir>] [--delay <s>] [--camera-profile <n>] [--profiles-file <f>] [--overlay <px>] [--mouse-smoothing <s>] [--camera-blend <s>] [--canary] [--watchdog | --no-watchdog] [--no-live] [--log <f>]  |  sr3mods plan <out.json> [the same]");
         return 4;

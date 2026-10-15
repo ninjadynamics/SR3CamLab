@@ -79,7 +79,13 @@ static DWORD WINAPI worker(LPVOID p) {
     }
     pc_logf("Game data loaded after %u s.", (unsigned)((GetTickCount() - t0) / 1000));
     if (!pc_install_cameras(&inside, &cfg)) return 0;
-    if (cfg.watchdog) { char line[512]; if (!in_watch(&inside, line, sizeof line)) pc_logf("%s", line); }
+    {   /* the watchdog with the game (patches.watchdog, on by default); the launcher's word wins: SR3LAB_WATCHDOG=0 (launch.exe
+           --no-watchdog, play.ps1 -NoWatchdog) leaves it off, =1 (a watched launch) on, its host refusing a second one.
+           Ctrl+Scroll Lock starts it either way. */
+        char ev[4] = ""; DWORD n = GetEnvironmentVariableA("SR3LAB_WATCHDOG", ev, sizeof ev); int on = cfg.watchdog;
+        if (n == 1 && (ev[0] == '0' || ev[0] == '1')) on = ev[0] == '1';
+        if (on) { char line[512]; if (!in_watch(&inside, line, sizeof line)) pc_logf("%s", line); }
+    }
     {   /* the live loop (pc_live.c) for the rest of the game's life: this thread ends with the process */
         wchar_t w[1024]; char exe[2048] = ""; HMODULE rt = GetModuleHandleA("dinput8.dll");
         if (rt) ph_grab_hook = (int (__cdecl *)(void **, int *, int *))(void (*)(void))GetProcAddress(rt, "sr3rt_grab_backbuffer");
