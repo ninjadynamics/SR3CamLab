@@ -238,7 +238,30 @@ def _emit_f(mat, sec, Q, B, M, out, P=None):
 
 def _recipe(lo, up, T, pix, rect=None):
     """composed picture of tile `lo` with tile `up` painted over; T (3x2): upper uv = [u v 1] T of the lower uv.
-    rect None: tile-sized, repeating. rect (u0, v0, u1, v1): that uv rectangle of the lower mapping, not repeating."""
+    rect None: tile-sized, repeating. rect (u0, v0, u1, v1): that uv rectangle of the lower mapping, not repeating.
+    The sizes here (np.log2 = the C runtime's log2, as math.log2), the texels in fastlm.c ob_recipe (it quotes the numpy it replaced);
+    the pictures come from tile_pixels as numpy arrays and go back as numpy arrays (save_baked), so numpy is imported for that hand-over
+    only. _old_recipe: the numpy original (the reference)."""
+    rl, hl = pix(lo); ru, hu = pix(up); H, W = rl.shape[:2]; h2, w2 = ru.shape[:2]
+    if tuple(rl.shape[2:]) != (3,) or tuple(ru.shape[2:]) != (3,) or (hl is not None and tuple(hl.shape) != (H, W)) or (hu is not None and tuple(hu.shape) != (h2, w2)): return _old_recipe(lo, up, T, pix, rect)      # (what ob_recipe takes: rgb pictures, holes of their size)
+    Tf = [float(v) for v in (T.ravel().tolist() if hasattr(T, 'ravel') else (list(T[0]) + list(T[1]) + list(T[2]) if hasattr(T[0], '__len__') else T))]
+    p2 = lambda x, hi: int(2 ** min(max(math.ceil(math.log2(max(x, 1.0))), 3), hi))      # int(2 ** np.clip(np.ceil(np.log2(max(x, 1.0))), 3, hi))
+    if rect is None: w, h = W, H; u0, v0, u1, v1 = 0.0, 0.0, 1.0, 1.0
+    else: u0, v0, u1, v1 = (float(v) for v in rect); w = p2((u1 - u0) * W, 9); h = p2((v1 - v0) * H, 9)      # power-of-two sides like every 1995 tile (DXT blocks, mip chain)
+    if rect is not None:                                              # ... and as fine as the UPPER tile needs: the size used to come from the lower tile alone, so the CHECK POINT letters (256 x 64) painted over their
+        cr_ = [(0.0 + ((a * Tf[0] + b * Tf[2]) + 1.0 * Tf[4]), 0.0 + ((a * Tf[1] + b * Tf[3]) + 1.0 * Tf[5])) for a, b in ((u0, v0), (u1, v0), (u0, v1), (u1, v1))]      # blue panel (64 x 32, repeated) came out at the panel's size, half as fine as their own picture
+        ex_ = [(max(c[k] for c in cr_) - min(c[k] for c in cr_)) * (w2, h2)[k] for k in (0, 1)]      # np.ptp(cr_, axis=0) * [w2, h2]  (user, 2026-10-08: "why does it look so bad in-game, the source itself isn't half bad")
+        w = int(max(w, p2(ex_[0], 11))); h = int(max(h, p2(ex_[1], 11)))
+    import array, ctypes, fastlm
+    raw = lambda a: None if a is None else memoryview(a).tobytes()     # (C-order bytes of the numpy pictures, without numpy)
+    buf = lambda b: None if b is None else ctypes.c_char_p(b)
+    rgb = bytearray(3 * w * h); hole = bytearray(w * h); Ta = array.array('d', Tf)
+    any_ = fastlm.lib().ob_recipe(buf(raw(rl)), buf(raw(hl)), W, H, buf(raw(ru)), buf(raw(hu)), w2, h2, Ta.buffer_info()[0], u0, v0, u1, v1, w, h,
+                                  (ctypes.c_char * len(rgb)).from_buffer(rgb), (ctypes.c_char * len(hole)).from_buffer(hole))
+    import numpy as np                                                # (the hand-over: save_baked and the tile caches take numpy pictures)
+    return np.frombuffer(rgb, np.uint8).reshape(h, w, 3), (np.frombuffer(hole, np.bool_).reshape(h, w) if any_ else None)
+def _old_recipe(lo, up, T, pix, rect=None):
+    """(the numpy original of _recipe: the reference)"""
     import numpy as np
     T = np.asarray(T, float).reshape(3, 2); rl, hl = pix(lo); ru, hu = pix(up); H, W = rl.shape[:2]; h2, w2 = ru.shape[:2]
     if rect is None: w, h = W, H; u0, v0, u1, v1 = 0.0, 0.0, 1.0, 1.0

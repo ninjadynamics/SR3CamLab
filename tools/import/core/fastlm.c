@@ -586,4 +586,30 @@ EXPORT int bc_limits(const double *Q, i64 nq, double x0, double x1, double z0, d
     out[0] = lo; out[1] = hi; return any;
 }
 
+/* overlay_bake._recipe's painting: the composed tile (w x h) of tile `lo` (rl W x H x 3, hl its holes or NULL) with tile `up` (ru, hu;
+   w2 x h2) painted over, T the 3 x 2 map (upper uv = [u v 1] T). The numpy it replaces, texel for texel:
+     uu = u0 + (np.arange(w) + 0.5) / w * (u1 - u0); vv = v1 - (np.arange(h) + 0.5) / h * (v1 - v0); U, Vv = np.meshgrid(uu, vv)
+     cl = np.floor(U * W).astype(int) % W; rw = np.floor((1.0 - Vv) * H).astype(int) % H; rgb = rl[rw, cl]; hole = hl[rw, cl] (else 0)
+     uv2 = np.stack([U, Vv, 1], -1) @ T (0 + ((U T0 + Vv T1) + 1 T2), the matmul's order); c2 = np.floor(uv2[..., 0] * w2) % w2;
+     r2 = np.floor((1.0 - uv2[..., 1]) * h2) % h2; op = ~hu[r2, c2] (else all); rgb[op] = ru[r2, c2][op]; hole &= ~op
+   -> hole.any() */
+EXPORT int ob_recipe(const unsigned char *rl, const unsigned char *hl, int W, int H, const unsigned char *ru, const unsigned char *hu, int w2, int h2,
+                     const double *T, double u0, double v0, double u1, double v1, int w, int h, unsigned char *rgb, unsigned char *hole)
+{
+    int any = 0;
+    for (int j = 0; j < h; j++) {
+        double V = v1 - (j + 0.5) / h * (v1 - v0); long long rw = pymod((long long)floor((1.0 - V) * H), H);
+        for (int i = 0; i < w; i++) {
+            double Uu = u0 + (i + 0.5) / w * (u1 - u0); long long cl = pymod((long long)floor(Uu * W), W);
+            const unsigned char *s = rl + 3 * (rw * W + cl); unsigned char *d = rgb + 3 * ((long long)j * w + i); d[0] = s[0]; d[1] = s[1]; d[2] = s[2];
+            unsigned char ho = hl ? (hl[rw * W + cl] != 0) : 0;
+            double a = 0.0 + ((Uu * T[0] + V * T[2]) + 1.0 * T[4]), b = 0.0 + ((Uu * T[1] + V * T[3]) + 1.0 * T[5]);
+            long long c2 = pymod((long long)floor(a * w2), w2), r2 = pymod((long long)floor((1.0 - b) * h2), h2);
+            if (!(hu && hu[r2 * w2 + c2])) { const unsigned char *t = ru + 3 * (r2 * w2 + c2); d[0] = t[0]; d[1] = t[1]; d[2] = t[2]; ho = 0; }
+            hole[(long long)j * w + i] = ho; any |= ho;
+        }
+    }
+    return any;
+}
+
 EXPORT int lm_threads(void) { return omp_get_max_threads(); }
