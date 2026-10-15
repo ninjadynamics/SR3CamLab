@@ -3,9 +3,11 @@
     SR3_FASTDXT=0         the numpy code is used (to time or compare a build without this module)
     SR3_FASTDXT_CHECK=1   both run and the bytes are compared; differences are counted and printed when the build ends
 
-    blocks = dxt1_rgb(img, hole, old)      img (h, w, 3) uint8, hole (h, w) bool or None, old = the numpy function (fallback / reference)"""
+    blocks = dxt1_rgb(img, hole, old)      img (h, w, 3) uint8, hole (h, w) bool or None, old = the numpy function (fallback / reference)
+    blocks = dxt1_bytes(rgb, h, w, hole)   the same without numpy: rgb h * w * 3 bytes, hole h * w bytes (0 / 1) or None
+Since 2026-10-15 (kb 31) no numpy here: a numpy picture is read through the buffer protocol (np.ascontiguousarray(img, np.uint8) was the
+same bytes); a picture of another type or shape still goes to `old`."""
 import os, ctypes, subprocess, hashlib, atexit
-import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__)); SRC = os.path.join(HERE, 'fastdxt.c'); import cbuild as _cb; from cbuild import runtime as _runtime
 ON = os.environ.get('SR3_FASTDXT', '1') != '0'; CHECK = os.environ.get('SR3_FASTDXT_CHECK', '0') == '1'; STAT = dict(calls=0, different=0, texels=0)
 _lib = None
@@ -15,12 +17,24 @@ def lib():
         dll = _cb.dll('fastdxt')                                  # built on first use (cbuild.py: sources, flags, compiler)
         _runtime(); L = ctypes.CDLL(dll); L.dxt1_rgb.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p]; _lib = L
     return _lib
+def dxt1_bytes(rgb, h, w, hole=None):
+    """h x w RGB bytes (h, w multiples of 4) -> DXT1 blocks (bytes); hole: h * w bytes, 1 = transparent texel"""
+    a = ctypes.create_string_buffer(bytes(rgb), len(rgb)); m = None if hole is None else ctypes.create_string_buffer(bytes(hole), len(hole)); out = ctypes.create_string_buffer((h // 4) * (w // 4) * 8)
+    lib().dxt1_rgb(a, h, w, m, out); return out.raw
 def dxt1_rgb(img, hole, old):
     if not ON: return old(img, hole)
-    a = np.ascontiguousarray(img, np.uint8); h, w = a.shape[:2]
-    if a.ndim != 3 or a.shape[2] != 3 or h % 4 or w % 4 or (hole is not None and np.shape(hole) != (h, w)): return old(img, hole)
-    m = None if hole is None else np.ascontiguousarray(hole, np.uint8); out = np.empty((h // 4) * (w // 4) * 8, np.uint8)
-    lib().dxt1_rgb(a.ctypes.data_as(ctypes.c_void_p), h, w, None if m is None else m.ctypes.data_as(ctypes.c_void_p), out.ctypes.data_as(ctypes.c_void_p)); res = out.tobytes(); STAT['calls'] += 1; STAT['texels'] += h * w
+    mv = memoryview(img)
+    if mv.format.lstrip('<=@') != 'B':                                # (not uint8: a numpy array of another type, so numpy is there - converted as before)
+        import numpy as np
+        mv = memoryview(np.ascontiguousarray(img, np.uint8))
+    h, w = (tuple(mv.shape) + (0, 0))[:2]
+    if mv.ndim != 3 or mv.shape[2] != 3 or h % 4 or w % 4: return old(img, hole)
+    hm = None if hole is None else memoryview(hole)
+    if hm is not None and tuple(hm.shape) != (h, w): return old(img, hole)
+    if hm is not None and hm.itemsize != 1:
+        import numpy as np
+        hm = memoryview(np.ascontiguousarray(hole, np.uint8))
+    res = dxt1_bytes(mv.tobytes(), h, w, None if hm is None else hm.tobytes()); STAT['calls'] += 1; STAT['texels'] += h * w      # (np.ascontiguousarray(hole, np.uint8): the same bytes)
     if CHECK and res != old(img, hole): STAT['different'] += 1
     return res
 def _report():
