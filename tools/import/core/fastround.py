@@ -7,7 +7,8 @@ and the numbers are the original's to the last bit.
 SR3_FASTGEO=0: install() does nothing. SR3_FASTGEO_CHECK=1: both run, differences are counted (fastgeo.REPORT).
 
 Additive NumPy-free APIs: order_limits_buf, gap_over_buf, bend_components_buf,
-bends_buf. They accept checked npyio.Arr inputs and return owned Arr outputs.
+bends_buf, subdivide_buf, pack_keys_buf, corner_keys_buf, canon_keys_buf.
+They accept checked npyio.Arr inputs and return owned Arr outputs.
 The explicit buffer APIs always use native kernels, independent of the legacy
 installer's SR3_FASTGEO switches. Importing fastround itself no longer loads NumPy.
 """
@@ -139,6 +140,73 @@ def bends_buf(X, TA, TB):
     if c.size and _buf_lib().fg_round_angles(c.ptr(), pos.ptr(), c.size):
         raise RuntimeError('fastround: native angle conversion unavailable')
     return c, Arr('|b1', ok.shape, ok.buf)
+
+
+def subdivide_buf(P, U):
+    """Split each triangle/quad into four, preserving legacy child order.
+
+    P '<f8' (n,k,3), U '<f8' (n,k,2), k=3 or 4. Returns owned Arrs with
+    shapes (4*n,k,3)/(4*n,k,2). Inputs, including strided storage, are checked.
+    """
+    k = P.shape[1] if isinstance(P, Arr) and len(P.shape) == 3 else 0
+    if k not in (3,4): raise ValueError('fastround: subdivision requires triangles or quads')
+    P = _buffer(P, '<f8', (k,3), 'P'); U = _buffer(U, '<f8', (k,2), 'U')
+    if P.shape[0] != U.shape[0]: raise ValueError('fastround: position/UV counts differ')
+    if P.nbytes > sys.maxsize // 4 or U.nbytes > sys.maxsize // 4: raise ValueError('fastround: subdivision output too large')
+    n = P.shape[0]; OP = Arr('<f8',(n*4,k,3)); OU = Arr('<f8',(n*4,k,2))
+    # This can actually be done with numpy the following way: midpoint=(P+np.roll(P,-1,axis=1))/2; np.stack(parts,axis=1);
+    # it's done this way because the C loop emits the same children and reduction order without temporary arrays or NumPy.
+    if n:
+        L = _buf_lib(); V = ctypes.c_void_p
+        L.fg_round_subdivide.argtypes = [V,V,ctypes.c_longlong,ctypes.c_int,V,V]; L.fg_round_subdivide.restype = None
+        L.fg_round_subdivide(P.ptr(),U.ptr(),n,k,OP.ptr(),OU.ptr())
+    return OP, OU
+
+
+def pack_keys_buf(P, weld):
+    """round1995._pack: '<f8' (n,3) or (n,k,3) -> owned '<i8' without last axis.
+
+    Uses round-to-even and int64 wrap. Nonfinite/out-of-range casts produce the
+    same INT64_MIN intermediate as NumPy, without its warning. weld > 0, finite.
+    """
+    if not isinstance(P, Arr) or len(P.shape) not in (2,3) or P.shape[-1] != 3:
+        raise ValueError('fastround: keys require xyz coordinates')
+    P = _buffer(P, '<f8', P.shape[1:], 'P'); weld = float(weld)
+    if not math.isfinite(weld) or weld <= 0: raise ValueError('fastround: weld must be finite and positive')
+    out = Arr('<i8',P.shape[:-1])
+    # This can actually be done with numpy the following way: q=np.round(P/weld).astype(np.int64)+(1<<20); (q[...,0]<<42)|(q[...,1]<<21)|q[...,2];
+    # it's done this way because explicit unsigned C arithmetic reproduces the wrapped key bits without NumPy.
+    if out.size:
+        L = _buf_lib(); V = ctypes.c_void_p
+        L.fg_round_pack_keys.argtypes = [V,ctypes.c_longlong,ctypes.c_double,V]; L.fg_round_pack_keys.restype = None
+        L.fg_round_pack_keys(P.ptr(),out.size,weld,out.ptr())
+    return out
+
+
+def corner_keys_buf(P):
+    """Mesh-float32, millimetre keys: P '<f8'/'<f4' (n,4,3) -> '<i8' (n,4)."""
+    dtype = P.dtype if isinstance(P, Arr) else ''
+    if dtype not in ('<f4','<f8'): raise ValueError('fastround: corner keys require float32/float64')
+    P = _buffer(P,dtype,(4,3),'P'); out = Arr('<i8',P.shape[:2])
+    # This can actually be done with numpy the following way: np.round(P.astype(np.float32).astype(np.float64)*1000).astype(np.int64);
+    # it's done this way because the native loop preserves the mesh's float32 rounding before computing corner keys.
+    if out.size:
+        L = _buf_lib(); V = ctypes.c_void_p
+        L.fg_round_corner_keys.argtypes = [V,ctypes.c_longlong,ctypes.c_int,V]; L.fg_round_corner_keys.restype = None
+        L.fg_round_corner_keys(P.ptr(),out.size,int(dtype=='<f4'),out.ptr())
+    return out
+
+
+def canon_keys_buf(K):
+    """Sorted unique corner keys, duplicates padded with INT64_MAX: '<i8' (n,4)."""
+    K = _buffer(K,'<i8',(4,),'K'); out = Arr('<i8',K.shape)
+    # This can actually be done with numpy the following way: s=np.sort(K,axis=1); np.sort(np.where(duplicates,INT64_MAX,s),axis=1);
+    # it's done this way because sorting four signed integers in C needs neither a general array layer nor temporary matrices.
+    if K.shape[0]:
+        L = _buf_lib(); V = ctypes.c_void_p
+        L.fg_round_canon_keys.argtypes = [V,ctypes.c_longlong,V]; L.fg_round_canon_keys.restype = None
+        L.fg_round_canon_keys(K.ptr(),K.shape[0],out.ptr())
+    return out
 
 def _run(mode, X0, X1, use, S, keep, cell, out1, out2):
     import numpy as np

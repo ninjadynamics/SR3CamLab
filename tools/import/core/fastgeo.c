@@ -657,6 +657,75 @@ EXPORT void fg_argmin2(const double *P, i64 n, const double *R, i64 m, i64 *out)
     }
 }
 
+/* round1995 subdivision: preserve face/child/corner order and the small-axis
+   sum order of mean(1). Positions and UVs use the identical operation order. */
+static void round_subdivide_values(const double *in, i64 n, int k, int dim, double *out)
+{
+    const int triangles[12] = {0,3,5, 3,1,4, 5,4,2, 3,4,5};
+    #pragma omp parallel for schedule(static) if(n > 1024)
+    for (i64 i = 0; i < n; i++) {
+        const double *p = in + i * k * dim;
+        double mid[12], center[3] = {0.0,0.0,0.0};
+        for (int j = 0; j < k; j++) for (int c = 0; c < dim; c++) {
+            mid[j * dim + c] = (p[j * dim + c] + p[((j + 1) % k) * dim + c]) / 2.0;
+            if (k == 4) center[c] += p[j * dim + c];
+        }
+        if (k == 4) for (int c = 0; c < dim; c++) center[c] /= 4.0;
+        for (int child = 0; child < 4; child++) for (int j = 0; j < k; j++) {
+            int source = k == 3 ? triangles[child * 3 + j] :
+                (j == 0 ? child : j == 1 ? k + child : j == 2 ? 2 * k : k + (child + 3) % k);
+            const double *v = source < k ? p + source * dim : source < 2*k ? mid + (source-k) * dim : center;
+            for (int c = 0; c < dim; c++) out[((i * 4 + child) * k + j) * dim + c] = v[c];
+        }
+    }
+}
+EXPORT void fg_round_subdivide(const double *P, const double *U, i64 n, int k, double *OP, double *OU)
+{
+    round_subdivide_values(P,n,k,3,OP); round_subdivide_values(U,n,k,2,OU);
+}
+/* NumPy's float64 -> int64 cast maps nonfinite/out-of-range values to INT64_MIN.
+   Shifts and additions use unsigned storage to reproduce int64 wrap without UB. */
+static uint64_t round_quantize(double x)
+{
+    double q = nearbyint(x);
+    i64 v = isfinite(q) && q >= -9223372036854775808.0 && q < 9223372036854775808.0 ? (i64)q : INT64_MIN;
+    return (uint64_t)v + UINT64_C(1048576);
+}
+EXPORT void fg_round_pack_keys(const double *P, i64 n, double weld, uint64_t *out)
+{
+    #pragma omp parallel for schedule(static) if(n > 4096)
+    for (i64 i = 0; i < n; i++) {
+        uint64_t a=round_quantize(P[3*i]/weld), b=round_quantize(P[3*i+1]/weld), c=round_quantize(P[3*i+2]/weld);
+        out[i]=(a << 42) | (b << 21) | c;
+    }
+}
+EXPORT void fg_round_corner_keys(const void *P, i64 n, int f32, uint64_t *out)
+{
+    #pragma omp parallel for schedule(static) if(n > 4096)
+    for (i64 i = 0; i < n; i++) {
+        uint64_t q[3];
+        for (int c=0;c<3;c++) {
+            double x=f32 ? ((const float*)P)[3*i+c] : (double)(float)((const double*)P)[3*i+c];
+            q[c]=round_quantize(x*1000.0);
+        }
+        out[i]=(q[0] << 42) | (q[1] << 21) | q[2];
+    }
+}
+static void round_sort4(i64 *s)
+{
+    for (int i=1;i<4;i++) { i64 v=s[i]; int j=i; while(j && s[j-1]>v) { s[j]=s[j-1]; j--; } s[j]=v; }
+}
+EXPORT void fg_round_canon_keys(const i64 *K, i64 n, i64 *out)
+{
+    #pragma omp parallel for schedule(static) if(n > 4096)
+    for (i64 i=0;i<n;i++) {
+        i64 *s=out+4*i; for(int j=0;j<4;j++) s[j]=K[4*i+j]; round_sort4(s);
+        /* Walk backwards so equality is tested against the original sorted values. */
+        for(int j=3;j>0;j--) if(s[j]==s[j-1]) s[j]=INT64_MAX;
+        round_sort4(s);
+    }
+}
+
 /* ------------------------------------------------------------------ round1995._order_limits / _gap_over (fastround.py) */
 /* Buffer entry points validate values before the existing integer grid casts
    and vertex dereferences. These scans do not change the old kernels' math. */
