@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "patchcore.h"
+#include "watch_launcher.h"
 
 #define EXPORT __declspec(dllexport)
 static char here[MAX_PATH];
@@ -61,7 +62,13 @@ static void in_resume(GameMem *m) {
     nheld = 0;
 }
 static int in_alive(GameMem *m) { (void)m; return 1; }
-static GameMem inside = {in_read, in_write, in_alloc, in_suspend, in_resume, in_alive, ph_now, ph_sleep, ph_key, ph_front, ph_shot, NULL, NULL, NULL};
+static void in_news(GameMem *m) { (void)m; sr3_watch_poll(pc_log); }
+static int in_watch(GameMem *m, char *line, int cap) {
+    (void)m;
+    if (!sr3_watch_start(GetCurrentProcess(), cfg.mod, line, (size_t)cap)) return 0;
+    snprintf(line, (size_t)cap, "Recorder requested; reports in crash\\."); return 1;
+}
+static GameMem inside = {in_read, in_write, in_alloc, in_suspend, in_resume, in_alive, ph_now, ph_sleep, ph_key, ph_front, ph_shot, in_news, in_watch, NULL};
 
 /* ---------------------------------------------------------------- the thread */
 static DWORD WINAPI worker(LPVOID p) {
@@ -72,6 +79,7 @@ static DWORD WINAPI worker(LPVOID p) {
     }
     pc_logf("Game data loaded after %u s.", (unsigned)((GetTickCount() - t0) / 1000));
     if (!pc_install_cameras(&inside, &cfg)) return 0;
+    if (cfg.watchdog) { char line[512]; if (!in_watch(&inside, line, sizeof line)) pc_logf("%s", line); }
     {   /* the live loop (pc_live.c) for the rest of the game's life: this thread ends with the process */
         wchar_t w[1024]; char exe[2048] = ""; HMODULE rt = GetModuleHandleA("dinput8.dll");
         if (rt) ph_grab_hook = (int (__cdecl *)(void **, int *, int *))(void (*)(void))GetProcAddress(rt, "sr3rt_grab_backbuffer");
