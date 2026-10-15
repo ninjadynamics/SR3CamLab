@@ -22,11 +22,16 @@ and prints every gcc command).
 with its own `.blend` export. The same from a command line:
 
 ```
-python tools\import\stack.py src 1                                  every step but the install
+python tools\import\stack.py src 1                                  every step
 python tools\import\stack.py src 1 --steps rom                      only the ROM import
+python tools\import\stack.py src 1 --steps build                    the game files again, with the light baked before
+python tools\import\stack.py src 1 --round 2 --patch off            other settings (then light and rt must run again)
 python tools\import\stack.py src 1 --blend round,rt                 also a .blend after the rounding and of the lit track
 python tools\import\stack.py src 1 --steps install --title "Mountain"
 ```
+
+The patch chain and the rounding are settings of both importer passes, not steps of their own: a bake remembers the ones
+it was made with, and a build that would use that light with other settings is refused.
 
 | Step | What it does | Made by |
 |---|---|---|

@@ -1,0 +1,111 @@
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\bruno\AppData\Local\Programs\Python\Python311\Lib\cProfile.py", line 190, in <module>
+    main()
+  File "C:\Users\bruno\AppData\Local\Programs\Python\Python311\Lib\cProfile.py", line 179, in main
+    runctx(code, globs, None, options.outfile, options.sort)
+  File "C:\Users\bruno\AppData\Local\Programs\Python\Python311\Lib\cProfile.py", line 19, in runctx
+    return _pyprofile._Utils(Profile).runctx(statement, globals, locals,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\bruno\AppData\Local\Programs\Python\Python311\Lib\profile.py", line 66, in runctx
+    self._show(prof, filename, sort)
+  File "C:\Users\bruno\AppData\Local\Programs\Python\Python311\Lib\profile.py", line 70, in _show
+    prof.dump_stats(filename)
+  File "C:\Users\bruno\AppData\Local\Programs\Python\Python311\Lib\cProfile.py", line 46, in dump_stats
+    with open(file, 'wb') as f:
+         ^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'F:\\Jogos\\SEGA Rally 3\\SR3CamLab\\tools\\import\\core\\src\\build.prof'
+importing road
+       road: 3509 slices, step 0.999..1.002 m, heights from {'none': 18034, 'off-road poly': 46431, 'road poly': 51332}
+       elevation 14.0..83.3, max grade 15.1% at slice 2640, tightest bend radius 8.9 m at slice 1342, max cross-fall 12.8%
+       collision surface codes under the cells: {-1: 18034, 100: 46431, 0: 13185, 1: 31884, 8: 462, 6: 5801}
+       drivable polys found per side (cells): left median 13 min 10, right median 14 min 12 of 16
+       variable width from the 1995 drivable polygons (no bank flag): left 4.0..14.8 m (median 6.5), right 5.0..16.0 m (median 7.2), total 10.5..29.0 m
+stack_prof
+       left/right check (1995 call vs sign of the turn over the next 120 m; positive = the 1995 lefts turn the way SR3 left-coded markers do): 17 ; 1995 notes not written or shortened: ['CHairpinRight (caution prefix dropped)', 'CautionKLeft (caution prefix dropped)']
+       checkpoints (split + time-extension markers): {'mode': 'classic', 'sections_1995': [63, 126, 198], 'lap_fractions_after_start': [0.025, 0.209, 0.423, 0.661]}
+       start slice 5 (classic grid table), grid (3, -2, 4, 2, 9, -2, 10, 2, 10, -2, 11, 2, 16, -2, 17, 2) ; 18 pace notes: [(0.008, 3, 0, 'EasyLeft -> SP_EASYLEFT'), (0.075, 3, 0, 'EasyLeft -> SP_EASYLEFT'), (0.111, 5, 0, 'EasyRight -> SP_EASYRIGHT'), (0.157, 3, 0, 'EasyLeft -> SP_EASYLEFT'), (0.217, 13, 0, 'KLeft -> SP_90LEFT'), (0.264, 62, 0, 'MidRightMaybe -> SP_MEDIUMRIGHTMAYBE'), (0.298, 20, 0, 'LongEasyLeft -> SP_LONGEASYLEFT'), (0.348, 8, 0, 'CHairpinRight -> SP_HAIRPINRIGHT'), (0.405, 26, 0, 'LongMidLeft -> SP_LONGMEDIUMLEFT'), (0.504, 3, 0, 'EasyLeft -> SP_EASYLEFT'), (0.557, 54, 0, 'EasyLeftMaybe -> SP_EASYLEFTMAYBE'), (0.61, 9, 0, 'MidLeft -> SP_MEDIUMLEFT'), (0.649, 11, 0, 'MidRight -> SP_MEDIUMRIGHT'), (0.682, 54, 0, 'EasyLeftMaybe -> SP_EASYLEFTMAYBE'), (0.708, 54, 0, 'EasyLeftMaybe -> SP_EASYLEFTMAYBE'), (0.744, 28, 0, 'LongMidRight -> SP_LONGMEDIUMRIGHT'), (0.842, 13, 0, 'CautionKLeft -> SP_90LEFT'), (0.926, 3, 0, 'EasyLeft -> SP_EASYLEFT')]
+       surface cells: tarmac 107743, gravel 4545 ; quads across (A) 11..30, column offset -15..-4
+       cars in baked shadow: 33 road pages, each with its own sun / sky picture of 512 x 512
+       road layers: 5186a744 + 7e6973ab copied from Alpine4
+       AI map: 1995 AI line: lateral offset from the centre line median 0.0 m, max 6.1 m (0 slices where it was more than 20 m away ignored); lane band 4.2..8.0 m wide; 6792 cells
+       terrain-following: 1501 free cells, tunnel height 13.6..19.9 m
+       points 12 m below the road solid 3510/3510, 24 m above solid 3510/3510
+       walls: 1756 wall segments, floor 12.0 ceiling 93.3, nodes kd 15 planes 6099 solid 4614 leaves 1501 polys 7024, depth max/mean 29/16.5
+       walls check: random points n/a (stepped floor/ceiling) ; road points (centre + both sides) free 3510/3510
+       backdrop joins the course before the overlap handling: 92 faces, 29 dropped (same corners as a course polygon)
+       1995 uv repeats far beyond the usual for the tile / uv on a line: 76 polygons given the usual density of their tile (69 of them had their uv on a line): [('tex_s1_x0576_y0768_32x32_c0E9', 'sec_1260', (131.7, 31.5, -506.2)), ('tex_s1_x0576_y0768_32x32_c0E9', 'sec_1260', (144.3, 31.5, -502.2)), ('tex_s1_x0576_y0768_32x32_c0E9', 'sec_1260', (119.4, 31.5, -508.8)), ('tex_s1_x0576_y0768_32x32_c0E9', 'sec_1260', (131.2, 31.5, -506.4)), ('tex_s1_x1536_y0256_256x256_c0C2_t', 'sec_1291', (-91.0, 90.7, 447.7)), ('tex_s1_x1536_y0256_256x256_c0C2_t', 'sec_1291', (-108.8, 90.7, 495.4))]
+       1995 cut-out boards with a different picture on each side: 5638 faces kept single-sided (tree blades)
+       1995 front/back pairs: 0 polygons (kept single-sided, 5 mm apart); the other 15018 go on
+       1995 double polygons: 0 second sides of cut-out boards dropped
+       coplanar / near-coplanar polygons resolved without lift: {'composed tiles: one region': 124, 'composed tiles: repeating': 8, 'face behind cut back (opaque face in front, apart)': 21, 'face behind cut back (opaque face on it)': 313, 'moved apart (cut-out in front of a face)': 14, 'pairs left': 0, 'rounds': 7, 'same corners: cut-out baked into the polygon under it': 408, 'same corners: opaque polygon under another opaque one dropped': 13, 'shared region baked (cut-out on top)': 2643}
+       layers on the road (seen from above): 0 of the 1390 road faces lie on another one (highest layer 0); decal lift 3 cm + 2 cm per layer
+       classic visual model: 20474 faces; 1390 lying faces reach into the road and were cut to 1 m pieces: 107541 pieces on the road (replaced by the SR3 road, returned as decals), 19891 faces and pieces kept, 260 materials
+       verbatim road: 7 tiles are road surface ; left as the 1995 polygons
+C:\Users\bruno\AppData\Local\Temp\claude\F--Jogos-SEGA-Rally-3\7efd0921-014b-4b6a-8439-6ea64a2cda95\scratchpad\cleanroom\data\work\retex\classic_tiles_contact_colour.png
+       patch src.mountain.patch.1.json: 73 faces added (240 m2; 32 had no mapping: 32 continued from a neighbour, 0 laid flat), 59 corners of 29 polygons moved
+       patch src.mountain.patch.2.json: 264 polygons cut into the pieces the build shows (their tile repeats more than twice), so single pieces can be removed
+       patch src.mountain.patch.2.json: 13746 triangles to remove -> 6836 polygons dropped, 244 cut down ; 0 are the back of a two-sided polygon (it goes with its front) ; NOT FOUND among the polygons of this build: 0 ; polygons that could not be cut down: 0
+       facade pictures composed from the course tiles: 106 (8.4 megapixels, 3951 source triangles)
+       patch src.mountain.patch.2.json: 3196 faces added (89687 m2; 0 had no mapping: 0 continued from a neighbour, 0 laid flat), 0 corners of 0 polygons moved
+       patch src.mountain.patch.3.json stage 1: 3641 faces added (80047 m2; 1 had no mapping: 1 continued from a neighbour, 0 laid flat), 0 corners of 0 polygons moved
+       boards moved whole (board_moves): 792 cut-out polygons
+       patch src.mountain.patch.3.json stage 3: 871 polygons cut into the pieces the build shows (their tile repeats more than twice), so single pieces can be removed
+       patch src.mountain.patch.3.json stage 3: 27860 triangles to remove -> 15387 polygons dropped, 3186 cut down ; 0 are the back of a two-sided polygon (it goes with its front) ; NOT FOUND among the polygons of this build: 2 ; polygons that could not be cut down: 0
+       facade pictures composed from the course tiles: 99 (8.1 megapixels, 3707 source triangles)
+       patch src.mountain.patch.3.json stage 3: 34385 faces added (512114 m2; 69 had no mapping: 65 continued from a neighbour, 4 laid flat), 0 corners of 0 polygons moved
+       settings brought by the patches: {'sea': {'clip': False}}
+       patch boards: 3320 cut-out faces added by the patches are front / back pairs on the same corners: single-sided, as the 1995 pairs
+       patch clean-up: {'boards paired': 8, 'decals made opaque over the ground under them': 17, 'ground faces under a decal left out': 17, 'faces lying inside a bigger one left out': 72, 'small patch faces half in another left out': 31, '1995 decals over patch ground left out': 1, 'patch faces doubling an original left out': 17} ; pairs still lying in each other: 2
+       backdrop objects: 48 faces within the +-740 m scenery square added as scenery, 185 far faces (sky dome, ground plane, distant hills) left out: the slot keeps its own sky
+       1995 uv repeats far beyond the usual for the tile / uv on a line: 8 polygons given the usual density of their tile (8 of them had their uv on a line): [('col_047', 'gate_finishcp_299', (50.8, 18.0, -468.9)), ('col_047', 'gate_finishcp_299', (51.3, 18.0, -469.4)), ('col_047', 'gate_finishcp_299', (51.8, 18.0, -468.9)), ('col_047', 'gate_finishcp_299', (51.3, 18.0, -468.4)), ('col_047', 'gate_finishcp_299', (52.2, 18.0, -488.8)), ('col_047', 'gate_finishcp_299', (52.7, 18.0, -489.3))]
+       coplanar / near-coplanar polygons resolved without lift: {'composed tiles: one region': 3, 'left alone: a tile has no picture': 16, 'moved apart (no composed tile)': 8, 'pairs left': 0, 'rounds': 1, 'same corners: cut-out baked into the polygon under it': 3}
+       1995 uv repeats far beyond the usual for the tile / uv on a line: 8 polygons given the usual density of their tile (8 of them had their uv on a line): [('col_047', 'gate_finish_299', (50.8, 18.0, -468.9)), ('col_047', 'gate_finish_299', (51.3, 18.0, -469.4)), ('col_047', 'gate_finish_299', (51.8, 18.0, -468.9)), ('col_047', 'gate_finish_299', (51.3, 18.0, -468.4)), ('col_047', 'gate_finish_299', (52.2, 18.0, -488.8)), ('col_047', 'gate_finish_299', (52.7, 18.0, -489.3))]
+       coplanar / near-coplanar polygons resolved without lift: {'composed tiles: one region': 3, 'left alone: a tile has no picture': 16, 'moved apart (no composed tile)': 8, 'pairs left': 0, 'rounds': 1, 'same corners: cut-out baked into the polygon under it': 3}
+       coplanar / near-coplanar polygons resolved without lift: {'composed tiles: one region': 1, 'pairs left': 0, 'same corners: cut-out baked into the polygon under it': 3}
+       1995 checkpoint / finish gates: 57 faces in ['gate_check_126', 'gate_check_198', 'gate_check_63']
+       sea: 1369 quads of tex_sea_blue_64x64_c1DF at y -0.5
+       lighting from Tropical4: classic tiles scaled by [0.7065, 0.7135, 0.7425]
+       z-fight gate: 0 coplanar + 2 near-coplanar overlapping pairs (2 of them within 30 m of the road) ; by section [(('sec_1267', 'patch'), 2)] ; worst (gap, needed, tile, section, tile, section, where): [(0.062, 0.101, '0000_256x64_c0DF', 'sec_1267', 'facade_024', 'patch', (250.0, 16.0, -116.0), 8), (0.08, 0.099, '0000_256x64_c0DF', 'sec_1267', 'facade_076', 'patch', (246.0, 16.0, -144.0), 8)]
+       ROUNDED OUTWARDS (rules O1-O4, level 2): {'mode': 'outward', 'polygons': 25959, 'edges': 42723, 'smooth_edges': 35034, 'sharp_or_open_edges': 7689, 'capped': 41, 'apron': 27559, 'stands': 4600, 'held_by_order': 7, 'new_hollows_before_O3': 5538, 'turned_over_before_O3': 92, 'O3_rounds': 38, 'O3_corners_cut': 62532, 'new_hollows_left': 0, 'corners_curved': 132711, 'corners': 234320, 'largest_move_m': 1.5, 'mean_move_m': 0.071, 'flat': 7457, 'seconds': 13.3, 'texture_stretch': {'edges': 1279312, 'percent_within_10': 99.6, 'percent_longer_by_25': 0.1, 'largest': 6.91, 'smallest': 0.0}, 'polygons_after': 303401}
+       open sides (seenside.py, 144 rays a side, open = at least 6% of them reach the sky): front open 295371, back open 32606 ; written once per side 8801 -> 40107 ; lit on their winding side 122859 -> 258473 ; wound round 3750 -> 1491 ; neither side open 19470
+       which side the road sees (seenside.py: 7020 viewpoints, 1885.7 million rays, 1.8 s ; taken over from the collecting build): 319541 polygons judged ;winding side 258473 (576353 m2) ; other side, wound round 1491 (19152 m2) ; both sides, written once per side 40107 (93186 m2) ; never seen, brighter face kept 184131 (50156 m2)
+       cut-out polygons that take baked light (lm_cutouts): 6 written once per side, single-sided
+       light for the shading rule: ambient 0.64, sun 1.14, towards the sun [-0.0, 0.9399999976158142, -0.3400000035762787]
+       lighting experiment: light_contrast 0.01, smooth normals on 178202 corners of natural ground
+       1995 road surface: 0 classic road polygons of 0 tiles draped on the SR3 road as decals (3 cm above it)
+       light maps: 22 pages, 419 materials copied for them ; polygons found on a page 385640, not found 0 (those keep the white picture)
+       verbatim road: 879 scenery materials receive static and dynamic shadows
+       gaps sealed (seal1995): 447 opaque meshes ; 6049 corners moved onto their neighbour (under 1.0 mm) ; 10935 edges cut at 23393 corners that lay on them, 26547 triangles added ; 4 meshes written as several (index limit)
+       gaps sealed (seal1995): 451 opaque meshes ; 0 corners moved onto their neighbour (under 1.0 mm) ; 112 edges cut at 171 corners that lay on them, 107 triangles added
+       gaps sealed (seal1995): 451 opaque meshes ; 0 corners moved onto their neighbour (under 1.0 mm) ; 37 edges cut at 53 corners that lay on them, -95 triangles added
+       lit by the sun (light_contrast 0.01): 41981 opaque faces written once per side, single-sided
+       3153 classic faces repeat their tile more than twice: cut into pieces (u16 uv holds 0..2 repeats)
+       cut-out materials (alpha test + two-sided, DXT5 alpha): 117
+       corners shared between polygons (share_corners): 1618256 vertices written as 630421 in those meshes
+       scenery (classic): 566 meshes, 630421 vertices, largest mesh 21961 verts, 0 faces with uv span > 2 clamped, extent x -740..740 y -25..127 z -740..740
+       sky dome lowered by 300.0 m in total (this run: 300.0)
+       sky: rows 1008..1023 of 1024 (horizon and below) = sea screen colour [25, 63, 129]
+       sky: rows 1008..1023 of 1024 (horizon and below) = sea screen colour [25, 63, 129]
+       1995 sky: 308 far backdrop triangles of 4 tiles ray-cast from the course centre into the slot's two sky dome textures (2048 x 1024 DXT5, pixels only): texels mapped / hit / mean colour per texture [(124626, 124626, [76.0, 101.0, 191.0]), (124625, 124625, [76.0, 101.0, 191.0])]
+       slot horizon card (root +14) removed
+       lighting sets overridden: {} ; fog range [20000.0, 40000.0, 20000.0, 40000.0] ; light_split 0.72: ambient 0.460, sun 1.331 ; a lying surface in a cast shadow keeps 27 % of its sunlit brightness
+       road layer tarmac tinted by [0.42, 0.45, 0.52]
+       road layer gravel tinted by [0.62, 0.48, 0.36]
+       sea texture: mip LOD bias 2.0, max anisotropy 1 on 1 texture chunk(s)
+       cameras: slot camera lists and helicopter removed (7 chunks): the game builds default cameras
+       finish gate as the lap-aware Start_Finish_Line object: LOD (vertices, groups) [(4, 1), (124, 5), (124, 5)], 8 materials, mesh 11352 bytes (SEGA: 5784)
+       finish gate object re-read: LOD (vertices, indices, groups) [(4, 4, 1), (124, 176, 5), (124, 176, 5)]
+       crowd: 548 spectators from the 1995 table (215 moved off the road strip), 16 hidden animators; 735 of the slot's 751 objects removed
+stack_prof/Desert4                 written: 8 files, 0 consistency problems | 1418 unreferenced chunks dropped
+       TD n=3509 centre step 0.999..1.437 m, lap 3542.9 m
+       blob 13884928 bytes (expected 13884928), zsize field ok True
+       TD parse->rebuild identical True
+       AIMap 6792 cells, max distance to a road vertex 0.76 m, lanes present [0, 1, 2, 3, 4, 5, 6, 7]
+       start slice 5 dir 1 grid (3, -2, 4, 2, 9, -2, 10, 2, 10, -2, 11, 2, 16, -2, 17, 2)
+       spline 1756 pts, step 1.00..2.00, closed True, max distance to centre line 1.000
+       scene tree 997 nodes 656 leaves, root meshes 566
+       road.txt: 'hide all' (launcher: the game does not draw its own road)
+       arcade_times.bin: Desert4, mode 0: lap 1 [[50, 21, 23, 34], [50, 18, 20, 30], [50, 15, 17, 26]], later laps [[21, 21, 23, 34], [18, 18, 20, 30], [15, 15, 17, 26]] (easy / normal / hard)
+       texmap.json: 464 scenery textures, 8 of the finish gate, 138 composed recipes, 3 re-authored tiles in use

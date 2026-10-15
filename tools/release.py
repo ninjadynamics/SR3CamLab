@@ -126,7 +126,7 @@ def check(dst, ref):
         for ln in r.stdout.splitlines()[1:]:
             f = ln.strip().split(' ')[0]
             if f.endswith('.png'): shutil.copy2(os.path.join(hd, f), out)
-    if subprocess.run([py, stack, 'src', '1', '--steps', 'patch,round,light,rt,build'], env=env).returncode: raise SystemExit('the staged stack failed')
+    if subprocess.run([py, stack, 'src', '1', '--steps', 'light,rt,build'], env=env).returncode: raise SystemExit('the staged stack failed')
     mine = os.path.join(data, 'data', 'work', 'out', 'stack_src_1', 'Desert4'); bad = []
     for f in sorted(os.listdir(ref)):
         if f == 'texmap.json': continue                                # it records the textures folder's path

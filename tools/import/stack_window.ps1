@@ -107,11 +107,11 @@ $lC = Add-Ctl $gC (New-Label '') 560 22 340 23
 $gS = Add-Ctl $F (New-Object Windows.Forms.GroupBox) 10 266 905 250; $gS.Text = 'Steps (each one needs the ones before it to have run once)'
 $StepRows = @(
     @{ Key = 'rom'; Text = '1. Import from the ROM set'; Blend = $true; Hint = 'The 1995 game''s geometry, textures, gameplay data and times, from your srallyc.zip, into the data folder.' },
-    @{ Key = 'patch'; Text = '2. Patch chain'; Blend = $true; Hint = 'The course''s numbered patch files, applied in order (off = the course as the ROM gives it).' },
-    @{ Key = 'round'; Text = '3. Rounding'; Blend = $true; Hint = 'Natural surfaces rounded outwards (R4 = the default; never inwards, never the road).' },
-    @{ Key = 'light'; Text = '4. Light maps'; Blend = $false; Hint = 'The polygons to light, laid out on light-map pages. Off = the track is built flat-lit.' },
+    @{ Key = 'patch'; Text = '2. Patch chain'; Blend = $true; Hint = 'The course''s numbered patch files, applied in order (off = the course as the ROM gives it). A setting of steps 4 and 6: the light baked with it is only used by a build with the same setting.' },
+    @{ Key = 'round'; Text = '3. Rounding'; Blend = $true; Hint = 'Natural surfaces rounded outwards (R4 = the default; never inwards, never the road). A setting of steps 4 and 6, as the patch chain is.' },
+    @{ Key = 'light'; Text = '4. Light maps'; Blend = $false; Hint = 'The importer''s first pass: the patch chain, the rounding, the polygons to light laid out on light-map pages.' },
     @{ Key = 'rt'; Text = '5. Ray tracing'; Blend = $true; Hint = 'The light maps baked by ray tracing (every worker thread), then composed.' },
-    @{ Key = 'build'; Text = '6. Game files'; Blend = $true; Hint = 'SEGA Rally 3''s track files, in <data>\work\out\<name>\Desert4.' },
+    @{ Key = 'build'; Text = '6. Game files'; Blend = $true; Hint = 'SEGA Rally 3''s track files, in <data>\work\out\<name>\Desert4, with the light baked by this run or an earlier one (flat-lit when there is none).' },
     @{ Key = 'install'; Text = '7. Install in SEGA Rally 3'; Blend = $false; Hint = 'As a Classic mode alternative (SR3 Extras switches it in when PLAY.bat starts the game). The game must be closed.' })
 $Chk = @{}; $BlendChk = @{}; $State = @{}; $y = 22
 foreach ($r in $StepRows) {
@@ -207,7 +207,7 @@ $Timer.Add_Tick({
     $s = $null
     while ($script:Q.TryDequeue([ref]$s)) {
         if ($s -match '^@@ step (\S+) (start|done|fail)\s*(.*)$') {
-            $keys = switch ($Matches[1]) { 'rom' { @('rom') } 'patch/round/light' { @('patch', 'round', 'light') } 'rt' { @('rt') } 'build' { @('build') } 'install' { @('install') } default { @() } }
+            $keys = switch ($Matches[1]) { 'rom' { @('rom') } 'light' { @('patch', 'round', 'light') } 'rt' { @('rt') } 'build' { @('build') } 'install' { @('install') } default { @() } }
             foreach ($k in $keys) { if (-not $Chk[$k].Checked -and $k -ne 'patch' -and $k -ne 'round') { continue }
                 $State[$k].Text = switch ($Matches[2]) { 'start' { 'running...' } 'done' { "done ($($Matches[3]) s)" } 'fail' { "FAILED: $($Matches[3])" } }
                 $State[$k].ForeColor = switch ($Matches[2]) { 'start' { [Drawing.Color]::DarkBlue } 'done' { [Drawing.Color]::DarkGreen } 'fail' { [Drawing.Color]::DarkRed } } }
@@ -228,12 +228,12 @@ $Timer.Start()
 
 $bRun.Add_Click({
     $c = Current; if (-not $c) { return }
-    $steps = @($StepRows | Where-Object { $Chk[$_.Key].Checked } | ForEach-Object { $_.Key })
+    $steps = @($StepRows | Where-Object { $Chk[$_.Key].Checked -and $_.Key -ne 'patch' -and $_.Key -ne 'round' } | ForEach-Object { $_.Key })      # patch and rounding are settings of every pass
     if (-not $steps.Count) { return }
     if ($Chk.install.Checked -and (Get-Process -Name Rally -ErrorAction SilentlyContinue)) { [Windows.Forms.MessageBox]::Show('SEGA Rally 3 is running: close it before installing.') | Out-Null; return }
     $blend = @($BlendChk.Keys | Where-Object { $BlendChk[$_].Checked -and $Chk[$_].Checked })
     foreach ($k in $State.Keys) { $State[$k].Text = $(if ($steps -contains $k) { 'waiting' } else { '' }); $State[$k].ForeColor = [Drawing.Color]::Gray }
-    $a = @((Join-Path $Here 'stack.py'), $c.Game, $c.Course, '--steps', ($steps -join ','), '--round', $cR.Text.Substring(1))
+    $a = @((Join-Path $Here 'stack.py'), $c.Game, $c.Course, '--steps', ($steps -join ','), '--round', $(if ($Chk.round.Checked) { $cR.Text.Substring(1) } else { '0' }), '--patch', $(if ($Chk.patch.Checked) { 'on' } else { 'off' }))
     if ($blend.Count) { $a += @('--blend', ($blend -join ',')) }
     if ($Chk.install.Checked) { $a += @('--title', $tTitle.Text) }
     Start-Py $a $Here $null

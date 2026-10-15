@@ -41,14 +41,19 @@ def write_track(name, trk, layout='auto', omit=(), note=''):
     allids = set()
     for s, f in trk.files.items(): allids |= {c.id for c in f.chunks}
     nprob = 0
-    for s, f in trk.files.items():
-        if s in omit: continue
-        import reforder; reforder.topo(f)                               # loader rule: no forward references (reforder.py)
+    import reforder
+    def one(item):                                                     # one file: written, read back, checked (the files are independent of each other)
+        s, f = item
+        reforder.topo(f)                                               # loader rule: no forward references (reforder.py)
         b = sbfw.write_sbf(f, compress=True, layout=layout, level=6)
         p = os.path.join(out, file_name(trk.slot, s)); open(p, 'wb').write(b)
         g = sbfw.read_sbf(p)                                           # read back with the independent reader
         assert len(g.chunks) == len(f.chunks) and all(a.data == c.data and a.fix == c.fix and a.ref == c.ref and a.z == c.z for a, c in zip(g.chunks, f.chunks))
-        probs = [q for q in sbfw.validate(g, quiet=True, extern_ids=allids) if 'ffffffff' not in q]   # FFFFFFFF = null marker in kind 11
+        return s, [q for q in sbfw.validate(g, quiet=True, extern_ids=allids) if 'ffffffff' not in q]   # FFFFFFFF = null marker in kind 11
+    items = [(s, f) for s, f in trk.files.items() if s not in omit]
+    from concurrent.futures import ThreadPoolExecutor                 # side by side: zlib lets go of the interpreter while it packs and unpacks
+    with ThreadPoolExecutor(max(1, min(len(items), int(os.environ.get('OMP_NUM_THREADS', '0')) or os.cpu_count() or 1))) as ex_: res_ = list(ex_.map(one, items))
+    for s, probs in res_:
         nprob += len(probs)
         for q in probs[:5]: log('   PROBLEM', name, s, q)
     if 'proc' not in omit and 'proc' in trk.paths:
