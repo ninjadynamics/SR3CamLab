@@ -235,36 +235,100 @@ int pc_prepare_cameras(const PcCfg *c, char *err, size_t cap) {
     return 1;
 }
 
-/* the camera cycle block's data (Install-Cycle, patches.ps1 384-441), into a fresh block */
-static void fill_block(unsigned char *B) {
-    unsigned char gc[0x240]; int i;
-    memcpy(B + CYCLE_DRAW, CYCLE_CODE, sizeof CYCLE_CODE); memcpy(B + CYCLE_CODE2_AT, CYCLE_CODE2, sizeof CYCLE_CODE2);
-    f32(B + CYCLE_QOL, cam.look); f32(B + CYCLE_QOL + 4, 2 * cam.look); f32(B + CYCLE_QOL + 8, cam.blend);
-    i32(B + 0x14, 120); i32(B + 0x18, cam.overlay); i32(B + 0x1C, -1); i32(B + 0x20, cam.nslot); i32(B + 0x24, cam.start); i32(B + 0x28, 0);
-    i32(B + 0xB0, 1);
-    str_(B + 0x60, "d3dx9_41.dll", 16); str_(B + 0x70, "D3DXCreateFontA", 16); str_(B + 0x80, "Arial", 32);
-    memcpy(B, "SR3V", 4); str_(B + 0xE0, "Camera", 16);
-    memset(gc, 0, sizeof gc);
+/* ---------------------------------------------------------------- the camera cycle block (patches.ps1 Find-Cycle .. Restore-CockpitSeat)
+ * Written the way Install-Cycle writes it, write for write and in the same order, so a fresh game, a game this or an
+ * older launcher already patched (PLAY.bat run again: the block kept, its settings rewritten) and a newer build (the
+ * block's code differs: a fresh block, its state carried over) all end the same as with patches.ps1
+ * (live_lockstep.py's re-attach scenarios compare the writes). */
+#define SETTINGS_HI 0x90
+static int u32at(GameMem *m, unsigned va, unsigned *v) { return m->read(m, va, v, 4); }
+static int sig_at(GameMem *m, unsigned va, const char *s) { char b[4]; return m->read(m, va, b, 4) && !memcmp(b, s, 4); }
+static int same_big(GameMem *m, unsigned va, const unsigned char *b, unsigned n) {
+    static unsigned char t[CYCLE_SIZE];
+    if (n > sizeof t || !m->read(m, va, t, n)) return 0;
+    return !memcmp(t, b, n);
+}
+static unsigned find_cycle(GameMem *m) {
+    unsigned char b[5]; unsigned base;
+    if (!m->read(m, HOOK_DRAW, b, 5) || b[0] != 0xE8) return 0;
+    base = HOOK_DRAW + 5 + (unsigned)*(int *)(b + 1) - CYCLE_DRAW;
+    return sig_at(m, base, "SR3V") ? base : 0;
+}
+static int blend_site(GameMem *m) {                     /* Test-BlendSite: the game's own call, or a call into a block of ours */
+    unsigned char c[5]; unsigned to;
+    if (same(m, HOOK_BLEND, BLEND_ORIG, 5)) return 1;
+    if (!m->read(m, HOOK_BLEND, c, 5) || c[0] != 0xE8) return 0;
+    to = HOOK_BLEND + 5 + (unsigned)*(int *)(c + 1);
+    return sig_at(m, to & 0xFFFF0000u, "SR3V");
+}
+static void restore_cockpit_seat(GameMem *m, unsigned base) {   /* the cockpit cam's eye back at the game's data if it uses this block's copy */
+    unsigned mgr = 0, vt, p, back;
+    if (!u32at(m, base + 0x58, &mgr) || !mgr) return;
+    if (u32at(m, mgr + 0x1A38, &vt) && u32at(m, mgr + 0x1A38 + 0x194, &p) && vt == 0x6EBDF0 && p == base + 0x2240 && u32at(m, base + 0x2240 + 0x18, &back))
+        m->write(m, mgr + 0x1A38 + 0x194, &back, 4, 0);
+}
+static int BLEND_HOOKED;
+/* Install-Cycle: installs or updates the block; the game held. 0 = not installed, *why says why */
+static unsigned install_cycle(GameMem *m, const char **why) {
+    unsigned char b[0x2A0]; unsigned base = find_cycle(m); int i, site;
+    if (!base) {
+        if (!same(m, HOOK_DRAW, DRAW_ORIG, 5) || !same(m, HOOK_LOST, LOST_ORIG, 5)) { *why = "unexpected bytes at its hook sites"; return 0; }
+        if (!(base = m->alloc(m, CYCLE_SIZE))) { *why = "no memory for its block"; return 0; }
+        m->write(m, base + CYCLE_DRAW, CYCLE_CODE, sizeof CYCLE_CODE, 1);
+        m->write(m, base + CYCLE_CODE2_AT, CYCLE_CODE2, sizeof CYCLE_CODE2, 1);
+    } else if (!same_big(m, base + CYCLE_DRAW, CYCLE_CODE, sizeof CYCLE_CODE) || !same_big(m, base + CYCLE_CODE2_AT, CYCLE_CODE2, sizeof CYCLE_CODE2)) {
+        /* a newer build: never rewrite code the game may be running; a fresh block, the state (font, camera list) kept */
+        static unsigned char keep[CYCLE_DRAW]; unsigned old = base; unsigned char list[4 * GAME_CAMS];
+        restore_cockpit_seat(m, old);
+        if (!(base = m->alloc(m, CYCLE_SIZE))) { *why = "no memory for its block"; return 0; }
+        memset(keep, 0, sizeof keep); m->read(m, old, keep, CYCLE_DRAW); m->write(m, base, keep, CYCLE_DRAW, 1);
+        memset(b, 0, 0x10); m->write(m, base + 0xF98, b, 0x10, 1);                         /* hint font, hint flag, text: start empty */
+        memset(list, 0, sizeof list); m->read(m, old + 0x2180, list, sizeof list); m->write(m, base + 0x2180, list, sizeof list, 1);
+        m->write(m, base + CYCLE_DRAW, CYCLE_CODE, sizeof CYCLE_CODE, 1);
+        m->write(m, base + CYCLE_CODE2_AT, CYCLE_CODE2, sizeof CYCLE_CODE2, 1);              /* its state (0x2280 ..) starts empty */
+    }
+    f32(b, cam.look); f32(b + 4, 2 * cam.look); f32(b + 8, cam.blend); m->write(m, base + CYCLE_QOL, b, 12, 1);   /* seconds; the keys twice the mouse's */
+    i32(b, 120); i32(b + 4, cam.overlay); i32(b + 8, -1); i32(b + 12, cam.nslot); i32(b + 16, cam.start); i32(b + 20, 0); m->write(m, base + 0x14, b, 0x18, 1);
+    i32(b, 1); m->write(m, base + 0xB0, b, 4, 1);                                            /* quiet: no popup for this */
+    str_(b, "d3dx9_41.dll", 16); str_(b + 0x10, "D3DXCreateFontA", 16); str_(b + 0x20, "Arial", 32); m->write(m, base + 0x60, b, 0x40, 1);
+    m->write(m, base, "SR3V", 4, 1);
+    str_(b, "Camera", 16); m->write(m, base + 0xE0, b, 16, 1);                              /* the name of an unknown camera */
+    memset(b, 0, 0x240);                                                                     /* 0x2000: names, 0x21B0: offsets, 0x21E0: extras, 0x2210: colours */
     for (i = 0; i < GAME_CAMS; i++) {
         int known = i < 9;
-        if (known) { str_(gc + i * 32, GAMECAM[i].name, 32); i32(gc + 0x210 + 4 * i, (int)GAMECAM[i].color); }
-        i32(gc + 0x1B0 + 4 * i, known ? (int)GAMECAM[i].off : -1);
-        i32(gc + 0x1E0 + 4 * i, cam.hidden && i < 7 ? (int)HIDDEN[i] : -1);
+        if (known) { str_(b + i * 32, GAMECAM[i].name, 32); i32(b + 0x210 + 4 * i, (int)GAMECAM[i].color); }
+        i32(b + 0x1B0 + 4 * i, known ? (int)GAMECAM[i].off : -1);
+        i32(b + 0x1E0 + 4 * i, cam.hidden && i < 7 ? (int)HIDDEN[i] : -1);
     }
-    memcpy(B + 0x2000, gc, 0x180); memcpy(B + 0x21B0, gc + 0x1B0, 0x90);
-    for (i = 0; i < cam.nslot; i++) i32(B + 0xE00 + 4 * i, (int)cam.slot[i].color);
-    str_(B + 0xEA0, "user32.dll", 16); str_(B + 0xEB0, "GetCursorPos", 16); str_(B + 0xEC0, "SetCursorPos", 16);
-    str_(B + 0xED0, "GetAsyncKeyState", 32); str_(B + 0xEF0, "GetForegroundWindow", 32);
-    str_(B + 0xF40, "GetWindowThreadProcessId", 32); str_(B + 0xF60, "kernel32.dll", 16); str_(B + 0xF70, "GetCurrentProcessId", 32);
-    f32(B + 0xFD0, -0.01); f32(B + 0xF90, 1.5706); f32(B + 0xF94, -1.5706);
-    f32(B + 0xFE0, 3); f32(B + 0xFE4, 30); f32(B + 0xFE8, 0.5); f32(B + 0xFEC, 20);
-    str_(B + 0xFB0, "Use mouse/WASD to navigate", 32);
-    f32(B + 0xF10, 0.0025); f32(B + 0xF14, 3.14159265358979323846 / 2); f32(B + 0xF18, 10); f32(B + 0xF1C, 1);
-    for (i = 0; i < cam.nslot; i++) {
-        str_(B + 0x100 + 32 * i, cam.slot[i].name, 32);
-        memcpy(B + 0x500 + SLOT_BYTES * i, cam.slot[i].image + 0x08, 0x2C);
-        memcpy(B + 0x500 + SLOT_BYTES * i + 0x2C, cam.slot[i].image + 0x50, 0x30);
+    m->write(m, base + 0x2000, b, 0x180, 1); m->write(m, base + 0x21B0, b + 0x1B0, 0x90, 1);
+    memset(b, 0, MAX_SLOTS * 4); for (i = 0; i < cam.nslot; i++) i32(b + 4 * i, (int)cam.slot[i].color); m->write(m, base + 0xE00, b, MAX_SLOTS * 4, 1);
+    memset(b, 0, 0x70); str_(b, "user32.dll", 16); str_(b + 0x10, "GetCursorPos", 16); str_(b + 0x20, "SetCursorPos", 16);
+    str_(b + 0x30, "GetAsyncKeyState", 32); str_(b + 0x50, "GetForegroundWindow", 32); m->write(m, base + 0xEA0, b, 0x70, 1);
+    memset(b, 0, 0x50); str_(b, "GetWindowThreadProcessId", 32); str_(b + 0x20, "kernel32.dll", 16); str_(b + 0x30, "GetCurrentProcessId", 32); m->write(m, base + 0xF40, b, 0x50, 1);
+    f32(b, -0.01); m->write(m, base + 0xFD0, b, 4, 1);                                      /* car rotate tilt per mouse pixel */
+    f32(b, 1.5706); f32(b + 4, -1.5706); m->write(m, base + 0xF90, b, 8, 1);                 /* free cams look at most this far up / down */
+    f32(b, 3); f32(b + 4, 30); f32(b + 8, 0.5); f32(b + 12, 20); m->write(m, base + 0xFE0, b, 16, 1);   /* car rotate cam limits */
+    str_(b, "Use mouse/WASD to navigate", 32); m->write(m, base + 0xFB0, b, 32, 1);
+    f32(b, 0.0025); f32(b + 4, 3.14159265358979323846 / 2); f32(b + 8, 10); f32(b + 12, 1); m->write(m, base + 0xF10, b, 16, 1);
+    {   static unsigned char names[MAX_SLOTS * 32], params[MAX_SLOTS * SLOT_BYTES];
+        memset(names, 0, sizeof names); memset(params, 0, sizeof params);
+        for (i = 0; i < cam.nslot; i++) {
+            str_(names + 32 * i, cam.slot[i].name, 32);
+            memcpy(params + SLOT_BYTES * i, cam.slot[i].image + 0x08, 0x2C); memcpy(params + SLOT_BYTES * i + 0x2C, cam.slot[i].image + 0x50, 0x30);
+        }
+        m->write(m, base + 0x100, names, sizeof names, 1); m->write(m, base + 0x500, params, sizeof params, 1); }
+    for (i = 0; i < 3; i++) {                                                                /* the original method, or a wrapper of ours */
+        unsigned cur = 0, to = base + (CAM_UPDATE[i].rot ? CYCLE_ROT : CYCLE_FREE);
+        u32at(m, CAM_UPDATE[i].site, &cur);
+        if (cur == CAM_UPDATE[i].stock || sig_at(m, cur & 0xFFFF0000u, "SR3V")) m->write(m, CAM_UPDATE[i].site, &to, 4, 0);
     }
+    call_to(b, HOOK_LOST, base + CYCLE_LOST); m->write(m, HOOK_LOST, b, 5, 0);
+    call_to(b, HOOK_DRAW, base + CYCLE_DRAW); m->write(m, HOOK_DRAW, b, 5, 0);
+    site = blend_site(m); BLEND_HOOKED = site && cam.blend > 0;                             /* the blend's hook only while there is a blend to do */
+    if (BLEND_HOOKED) { call_to(b, HOOK_BLEND, base + CYCLE_BLEND); m->write(m, HOOK_BLEND, b, 5, 0); }
+    else if (site) m->write(m, HOOK_BLEND, BLEND_ORIG, 5, 0);
+    else *why = "blend";                                                                     /* (logged after the game is let go) */
+    return base;
 }
 
 int pc_check_sites(GameMem *m, char *err, size_t cap) {
@@ -274,49 +338,64 @@ int pc_check_sites(GameMem *m, char *err, size_t cap) {
     return 1;
 }
 
-/* patches.ps1 1812-1869, fresh install: check, the block made ready, the game's threads held, write, let go, verify */
+/* patches.ps1 Test-CameraSites + Install-CameraPatch: every site the game's bytes or ours (an older build too, by the cave's
+ * "SR3C"), then with the game held the old build unhooked, every site written, the block made or updated, then read back.
+ * Nothing is logged while the game is held (inside the game a held thread may own a lock the log needs). */
 int pc_install_cameras(GameMem *m, const PcCfg *c) {
-    static unsigned char B[CYCLE_SIZE]; char err[256]; unsigned base = 0; int i, cycle_ok, blend;
-    if (!pc_check_sites(m, err, sizeof err)) { pc_logf("%s", err); return 0; }
-    cycle_ok = same(m, HOOK_DRAW, DRAW_ORIG, 5) && same(m, HOOK_LOST, LOST_ORIG, 5);
-    if (cycle_ok && (base = m->alloc(m, CYCLE_SIZE))) { memset(B, 0, sizeof B); fill_block(B); m->write(m, base, B, CYCLE_SIZE, 1); }
-    blend = base && same(m, HOOK_BLEND, BLEND_ORIG, 5);
-    m->suspend(m);
-    for (i = 0; i < 9; i++) m->write(m, PATCHES[i].va, i == 0 ? cam.cave : PATCHES[i].neu, PATCHES[i].len, PATCHES[i].va == CAVE_VA);
-    if (base) {
-        unsigned char c5[5];
-        for (i = 0; i < 3; i++) {
-            unsigned cur = 0;
-            if (m->read(m, CAM_UPDATE[i].site, &cur, 4) && cur == CAM_UPDATE[i].stock) { unsigned to = base + (CAM_UPDATE[i].rot ? CYCLE_ROT : CYCLE_FREE); m->write(m, CAM_UPDATE[i].site, &to, 4, 0); }
-        }
-        call_to(c5, HOOK_LOST, base + CYCLE_LOST); m->write(m, HOOK_LOST, c5, 5, 0);
-        call_to(c5, HOOK_DRAW, base + CYCLE_DRAW); m->write(m, HOOK_DRAW, c5, 5, 0);
-        if (blend && cam.blend > 0) { call_to(c5, HOOK_BLEND, base + CYCLE_BLEND); m->write(m, HOOK_BLEND, c5, 5, 0); }
+    unsigned char cur[1024]; int i, ours, already = 1, older = 0; unsigned base; const char *why = NULL;
+    ours = sig_at(m, CAVE_VA, "SR3C");
+    for (i = 0; i < 9; i++) {
+        const unsigned char *neu = i == 0 ? cam.cave : PATCHES[i].neu; unsigned n = PATCHES[i].len, k; int ok = n <= sizeof cur && m->read(m, PATCHES[i].va, cur, n);
+        if (ok && !memcmp(cur, PATCHES[i].orig, n)) { already = 0; continue; }
+        if (i == 0 && ok) { int eq = 1; for (k = 0; k < n; k++) if (cur[k] != neu[k] && !(k >= TUNABLE_LO && k < SETTINGS_HI)) eq = 0; if (eq) continue; }   /* the cave, with other tuning */
+        else if (ok && !memcmp(cur, neu, n)) continue;
+        if (ours) { older = 1; continue; }
+        pc_logf("Unexpected bytes at 0x%X (%s) - not the expected game version. Nothing changed.", PATCHES[i].va, PATCHES[i].what); return 0;
     }
+    if (older) pc_logf("An older build of the camera patch is active; replacing it.");
+    else if (already) pc_logf("Camera patch was already applied; updating the tuning values.");
+    m->suspend(m);
+    if (older) for (i = 8; i >= 1; i--) m->write(m, PATCHES[i].va, PATCHES[i].orig, PATCHES[i].len, 0);   /* unhook the old build */
+    for (i = 0; i < 9; i++) m->write(m, PATCHES[i].va, i == 0 ? cam.cave : PATCHES[i].neu, PATCHES[i].len, PATCHES[i].va == CAVE_VA);
+    base = install_cycle(m, &why);
     m->resume(m);
-    /* as patches.ps1 1849-1856: every site as written, the cave without the parts its code changes while running
+    if (base && why) pc_logf("Camera blend not installed (View Change cuts as before): unexpected bytes at 0x%X.", HOOK_BLEND);
+    /* as patches.ps1: every site as written, the cave without the parts its code changes while running
        (counters and scratch DIAG_LO+4 .. 0x50, SR3's framing recorded every frame 0x80 .. 0x8C) */
     for (i = 0; i < 9; i++) {
-        unsigned char cur[1024]; const unsigned char *want = i == 0 ? cam.cave : PATCHES[i].neu; unsigned k;
+        const unsigned char *want = i == 0 ? cam.cave : PATCHES[i].neu; unsigned k;
         if (!m->read(m, PATCHES[i].va, cur, PATCHES[i].len)) { pc_logf("Verification failed at 0x%X (unreadable).", PATCHES[i].va); return 0; }
         for (k = 0; k < PATCHES[i].len; k++)
             if (cur[k] != want[k] && !(i == 0 && ((k >= DIAG_LO + 4 && k < 0x50) || (k >= 0x80 && k < 0x8C)))) { pc_logf("Verification failed at 0x%X.", PATCHES[i].va + k); return 0; }
     }
     if (c->canary) pc_logf("CANARY MODE: in a race the chase camera should look at your car from the SIDE.");
     pc_logf("Camera mod is ACTIVE for this session. Profile '%s'.", cam.profile);
-    if (!base) pc_logf("  Camera cycle NOT installed: %s", cycle_ok ? "no memory for its block" : "unexpected bytes at its hook sites");
+    if (!base) pc_logf("  Camera cycle NOT installed: %s", why ? why : "?");
     else {
         char list[1024] = ""; size_t n = 0;
         for (i = 1; i < cam.nslot && n < sizeof list - 40; i++) n += snprintf(list + n, sizeof list - n, "%s%s", i > 1 ? ", " : "", cam.slot[i].name);
         pc_logf("  Camera cycle block at %08X; View Change: Game: Chase cam, Bumper cam, Bonnet cam, then %s%s", base, list, cam.hidden ? ", then the Debug cameras" : "");
         pc_logf("  Camera name popup: %d px (at 1080p); steerable cameras: mouse %d ms, keys %d ms; View Change %s", cam.overlay,
-                (int)(1000 * cam.look + 0.5), (int)(2000 * cam.look + 0.5), cam.blend > 0 && blend ? "blends" : "cuts");
+                (int)(1000 * cam.look + 0.5), (int)(2000 * cam.look + 0.5), BLEND_HOOKED ? "blends" : "cuts");
     }
     return 1;
 }
 
 /* The plan (tools\patches\lockstep.py): what a fresh install writes, as JSON - the same file plan_ps1.ps1 makes from
- * patches.ps1 against a fake game. Hooks and pointers into the camera block are given as block+offset. */
+ * patches.ps1 against a fake game. It is pc_install_cameras itself, run on a fake memory holding the game's original
+ * bytes (so the plan and the install are one code path); hooks and pointers into the block are given as block+offset. */
+typedef struct { unsigned va, n; unsigned char *b; } Rg;
+static Rg RG[64]; static int NRG; static unsigned NEXT_A;
+static Rg *rg_of(unsigned va, unsigned n) { int i; for (i = 0; i < NRG; i++) if (va >= RG[i].va && va + n <= RG[i].va + RG[i].n) return &RG[i]; return NULL; }
+static int f_read(GameMem *m, unsigned va, void *d, unsigned n) { Rg *r = rg_of(va, n); (void)m; if (!r) return 0; memcpy(d, r->b + (va - r->va), n); return 1; }
+static int f_write(GameMem *m, unsigned va, const void *s, unsigned n, int keep) {
+    Rg *r = rg_of(va, n); (void)m; (void)keep;
+    if (!r) { if (NRG >= 64) return 0; r = &RG[NRG++]; r->va = va; r->n = n; r->b = (unsigned char *)calloc(1, n); }
+    memcpy(r->b + (va - r->va), s, n); return 1;
+}
+static unsigned f_alloc(GameMem *m, unsigned n) { unsigned a = NEXT_A; void *z = calloc(1, n); NEXT_A += 0x10000; f_write(m, a, z, n, 1); free(z); return a; }
+static void f_nop(GameMem *m) { (void)m; }
+static int f_alive(GameMem *m) { (void)m; return 1; }
 static void jstr(FILE *f, const char *s) {
     fputc('"', f);
     for (; *s; s++) { if (*s == '"' || *s == '\\') fputc('\\', f); fputc(*s, f); }
@@ -324,17 +403,37 @@ static void jstr(FILE *f, const char *s) {
 }
 static void jhex(FILE *f, const unsigned char *b, unsigned n) { unsigned k; fputc('"', f); for (k = 0; k < n; k++) fprintf(f, "%02x", b[k]); fputc('"', f); }
 int pc_plan(const char *out_path) {
-    FILE *f; unsigned char *B; int i;
-    B = (unsigned char *)calloc(1, CYCLE_SIZE); fill_block(B);
-    if (!(f = fopen(out_path, "wb"))) { free(B); return 3; }
+    static const unsigned HOOKS[3] = {0x591C4D, 0x591B01, 0x5C948C};
+    GameMem fm; FILE *f; unsigned base; int i; unsigned char b[1024]; void (*keep_log)(const char *) = pc_log; PcCfg c;
+    memset(&fm, 0, sizeof fm); fm.read = f_read; fm.write = f_write; fm.alloc = f_alloc; fm.suspend = f_nop; fm.resume = f_nop; fm.alive = f_alive;
+    for (i = 0; i < NRG; i++) free(RG[i].b);
+    NRG = 0; NEXT_A = 0x20000000u;
+    for (i = 0; i < 9; i++) f_write(&fm, PATCHES[i].va, PATCHES[i].orig, PATCHES[i].len, 0);   /* a freshly started game */
+    f_write(&fm, HOOK_DRAW, DRAW_ORIG, 5, 0); f_write(&fm, HOOK_LOST, LOST_ORIG, 5, 0); f_write(&fm, HOOK_BLEND, BLEND_ORIG, 5, 0);
+    for (i = 0; i < 3; i++) f_write(&fm, CAM_UPDATE[i].site, &CAM_UPDATE[i].stock, 4, 0);
+    memset(&c, 0, sizeof c); pc_log = NULL;
+    pc_install_cameras(&fm, &c);
+    pc_log = keep_log;
+    base = find_cycle(&fm);
+    if (!(f = fopen(out_path, "wb"))) return 3;
     fputs("{\"profile\": ", f); jstr(f, cam.profile); fputs(", \"slots\": [", f);
     for (i = 0; i < cam.nslot; i++) { if (i) fputs(", ", f); jstr(f, cam.slot[i].name); }
     fputs("], \"sites\": {", f);
-    for (i = 0; i < 9; i++) { fprintf(f, "%s\"0x%X\": ", i ? ", " : "", PATCHES[i].va); jhex(f, i == 0 ? cam.cave : PATCHES[i].neu, PATCHES[i].len); }
-    fprintf(f, "}, \"hooks\": {\"0x%X\": \"call block+0x%x\", \"0x%X\": \"call block+0x%x\", \"0x%X\": ", HOOK_DRAW, CYCLE_DRAW, HOOK_LOST, CYCLE_LOST, HOOK_BLEND);
-    if (cam.blend > 0) fprintf(f, "\"call block+0x%x\"", CYCLE_BLEND); else jhex(f, BLEND_ORIG, 5);
+    for (i = 0; i < 9; i++) { fprintf(f, "%s\"0x%X\": ", i ? ", " : "", PATCHES[i].va); f_read(&fm, PATCHES[i].va, b, PATCHES[i].len); jhex(f, b, PATCHES[i].len); }
+    fputs("}, \"hooks\": {", f);
+    for (i = 0; i < 3; i++) {
+        fprintf(f, "%s\"0x%X\": ", i ? ", " : "", HOOKS[i]); f_read(&fm, HOOKS[i], b, 5);
+        if (base && b[0] == 0xE8 && memcmp(b, BLEND_ORIG, 5) && memcmp(b, LOST_ORIG, 5)) fprintf(f, "\"call block+0x%x\"", HOOKS[i] + 5 + (unsigned)*(int *)(b + 1) - base);
+        else jhex(f, b, 5);
+    }
     fputs("}, \"vtables\": {", f);
-    for (i = 0; i < 3; i++) fprintf(f, "%s\"0x%X\": \"block+0x%x\"", i ? ", " : "", CAM_UPDATE[i].site, CAM_UPDATE[i].rot ? CYCLE_ROT : CYCLE_FREE);
-    fputs("}, \"block\": ", f); jhex(f, B, CYCLE_SIZE); fputs("}\n", f);
-    fclose(f); free(B); return 0;
+    for (i = 0; i < 3; i++) {
+        unsigned d = 0; u32at(&fm, CAM_UPDATE[i].site, &d);
+        fprintf(f, "%s\"0x%X\": ", i ? ", " : "", CAM_UPDATE[i].site);
+        if (base && d >= base && d < base + CYCLE_SIZE) fprintf(f, "\"block+0x%x\"", d - base); else fprintf(f, "\"0x%x\"", d);
+    }
+    fputs("}, \"block\": ", f);
+    if (base) { static unsigned char blk[CYCLE_SIZE]; f_read(&fm, base, blk, CYCLE_SIZE); jhex(f, blk, CYCLE_SIZE); } else fputs("\"\"", f);
+    fputs("}\n", f);
+    fclose(f); return 0;
 }

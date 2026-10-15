@@ -18,7 +18,7 @@ public class MockProc { public int Id = 1; public bool HasExited { get { return 
 public static class MockGame {
     public static Dictionary<long, byte> M = new Dictionary<long, byte>();
     public static List<string> T = new List<string>();
-    public static bool Trace = false; public static long Base = 0, NextA = 0x20000000, Now = 0, Front = 0; public static int NextH = 14, Step = 0, Count = 0, Pad = 0;
+    public static bool Trace = false; public static long Base = 0, NextA = 0x20000000, Now = 0, Front = 0; public static int NextH = 14, Step = 0, Count = 0, Pad = 0, Phase = 0;
     public static HashSet<int> Keys = new HashSet<int>();
     static List<long> FT = new List<long>(), FFront = new List<long>(); static List<int> FPad = new List<int>(); static List<int[]> FKeys = new List<int[]>();
     static List<long[]> FVa = new List<long[]>(); static List<string[]> FHex = new List<string[]>(); static List<bool[]> FRel = new List<bool[]>();
@@ -76,6 +76,13 @@ function Save-ScreenGrab($bmp, [string]$path, $info) { [MockGame]::Line('G save 
 function Close-ScreenGrab($bmp) { if ($bmp) { [MockGame]::Line('G close') } }
 
 $sc = [IO.File]::ReadAllText($LiveScenario) | ConvertFrom-Json
+$h = [IntPtr]::Zero
+if ([MockGame]::Phase -eq 1) {                                  # the second run: PLAY.bat again on the running game, its install traced
+    [MockGame]::Trace = $true
+    try { $older = Test-CameraSites $h; Install-CameraPatch $h $older } catch { [MockGame]::Line('L ' + $_.Exception.Message) }
+    [IO.File]::WriteAllText($LiveOut, (([MockGame]::T -join "`n") + "`n"), (New-Object Text.UTF8Encoding $false))
+    return
+}
 if ($null -ne $sc.next_handle) { [MockGame]::NextH = [int]$sc.next_handle }
 foreach ($f in @($sc.frames)) {
     $va = New-Object Collections.Generic.List[long]; $hx = New-Object Collections.Generic.List[string]; $rel = New-Object Collections.Generic.List[bool]
@@ -84,15 +91,15 @@ foreach ($f in @($sc.frames)) {
     $keys = [int[]]@(@($f.keys) | Where-Object { $null -ne $_ } | ForEach-Object { [int]$_ })
     [MockGame]::AddFrame([long]$f.t, [int]$f.pad, [long]$f.front, $keys, $va.ToArray(), $hx.ToArray(), $rel.ToArray())
 }
-$h = [IntPtr]::Zero
 foreach ($p in $Patches) { [MockGame]::Put($p.VA, $p.OrigB) }                               # a freshly started game
 [MockGame]::Put($HookDrawVA, $HookDrawOrig); [MockGame]::Put($HookLostVA, $HookLostOrig); [MockGame]::Put($HookBlendVA, $HookBlendOrig)
 foreach ($v in $CamUpdateHooks) { [MockGame]::Put($v[0], ([BitConverter]::GetBytes([int]$v[1]))) }
 foreach ($w in @($sc.mem)) { if ($w) { [MockGame]::Put([long]$w[0], [MockGame]::Hex([string]$w[1])) } }
-foreach ($p in $Patches) { [MockGame]::Write($h, $p.VA, $p.NewB, ($p.VA -eq $CaveVA)) }   # patches.ps1's main flow, fresh install
-Install-Cycle $h
+$older = Test-CameraSites $h; Install-CameraPatch $h $older                                  # patches.ps1's main flow, fresh install
 [MockGame]::Base = Find-Cycle $h
 foreach ($w in @($sc.after)) { if ($w) { [MockGame]::Put([MockGame]::Base + [long]$w[0], [MockGame]::Hex([string]$w[1])) } }
+foreach ($w in @($sc.between)) { if ($w) { [MockGame]::Put([long]$w[0], [MockGame]::Hex([string]$w[1])) } }
+if ($sc.reinstall) { [MockGame]::Phase = 1; return }                                        # (live_ps1.ps1 runs the script again with the second settings)
 $script:GameExePath = $LiveGameExe
 [MockGame]::Trace = $true
 $game = New-Object MockProc
@@ -105,4 +112,17 @@ Watch-Tracks $game $LiveGameExe
 $tmp = Join-Path $ModDir 'live_body.ps1'
 Set-Content -LiteralPath $tmp -Value $body -Encoding UTF8
 $LiveScenario = [IO.Path]::GetFullPath($Scenario); $LiveGameExe = $GameExe; $LiveOut = [IO.Path]::GetFullPath($Out)
-try { & $tmp } finally { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+try {
+    & $tmp
+    $ri = ([IO.File]::ReadAllText($LiveScenario) | ConvertFrom-Json).reinstall
+    if ($ri) {                                                    # the same script again on the same fake game, with the second run's settings
+        $p2 = @{}
+        if ($ri.profile) { $p2.CameraProfile = [string]$ri.profile }
+        if ($ri.profiles_file) { $p2.ProfilesFile = [string]$ri.profiles_file }
+        if ($null -ne $ri.overlay) { $p2.Overlay = [int]$ri.overlay }
+        if ($null -ne $ri.mouse) { $p2.MouseSmoothing = [double]$ri.mouse }
+        if ($null -ne $ri.blend) { $p2.CameraBlend = [double]$ri.blend }
+        if ($ri.canary) { $p2.Canary = $true }
+        & $tmp @p2
+    }
+} finally { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }

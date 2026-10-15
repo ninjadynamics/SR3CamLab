@@ -43,9 +43,20 @@ fake in the tests. START and View Change are the game's own inputs (entries 53 a
 `sr3mods attach` runs the loop until the game closes (then releases stuck modifier keys, as PLAY.bat); patches.dll's
 worker runs it after the cameras for the game's life. In the game (sr3mods attach, TeknoParrot route, 2026-10-15): the
 live loop's start-up, the Classic popup stepping three tracks, a Classic race on track5 with its checkpoint times and
-road, a START screenshot (3840x2160, SR3Lab chunk), VIEW CHANGE held leaving the race. To do: the watchdog as
-`sr3mods watch <pid>` (watchdog.cs in C; patches.dll starts it beside the game); the re-attach path (PLAY.bat run again
-on a running game: tuning update, a newer block); then `PLAY.bat` and play.ps1 switch to sr3mods.exe.
+road, a START screenshot (3840x2160, SR3Lab chunk), VIEW CHANGE held leaving the race.
+
+**Done (step 3, 2026-10-15): the re-attach path.** `pc_install_cameras` is patches.ps1's `Test-CameraSites` +
+`Install-CameraPatch` (moved into functions for this) write for write: a fresh game; a game already patched (the block
+kept, its settings rewritten, the blend's hook taken out when the blend is 0); an older build (its hooks taken out
+first); a newer build's block (a fresh block, the old one's camera list and cockpit seat carried over); foreign bytes
+(refused, nothing written). Nothing is logged while the game is held. The camera plan (`pc_plan`) is now that same
+install run on a fake memory, so plan and install are one code path. PLAY.bat run again on a running game:
+`sr3mods attach <pid> --no-live` (the first attach keeps running the live loop; patches.ps1 likewise starts its loop
+only when it launched the game).
+
+**Open (Bruno's decision, 2026-10-15): the crash and freeze watchdog.** It is watchdog.cs, started by patches.ps1 on the
+PowerShell route only; sr3mods.exe and patches.dll have none. Until that is settled the routes are not equivalent there.
+Then `PLAY.bat` and play.ps1 switch to sr3mods.exe.
 
 ## Lockstep with patches.ps1
 
@@ -61,6 +72,11 @@ The owner (2026-10-15): every change must reach both variants, checked by a scri
   through `patches_plan()` (`plan32.exe`, the code `patches_start` runs), and `sr3mods.exe plan` with the same settings
   as switches (CamLab's way). Every site, hook, pointer, the camera block's 16 KB image, the profile and the camera list
   must be the same, three ways. `build.py` runs it; a difference fails the build.
+- **The re-attach path too**: six more scenarios install once (not traced), change the game the way a second run
+  finds it, and trace the second install: `retune`, `reblend` (other profile, popup, smoothing, blend, canary),
+  `altfile` (another profiles file), `newer` (the block's code changed), `older` (a hook site of another build),
+  `foreign` (someone else's bytes). The install's log lines other than its decision are worded differently on the
+  two sides (patches.ps1's for PLAY.bat's window, sr3mods' contract line for its callers) and are left out there.
 - **The live loop is checked write for write**: `live_lockstep.py` runs both on five scripted fake games (`switch`:
   alternative tracks, Classic learnt, tunes, checkpoint times, shadows, road, shader test, card videos loaded on request;
   `start`: screenshots and their JSON, race exits taken, withdrawn and refused; `handling`: handling.json with good and bad

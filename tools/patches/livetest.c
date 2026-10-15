@@ -131,7 +131,21 @@ static int run(int argc, char **argv) {
     if (!pc_prepare_cameras(&c, err, sizeof err)) { fprintf(stderr, "cameras: %s\n", err); return 1; }
     if (!pc_install_cameras(&fake, &c)) { fprintf(stderr, "cameras not installed\n"); return 1; }
     BASE = 0x20000000u;
-    writes(pj_get(sc, "after"), BASE);
+    writes(pj_get(sc, "after"), BASE); writes(pj_get(sc, "between"), 0);
+    if (pj_get(sc, "reinstall")) {                       /* PLAY.bat run again on the running game, with these settings: only that install is traced */
+        Pj *ri = pj_get(sc, "reinstall"); PcCfg c2; const char *pf = pj_str(pj_get(ri, "profiles_file"));
+        pc_load_cfg(NULL, argv[3], &c2, err, sizeof err);
+        snprintf(c2.profile, sizeof c2.profile, "%s", pj_str(pj_get(ri, "profile")));
+        snprintf(c2.profiles_file, sizeof c2.profiles_file, "%s", pf[0] ? pf : argv[4]);
+        if (pj_get(ri, "overlay")) c2.overlay = (int)pj_get(ri, "overlay")->num;
+        if (pj_get(ri, "mouse")) c2.mouse = pj_get(ri, "mouse")->num;
+        if (pj_get(ri, "blend")) c2.blend = pj_get(ri, "blend")->num;
+        c2.canary = pj_truthy(pj_get(ri, "canary"));
+        TRACE = 1;
+        if (!pc_prepare_cameras(&c2, err, sizeof err)) fprintf(T, "L Cameras: %s\n", err);
+        else pc_install_cameras(&fake, &c2);
+        fclose(T); pj_free(sc); return 0;
+    }
     TRACE = 1;
     snprintf(c.profiles_file, sizeof c.profiles_file, "%s", "");
     pc_live(&fake, &c, argv[2]);

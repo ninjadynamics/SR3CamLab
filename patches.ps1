@@ -1776,6 +1776,61 @@ function Release-StuckKeys($game) {
     Log 'Game closed. Modifier keys released.'
 }
 
+# The camera patch into a running game: the check, then the install (pc_install_cameras in tools\patches\patchcore.c does the
+# same, write for write: live_lockstep.py's re-attach scenarios run both on a game already patched with other settings).
+# Every site must still hold the original bytes, or ours. The cave's "SR3C" signature also recognises an older build of this
+# patch, which is then replaced in place. Returns whether an older build is in; throws on bytes that are neither.
+function Test-CameraSites($h) {
+    $sig = [Sr3Mem]::Read($h, $CaveVA, 4)
+    $ours = $sig -and [Text.Encoding]::ASCII.GetString($sig) -eq 'SR3C'
+    $already = $true; $older = $false
+    foreach ($p in $Patches) {
+        $cur = [Sr3Mem]::Read($h, $p.VA, $p.NewB.Length)
+        if (Same $cur $p.OrigB) { $already = $false; continue }
+        if ($p.VA -eq $CaveVA -and $cur) {   # cave with possibly different tuning
+            $a = $cur.Clone(); $b = $p.NewB.Clone(); for ($i = $TunableLo; $i -lt $SettingsHi; $i++) { $a[$i] = 0; $b[$i] = 0 }
+            if (Same $a $b) { continue }
+        } elseif (Same $cur $p.NewB) { continue }
+        if ($ours) { $older = $true; continue }
+        throw ("Unexpected bytes at 0x{0:X} ({1}) - not the expected game version. Nothing changed." -f $p.VA, $p.Desc)
+    }
+    if ($older) { Log 'An older build of the camera patch is active; replacing it.' }
+    elseif ($already) { Log 'Camera patch was already applied; updating the tuning values.' }
+    return $older
+}
+# with the game's threads held: the old build unhooked (if any), every site written, the camera block made or updated
+# (Install-Cycle); then each site read back (the cave without the parts its code changes while running)
+function Install-CameraPatch($h, [bool]$older) {
+    [Sr3Mem]::Suspend($h)
+    try {
+        if ($older) { for ($i = $Patches.Count - 1; $i -ge 1; $i--) { [Sr3Mem]::Write($h, $Patches[$i].VA, $Patches[$i].OrigB, $false) } }   # unhook the old build
+        foreach ($p in $Patches) { [Sr3Mem]::Write($h, $p.VA, $p.NewB, ($p.VA -eq $CaveVA)) }
+        try { Install-Cycle $h; $cycleOk = $true }
+        catch { $cycleOk = $false; $cycleError = $_.Exception.Message }
+    }
+    finally { [Sr3Mem]::Resume($h) }
+    foreach ($p in $Patches) {
+        $cur = [Sr3Mem]::Read($h, $p.VA, $p.NewB.Length); $exp = $p.NewB.Clone()
+        if ($p.VA -eq $CaveVA -and $cur) {
+            for ($i = $DiagLo + 4; $i -lt $DiagHi; $i++) { $cur[$i] = 0; $exp[$i] = 0 }
+            for ($i = $DebugLo; $i -lt $DebugHi; $i++) { $cur[$i] = 0; $exp[$i] = 0 }
+        }
+        if (-not (Same $cur $exp)) { throw ("Verification failed at 0x{0:X}" -f $p.VA) }
+    }
+    if ($Canary) { Log 'CANARY MODE: in a race the chase camera should look at your car from the SIDE.' }
+    Log 'Camera mod is ACTIVE for this session. Have fun!'
+    Log ("  Profile '$ProfileName'")
+    if (-not $cycleOk) { Log "  Camera cycle NOT installed: $cycleError" }
+    else { Log ("  View Change cycles: Game: Chase cam, Bumper cam, Bonnet cam, then " + ((@($slots | Select-Object -Skip 1) | ForEach-Object { $_.Name }) -join ', ') + $(if ($showHidden) { ', then the Debug cameras' } else { '' })) }
+    Log $(if ($overlayPx -gt 0) { "  Camera name popup: $overlayPx px (at 1080p)" } else { '  Camera name popup: off' })
+    if ($cycleOk) {
+        Log $(if ($lookSmooth -gt 0) { "  Cameras you steer: mouse smoothed over $([int][Math]::Round(1000 * $lookSmooth)) ms, keys over $([int][Math]::Round(2000 * $lookSmooth)) ms" } else { '  Cameras you steer: raw mouse and keys (no smoothing)' })
+        Log $(if ($blendSec -le 0) { '  View Change: cuts to the next camera (no blend, the game''s own code path)' } elseif ($script:BlendHooked) { "  View Change: the view travels to the next camera in $([int][Math]::Round(1000 * $blendSec)) ms" } else { '  View Change: cuts to the next camera (the blend could not be installed)' })
+    }
+    Log ('  Strength={0:0.00}  FadeIn={1}-{2} km/h  Stiffness={3}-{4}  Damping={5}  MaxAngle={6} deg  CapStiffness={7}' -f $Strength, $FadeInStartKmh, $FadeInFullKmh, $StiffnessMin, $StiffnessMax, $Damping, $MaxAngleDeg, $CapStiffness)
+    if ($Framing) { Log ('  Framing: distance {0} m, height {1} m, field of view {2} deg' -f $Distance, $Height, $Fov) }
+    else { Log '  Framing: SR3 default' }
+}
 # ---- launch (unless the game is already running) ----
 $gameSetup = $null
 if ($Setup) {
@@ -1831,23 +1886,7 @@ try {
     Start-Sleep -Seconds $DelaySeconds
     if ($proc.HasExited) { throw 'The game closed during start-up (before any patching).' }
 
-    # safety: every site must still hold the original bytes, or ours. The cave's "SR3C" signature
-    # also recognises an older build of this patch, which is then replaced in place.
-    $sig = [Sr3Mem]::Read($h, $CaveVA, 4)
-    $ours = $sig -and [Text.Encoding]::ASCII.GetString($sig) -eq 'SR3C'
-    $already = $true; $older = $false
-    foreach ($p in $Patches) {
-        $cur = [Sr3Mem]::Read($h, $p.VA, $p.NewB.Length)
-        if (Same $cur $p.OrigB) { $already = $false; continue }
-        if ($p.VA -eq $CaveVA -and $cur) {   # cave with possibly different tuning
-            $a = $cur.Clone(); $b = $p.NewB.Clone(); for ($i = $TunableLo; $i -lt $SettingsHi; $i++) { $a[$i] = 0; $b[$i] = 0 }
-            if (Same $a $b) { continue }
-        } elseif (Same $cur $p.NewB) { continue }
-        if ($ours) { $older = $true; continue }
-        throw ("Unexpected bytes at 0x{0:X} ({1}) - not the expected game version. Nothing changed." -f $p.VA, $p.Desc)
-    }
-    if ($older) { Log 'An older build of the camera patch is active; replacing it.'; $already = $false }
-    elseif ($already) { Log 'Camera patch was already applied; updating the tuning values.' }
+    $older = Test-CameraSites $h
 
     if ($Off) {   # live un-patch: unhook first, then clear the cave
         Remove-SrcPort $h
@@ -1858,37 +1897,7 @@ try {
         Log 'Camera patch REMOVED from the running game (original camera).'
         return
     }
-
-    [Sr3Mem]::Suspend($h)
-    try {
-        if ($older) { for ($i = $Patches.Count - 1; $i -ge 1; $i--) { [Sr3Mem]::Write($h, $Patches[$i].VA, $Patches[$i].OrigB, $false) } }   # unhook the old build
-        foreach ($p in $Patches) { [Sr3Mem]::Write($h, $p.VA, $p.NewB, ($p.VA -eq $CaveVA)) }
-        try { Install-Cycle $h; $cycleOk = $true }
-        catch { $cycleOk = $false; $cycleError = $_.Exception.Message }
-    }
-    finally { [Sr3Mem]::Resume($h) }
-
-    foreach ($p in $Patches) {
-        $cur = [Sr3Mem]::Read($h, $p.VA, $p.NewB.Length); $exp = $p.NewB.Clone()
-        if ($p.VA -eq $CaveVA -and $cur) {
-            for ($i = $DiagLo + 4; $i -lt $DiagHi; $i++) { $cur[$i] = 0; $exp[$i] = 0 }
-            for ($i = $DebugLo; $i -lt $DebugHi; $i++) { $cur[$i] = 0; $exp[$i] = 0 }
-        }
-        if (-not (Same $cur $exp)) { throw ("Verification failed at 0x{0:X}" -f $p.VA) }
-    }
-    if ($Canary) { Log 'CANARY MODE: in a race the chase camera should look at your car from the SIDE.' }
-    Log 'Camera mod is ACTIVE for this session. Have fun!'
-    Log ("  Profile '$ProfileName'")
-    if (-not $cycleOk) { Log "  Camera cycle NOT installed: $cycleError" }
-    else { Log ("  View Change cycles: Game: Chase cam, Bumper cam, Bonnet cam, then " + ((@($slots | Select-Object -Skip 1) | ForEach-Object { $_.Name }) -join ', ') + $(if ($showHidden) { ', then the Debug cameras' } else { '' })) }
-    Log $(if ($overlayPx -gt 0) { "  Camera name popup: $overlayPx px (at 1080p)" } else { '  Camera name popup: off' })
-    if ($cycleOk) {
-        Log $(if ($lookSmooth -gt 0) { "  Cameras you steer: mouse smoothed over $([int][Math]::Round(1000 * $lookSmooth)) ms, keys over $([int][Math]::Round(2000 * $lookSmooth)) ms" } else { '  Cameras you steer: raw mouse and keys (no smoothing)' })
-        Log $(if ($blendSec -le 0) { '  View Change: cuts to the next camera (no blend, the game''s own code path)' } elseif ($script:BlendHooked) { "  View Change: the view travels to the next camera in $([int][Math]::Round(1000 * $blendSec)) ms" } else { '  View Change: cuts to the next camera (the blend could not be installed)' })
-    }
-    Log ('  Strength={0:0.00}  FadeIn={1}-{2} km/h  Stiffness={3}-{4}  Damping={5}  MaxAngle={6} deg  CapStiffness={7}' -f $Strength, $FadeInStartKmh, $FadeInFullKmh, $StiffnessMin, $StiffnessMax, $Damping, $MaxAngleDeg, $CapStiffness)
-    if ($Framing) { Log ('  Framing: distance {0} m, height {1} m, field of view {2} deg' -f $Distance, $Height, $Fov) }
-    else { Log '  Framing: SR3 default' }
+    Install-CameraPatch $h $older
 }
 finally { [Sr3Mem]::Close($h) }
 if ($launched -and -not $Off) {

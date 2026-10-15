@@ -24,6 +24,7 @@ class Game:
     """A fake game: memory (address -> bytes), the game folder's files, the mod folder's files, the frames."""
     def __init__(self, name):
         self.name, self.mem, self.after, self.files, self.mod, self.frames, self.t, self.next_handle = name, [], [], {}, {}, [], 0, 14
+        self.reinstall, self.between = None, []        # a second run of the install (PLAY.bat again on the running game): its settings; writes before it
     def put(self, va, b): self.mem.append([va, b.hex()])
     def putb(self, off, b): self.after.append([off, b.hex()])
     def file(self, rel, data=b'x'): self.files[rel] = data if isinstance(data, bytes) else data.encode('utf-8')
@@ -33,7 +34,10 @@ class Game:
              [0x9DBB0C, held(view or pad & 0x1000)], [0x9DBBA4, held(pad & 0x10)]] + [[a, b.hex()] for a, b in set]   # View Change (entry 15), START (53)
         sb = [[0x226C, i32(hi).hex()], [0x2278, i32(mode_val).hex()], [0x227C, i32(car_sel).hex()]] + [[a, b.hex()] for a, b in setb]
         self.frames.append(dict(t=self.t, pad=pad, keys=list(keys), front=front, set=s, setb=sb)); self.t += dt
-    def json(self): return dict(name=self.name, mem=self.mem, after=self.after, frames=self.frames, next_handle=self.next_handle)
+    def json(self):
+        d = dict(name=self.name, mem=self.mem, after=self.after, between=self.between, frames=self.frames, next_handle=self.next_handle)
+        if self.reinstall is not None: d['reinstall'] = self.reinstall
+        return d
 
 TRACK_IDS = {'Tropical4': 0x5001, 'Canyon4': 0x5008, 'Alpine4': 0x500F, 'Lakeside4': 0x5016, 'Desert4': 0x501D, 'Stadium4': 0x5024}
 def base_game(g, cars_lib=True):
@@ -214,7 +218,29 @@ def sc_odd():
     F(1, 3, 'Canyon4', hi=TRACK_IDS['Canyon4']); F(0, 0, 'Canyon4'); F(0, 0, 'Canyon4')
     return g
 
-SCENARIOS = [sc_switch, sc_start, sc_handling, sc_late, sc_odd]
+# ---- the re-attach path: the game patched (the first run, not traced), then PLAY.bat again with other settings (traced)
+CAVE, SITE1 = 0x673C80, 0x5F72DD
+def again(name, **settings):
+    g = Game(name); g.reinstall = settings; g.frames = []; return g
+def sc_retune(): return again('retune', profile='Chase', overlay=120, mouse=0.02, blend=0)        # the block kept, its settings rewritten, the blend's hook taken out
+def sc_reblend(): return again('reblend', profile='SR3 Chase Far', blend=1.5, canary=True)
+def sc_newer():                                                                                     # a newer build's block: a fresh one, the old one's state carried over
+    g = again('newer', profile='Drone'); mgr = 0x3B000000
+    g.after = [[0x1000, '90'], [0x58, i32(mgr).hex()], [0x2240 + 0x18, i32(0x12345678).hex()], [0x2180, (i32(0x1111) * 12).hex()], [0xF98, (b'\x01' * 16).hex()]]
+    g.between = [[mgr + 0x1A38, i32(0x6EBDF0).hex()], [mgr + 0x1A38 + 0x194, i32(0x20000000 + 0x2240).hex()]]
+    return g
+def sc_older():                                                                                     # an older build: a hook site neither the game's nor this build's
+    g = again('older', profile='Daytona'); g.between = [[SITE1, 'e9aabbccdd']]; return g
+def sc_foreign():                                                                                   # someone else's bytes: refused, nothing written
+    g = again('foreign'); g.between = [[CAVE, '5a5a5a5a'], [SITE1, 'e9aabbccdd']]; return g
+def sc_alt():                                                                                       # another profiles file (hiddenCameras false: fewer slots)
+    g = again('altfile'); tmp = os.path.join(tempfile.gettempdir(), 'live_lockstep_alt_profiles.yaml')
+    src = open(os.path.join(REPO, 'profiles.yaml'), encoding='utf-8').read().splitlines()
+    open(tmp, 'w', newline='\n').write('\n'.join([l for l in src if not l.lower().startswith('hiddencameras')] + ['hiddenCameras: false', '']))
+    g.reinstall = dict(profiles_file=tmp, profile='Chase Far'); return g
+DECISIONS = ('L Camera patch was already applied', 'L An older build of the camera patch', 'L Unexpected bytes at ')   # the install's log lines both word alike
+
+SCENARIOS = [sc_switch, sc_start, sc_handling, sc_late, sc_odd, sc_retune, sc_reblend, sc_newer, sc_older, sc_foreign, sc_alt]
 
 def lay_out(g, root):
     game, mod = os.path.join(root, 'game'), os.path.join(root, 'mod')
@@ -243,6 +269,8 @@ def main(argv):
         pa = subprocess.run(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', os.path.join(HERE, 'live_ps1.ps1'), '-Scenario', sa, '-GameExe', ea, '-ModDir', ma, '-Out', ta], capture_output=True, text=True)
         pb = subprocess.run([exe, sb, eb, mb, os.path.join(REPO, 'profiles.yaml'), tb], capture_output=True, text=True)
         A, B = norm(ta, ra), norm(tb, rb)
+        if g.reinstall is not None:                                    # the install's other log lines are worded differently (patches.ps1's for PLAY.bat, sr3mods' for its callers)
+            A = [l for l in A if not l.startswith('L ') or l.startswith(DECISIONS)]; B = [l for l in B if not l.startswith('L ') or l.startswith(DECISIONS)]
         if not A: A = ['(no trace from patches.ps1: %s)' % (pa.stdout + pa.stderr).strip()[-800:]]
         if not B: B = ['(no trace from livetest.exe, exit %d: %s)' % (pb.returncode, (pb.stdout + pb.stderr).strip()[-400:])]
         diff = []
