@@ -92,7 +92,12 @@ def create(source, destination, mode="copy", dll=None):
             shutil.copy2(existing, save / name)
     shutil.copy2(dll, destination / "dinput8.dll")
     shutil.copy2(ROOT / "sr3lab.ini", destination / "sr3lab.ini")
-    shutil.copy2(ROOT / "settings.yaml", destination / "settings.yaml")
+    # The launcher watches by default and resolves its host through mod_folder.
+    # Keep the shared suite in place instead of copying a partial watchdog.
+    settings = (ROOT / "settings.yaml").read_text(encoding="utf-8")
+    suite = ROOT.parent.resolve().as_posix().replace("'", "''")
+    settings += f"\npatches:\n  mod_folder: '{suite}'\n  watchdog: on\n"
+    (destination / "settings.yaml").write_text(settings, encoding="utf-8")
     for name in companions:
         shutil.copy2(dll.parent / name, destination / name)
     shutil.copy2(ROOT.parent / "LICENSE", destination / "SR3Lab-LICENSE.txt")

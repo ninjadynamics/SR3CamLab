@@ -63,11 +63,16 @@ required to build. See [BUILD.md](BUILD.md) for flags, source pins and tests.
 The importer currently accepts single-controller XInput profiles and rejects
 unsupported active options or bindings. It reads the source XML/INI without
 changing either. Importing over existing YAML first creates `.yaml.before-import`.
+The importer preserves an existing `patches` section, including the suite path
+and watchdog preference. Fresh imports point to the current SR3CamLab folder.
 
 Overlay mode defaults to independent copies. `--mode hardlink` and `--mode junction`
 share asset directories, so run `overlay.py --materialize DESTINATION` before
 editing those assets. Root executables/configs are always private copies.
 The source executable must match the supported SHA-256 in `overlay.py`.
+Generated settings point `patches.mod_folder` to this SR3CamLab folder so the
+default watchdog can find its host and scripts. If you move the suite, update
+that path in the generated settings. The overlay does not copy the shared suite.
 Existing destinations and source reparse points are rejected.
 
 For the existing SR3CamLab mod stack, `play.ps1 -GameFolder OVERLAY -WithMods`

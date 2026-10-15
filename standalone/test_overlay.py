@@ -37,6 +37,10 @@ class OverlayTests(unittest.TestCase):
         self.assertEqual((self.source / "assets/track.sbf").read_bytes(), b"original-track")
         self.assertEqual((self.source / "config.ini").read_text(), "original")
         self.assertTrue(json.loads((target / overlay.MARKER).read_text())["complete"])
+        settings = (target / "settings.yaml").read_text(encoding="utf-8")
+        suite = overlay.ROOT.parent.resolve().as_posix().replace("'", "''")
+        self.assertIn(f"mod_folder: '{suite}'", settings)
+        self.assertIn("watchdog: on", settings)
 
     def test_hardlink_materializes_before_modification(self):
         target = self.root / "linked"
