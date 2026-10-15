@@ -53,6 +53,8 @@ def lib():
         L.lm_key12.argtypes = [LL, P, P]; L.lm_key12.restype = None; L.lm_gather.argtypes = [LL, P, LL, P, P]; L.lm_gather.restype = None
         L.lm_albedo.argtypes = [LL, P, I, I, P, P]; L.lm_albedo.restype = LL
         L.lm_lookup.argtypes = [LL] + [P] * 7 + [I, P, P]; L.lm_lookup.restype = None
+        L.sky_dirs.argtypes = [P, P, LL, P, I, I, P, P]; L.sky_dirs.restype = None; L.sky_tile.argtypes = [LL, P, I, I, P, D, D, P, P]; L.sky_tile.restype = I
+        L.sky_fill.argtypes = [I, I, P, P]; L.sky_fill.restype = None
         _lib = L
     return _lib
 

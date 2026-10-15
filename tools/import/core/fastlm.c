@@ -401,4 +401,86 @@ EXPORT void lm_lookup(i64 n, const i64 *idx, const int *pg, const int *x0, const
     }
 }
 
+/* ------------------------------------------------------------------ sky1995 (2026-10-15, kb 31: its own numpy operations in C)
+   sky_dirs = directions(V, tris, W, H): for each triangle in order (a later one overwrites), the texels of its uv box inside it get the
+   point of the dome there; then D[M] /= np.linalg.norm(D, axis=2)[M]. P[3 nv] = V['p'].astype(float), UV[2 nv] = V['uv'] / 32768.0 * [W, H].
+     x0, y0 = np.floor(u.min(0) - 1).astype(int); x1, y1 = np.ceil(u.max(0) + 1).astype(int) (clamped) ; X, Y = the texel centres (+ 0.5)
+     den = (u1y - u2y) * (u0x - u2x) + (u2x - u1x) * (u0y - u2y); w0 = ((u1y - u2y) * (X - u2x) + (u2x - u1x) * (Y - u2y)) / den
+     w1 = ((u2y - u0y) * (X - u2x) + (u0x - u2x) * (Y - u2y)) / den; w2 = 1 - w0 - w1; ins = all >= -0.02; p = w0 * Pa + w1 * Pb + w2 * Pc */
+EXPORT void sky_dirs(const double *P, const double *UV, i64 nt, const i64 *tris, int W, int H, double *D, unsigned char *M)
+{
+    memset(D, 0, sizeof(double) * 3 * (size_t)W * H); memset(M, 0, (size_t)W * H);
+    for (i64 t = 0; t < nt; t++) {
+        i64 a = tris[3 * t], b = tris[3 * t + 1], c = tris[3 * t + 2]; const double *u0 = UV + 2 * a, *u1 = UV + 2 * b, *u2 = UV + 2 * c;
+        double mnx = fmin(fmin(u0[0], u1[0]), u2[0]), mny = fmin(fmin(u0[1], u1[1]), u2[1]), mxx = fmax(fmax(u0[0], u1[0]), u2[0]), mxy = fmax(fmax(u0[1], u1[1]), u2[1]);
+        i64 x0 = (i64)floor(mnx - 1), y0 = (i64)floor(mny - 1), x1 = (i64)ceil(mxx + 1), y1 = (i64)ceil(mxy + 1);
+        if (x0 < 0) x0 = 0; if (y0 < 0) y0 = 0; if (x1 > W - 1) x1 = W - 1; if (y1 > H - 1) y1 = H - 1;
+        if (x1 < x0 || y1 < y0) continue;
+        double den = (u1[1] - u2[1]) * (u0[0] - u2[0]) + (u2[0] - u1[0]) * (u0[1] - u2[1]);
+        if (fabs(den) < 1e-9) continue;
+        for (i64 y = y0; y <= y1; y++)
+            for (i64 x = x0; x <= x1; x++) {
+                double X = (double)x + 0.5, Y = (double)y + 0.5;
+                double w0 = ((u1[1] - u2[1]) * (X - u2[0]) + (u2[0] - u1[0]) * (Y - u2[1])) / den, w1 = ((u2[1] - u0[1]) * (X - u2[0]) + (u0[0] - u2[0]) * (Y - u2[1])) / den, w2 = (1 - w0) - w1;
+                if (!(w0 >= -0.02 && w1 >= -0.02 && w2 >= -0.02)) continue;
+                double *d = D + 3 * (y * W + x);
+                for (int k = 0; k < 3; k++) d[k] = (w0 * P[3 * a + k] + w1 * P[3 * b + k]) + w2 * P[3 * c + k];
+                M[y * W + x] = 1;
+            }
+    }
+    for (i64 i = 0; i < (i64)W * H; i++) if (M[i]) { double *d = D + 3 * i, n = NORM3(d); d[0] /= n; d[1] /= n; d[2] /= n; }
+}
+
+/* sky_tile: the 1995 sky picture laid on the dome (sky_mode 'tile'), for n directions dirs[3 n] (OBJ axes); im[th * tw * 3] the picture
+   (float), flat[3] the median of its top row. The numpy lines (asin / atan2 / tan are ucrtbase's, as numpy calls them; % as numpy's):
+     el = np.arcsin(np.clip(dirs[:, 1], -1, 1)); az = np.arctan2(dirs[:, 2], dirs[:, 0])
+     fx = (((np.pi / 2 - az) / (2 * np.pi) * rep) % 1.0) * tw; fy = (1.0 - np.clip(np.tan(np.clip(el, 0.0, 1.5)) / np.tan(top), 0.0, 1.0)) * (th - 1)
+     x0 = np.floor(fx).astype(int) % tw; x1 = (x0 + 1) % tw; y0 = np.clip(np.floor(fy).astype(int), 0, th - 1); y1 = np.clip(y0 + 1, 0, th - 1)
+     col = (im_[y0, x0] * (1 - ax) + im_[y0, x1] * ax) * (1 - ay) + (im_[y1, x0] * (1 - ax) + im_[y1, x1] * ax) * ay
+     k_ = np.clip((el - 0.97 * top) / (0.03 * top), 0.0, 1.0); col = col * (1 - k_) + flat_ * k_ */
+static f1_t uasin = NULL, utan = NULL; static f2_t uatan2 = NULL;
+static inline double clipd(double x, double lo, double hi) { return x < lo ? lo : (x > hi ? hi : x); }
+EXPORT int sky_tile(i64 n, const double *dirs, int tw, int th, const double *im, double rep, double top, const double *flat, double *col)
+{
+    if (!uasin) { HMODULE h = GetModuleHandleA("ucrtbase.dll"); if (h) { uasin = (f1_t)(void *)GetProcAddress(h, "asin"); utan = (f1_t)(void *)GetProcAddress(h, "tan"); uatan2 = (f2_t)(void *)GetProcAddress(h, "atan2"); } }
+    if (!uasin || !utan || !uatan2) return 0;
+    const double PI = 3.141592653589793, ttop = utan(top), c97 = 0.97 * top, c03 = 0.03 * top;
+    #pragma omp parallel for schedule(static)
+    for (i64 i = 0; i < n; i++) {
+        const double *d = dirs + 3 * i; double el = uasin(clipd(d[1], -1, 1)), az = uatan2(d[2], d[0]);
+        double r = ((PI / 2 - az) / (2 * PI)) * rep, m = fmod(r, 1.0); if (m != 0.0 && m < 0.0) m += 1.0; if (m == 0.0) m = 0.0;
+        double fx = m * tw, fy = (1.0 - clipd(utan(clipd(el, 0.0, 1.5)) / ttop, 0.0, 1.0)) * (th - 1);
+        i64 fxi = (i64)floor(fx), x0 = ((fxi % tw) + tw) % tw, x1 = (x0 + 1) % tw, y0 = (i64)floor(fy); y0 = y0 < 0 ? 0 : (y0 > th - 1 ? th - 1 : y0);
+        i64 y1 = y0 + 1 > th - 1 ? th - 1 : y0 + 1; double ax = fx - floor(fx), ay = fy - floor(fy), k = clipd((el - c97) / c03, 0.0, 1.0);
+        for (int c = 0; c < 3; c++) {
+            double v = (im[(y0 * tw + x0) * 3 + c] * (1 - ax) + im[(y0 * tw + x1) * 3 + c] * ax) * (1 - ay) + (im[(y1 * tw + x0) * 3 + c] * (1 - ax) + im[(y1 * tw + x1) * 3 + c] * ax) * ay;
+            col[3 * i + c] = v * (1 - k) + flat[c] * k;
+        }
+    }
+    return 1;
+}
+
+/* sky_fill = fill(img, mask): a texel without a value takes the nearest valid one along its row (the earlier one on a tie), then along its
+   column, as fill()'s maximum / minimum.accumulate do; img[H * W * 3], mask[H * W] (both changed in place) */
+EXPORT void sky_fill(int H, int W, double *img, unsigned char *mask)
+{
+    for (int pass = 0; pass < 2; pass++) {                           /* pass 0: along each row (numpy's axis 1), pass 1: along each column */
+        int lines = pass ? W : H, n = pass ? H : W; i64 st = pass ? (i64)W : 1, ls = pass ? 1 : (i64)W;
+        #pragma omp parallel for schedule(static)
+        for (int l = 0; l < lines; l++) {
+            int *fw = (int *)malloc(sizeof(int) * n), *bw = (int *)malloc(sizeof(int) * n); unsigned char *got = (unsigned char *)malloc(n); int last = -1;
+            for (int i = 0; i < n; i++) { if (mask[l * ls + i * st]) last = i; fw[i] = last; }
+            last = 1000000000; for (int i = n - 1; i >= 0; i--) { if (mask[l * ls + i * st]) last = i; bw[i] = last; }
+            double *tmp = (double *)malloc(sizeof(double) * 3 * n);
+            for (int i = 0; i < n; i++) {
+                int uf = fw[i] >= 0 && (bw[i] >= 1000000000 || i - fw[i] <= bw[i] - i), src = uf ? fw[i] : (bw[i] < 1000000000 ? bw[i] : 0);
+                got[i] = fw[i] >= 0 || bw[i] < 1000000000; memcpy(tmp + 3 * i, img + 3 * (l * ls + (i64)src * st), 3 * sizeof(double));
+            }
+            for (int i = 0; i < n; i++) { i64 q = l * ls + i * st; if (!mask[q] && got[i]) memcpy(img + 3 * q, tmp + 3 * i, 3 * sizeof(double)); }
+            for (int i = 0; i < n; i++) if (got[i]) mask[l * ls + i * st] = 1;
+            free(fw); free(bw); free(got); free(tmp);
+        }
+    }
+}
+
 EXPORT int lm_threads(void) { return omp_get_max_threads(); }
