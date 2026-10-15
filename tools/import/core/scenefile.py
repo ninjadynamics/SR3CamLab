@@ -11,6 +11,7 @@ Until 2026-10-15 the file was a pickle of numpy arrays (unreadable without numpy
     load(path, numpy=True)   the dict as it always was: numpy arrays, 'holes' a list of 2-D bool arrays or None
     save(path, D)            D as bake1995 builds it (numpy arrays, holes list)"""
 import pickle
+from array import array
 import npyio
 
 ARRAYS = ('tris', 'uv', 'mat', 'albedo', 'albedo_rgb', 'sun', 'centre')
@@ -26,6 +27,16 @@ def save(path, D):
     bits = np.concatenate(parts) if parts else np.zeros(0, bool)
     out.update(holes_h=arr(h), holes_w=arr(w), holes_off=arr(off), holes_bits=arr(bits))
     npyio.savez(path, **out)
+
+def save_arrays(path, holes, **A):
+    """save() without numpy (2026-10-15): A = the ARRAYS as npyio.Arr, holes = per material None or (height, width, bytes of 0 / 1);
+    the same file save() writes"""
+    m = len(holes); h = array('i', [0] * m); w = array('i', [0] * m); off = array('q', [-1] * m); bits = bytearray()
+    for i, hm in enumerate(holes):
+        if hm is None: continue
+        h[i], w[i], b = hm; off[i] = len(bits); bits += b
+    arr = lambda dt, a: npyio.Arr(dt, (m,), memoryview(a).cast('B'))
+    npyio.savez(path, **{k: A[k] for k in ARRAYS}, holes_h=arr('<i4', h), holes_w=arr('<i4', w), holes_off=arr('<i8', off), holes_bits=npyio.Arr('|b1', (len(bits),), bits))
 
 def load(path, numpy=False):
     with open(path, 'rb') as f: magic = f.read(2)

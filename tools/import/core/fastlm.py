@@ -50,6 +50,8 @@ def lib():
         L.lm_roadsight.argtypes = [P, I, P, P, P, P, LL, P, LL, P, I, D, P, P, P]; L.lm_roadsight.restype = LL
         L.lm_rs_prep.argtypes = [LL] + [P] * 11; L.lm_rs_prep.restype = LL
         L.lm_ss_prep.argtypes = [LL] + [P] * 15; L.lm_ss_prep.restype = LL; L.lm_open_sides.argtypes = [P, LL, P, I, P, D, P, I, P, P]; L.lm_open_sides.restype = None
+        L.lm_key12.argtypes = [LL, P, P]; L.lm_key12.restype = None; L.lm_gather.argtypes = [LL, P, LL, P, P]; L.lm_gather.restype = None
+        L.lm_albedo.argtypes = [LL, P, I, I, P, P]; L.lm_albedo.restype = LL
         _lib = L
     return _lib
 

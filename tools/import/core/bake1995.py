@@ -12,13 +12,14 @@ It takes two builds, because the vertices are only known when the meshes are wri
 The light is per VERTEX: a shadow is as sharp as the polygons are small, so "bake_refine": <metres> cuts the big polygons
 near the road first (refine)."""
 import os, sys, pickle, subprocess, time
-import numpy as np
+from array import array
 
 BLENDER = __import__('common').BLENDER
 
 def refine(faces, size, centre=None, reach=70.0, log=print):
     """polygons with an edge longer than `size` are cut into a grid of pieces no longer than it (texture coordinates follow).
     Cut-outs, the sea and polygons farther than `reach` from the road stay as they are."""
+    import numpy as np
     out = []; ncut = 0; nnew = 0; cen = None if centre is None else np.asarray(centre, float)
     for fc in faces:
         mat, sec, P, UV = fc; m0 = str(mat).split('|')[0]
@@ -49,8 +50,12 @@ def refine(faces, size, centre=None, reach=70.0, log=print):
     return out
 
 def save_scene(path, faces, rd, tile_pixels, sun, log=print):
-    """what the rays can hit: every polygon of the scenery (cut-outs with their see-through mask) and the road"""
-    T = []; UV = []; M = []; mats = {}; alb = []; albc = []; holes = []
+    """what the rays can hit: every polygon of the scenery (cut-outs with their see-through mask) and the road.
+    Without numpy (2026-10-15, kb 31): tile_pixels' pictures (ndarray or npyio.Arr, uint8 or float, colour or grey) are read through the
+    buffer protocol, their albedo is fastlm.c's lm_albedo (numpy's (rgb[keep] / 255.0) ** 2.2, .mean() and .mean(0), in its order), the
+    triangles become float32 as np.array(T, np.float32) made them, the file is scenefile.save_arrays': the numpy version's file."""
+    import fastlm, npyio, scenefile, roadsight; from lightmap1995 import _raw
+    T = array('f'); UV = array('f'); M = array('i'); mats = {}; alb = []; albc = []; holes = []; L = fastlm.lib(); out4 = array('d', [0.0] * 4)
     for mat, sec, P, U in faces:
         if str(sec) == 'sea' or len(P) < 3: continue
         m0 = str(mat).split('|')[0]
@@ -60,20 +65,43 @@ def save_scene(path, faces, rd, tile_pixels, sun, log=print):
             except Exception: px = None
             if px is None: a_ = 0.35; h_ = None; c_ = (0.35, 0.35, 0.35)
             else:
-                rgb, hole = px; rgb = np.asarray(rgb, float); rgb = rgb if rgb.ndim == 3 else np.dstack([rgb] * 3)
-                keep = ~hole if hole is not None and hole.shape == rgb.shape[:2] and (~hole).any() else np.ones(rgb.shape[:2], bool)
-                a_ = float(((rgb[keep] / 255.0) ** 2.2).mean()); c_ = tuple(((rgb[keep] / 255.0) ** 2.2).mean(0)); h_ = hole if hole is not None and hole.shape == rgb.shape[:2] and hole.any() else None
-            mats[m0] = len(alb); alb.append(a_); albc.append(c_); holes.append(None if h_ is None else np.asarray(h_, bool))
-        A = np.asarray(P, float); B = np.asarray(U, float)
-        for i0, i1, i2 in (((0, 1, 3), (1, 2, 3)) if len(P) == 4 else ((0, 1, 2),)): T.append((A[i0], A[i1], A[i2])); UV.append((B[i0], B[i1], B[i2])); M.append(mats[m0])      # (four corners: split along 1 - 3 as the game draws them)
-    if rd is not None:
-        R = np.asarray(rd['V'], float); R2 = np.roll(R, -1, axis=0); a, b, c, d = R[:, :-1], R[:, 1:], R2[:, 1:], R2[:, :-1]; k = len(alb); alb.append(0.22); albc.append((0.2, 0.22, 0.24)); holes.append(None)
-        for q in (np.stack([a, b, c], 2).reshape(-1, 3, 3), np.stack([a, c, d], 2).reshape(-1, 3, 3)):
-            T += list(q); UV += [np.zeros((3, 2))] * len(q); M += [k] * len(q)
-    D = dict(tris=np.array(T, np.float32), uv=np.array(UV, np.float32), mat=np.array(M, np.int32), albedo=np.array(alb, np.float32), albedo_rgb=np.array(albc, np.float32), holes=holes, sun=np.asarray(sun, float), centre=(np.asarray(rd['V'], float)[:, rd['hw']][:, [0, 2]] if rd is not None else np.zeros((1, 2))))
-    import scenefile; scenefile.save(path + '.scene', D); log('       baked light: the scene for the rays, %d triangles, %d materials (%d with see-through texels) -> %s.scene' % (len(T), len(alb), sum(h is not None for h in holes), path))
+                rgb, hole = px; dt, sh, rb = _raw(rgb); kind = {'|u1': 0, '<f8': 1, '<f4': 2}.get(dt)
+                if kind is None: dt, sh, rb = _raw(rgb, '<f8'); kind = 1                # (np.asarray(rgb, float))
+                hw_ = tuple(sh[:2]); npx = hw_[0] * hw_[1]; hb = None
+                if hole is not None:
+                    hdt, hsh, hb = _raw(hole)
+                    if hdt != '|b1': hv = array('d'); hv.frombytes(_raw(hole, '<f8')[2]); hb = bytes(1 if v else 0 for v in hv)      # np.asarray(h_, bool)
+                    if tuple(hsh) != hw_: hb = None
+                keep = None if hb is None or 0 not in hb else bytes(1 - v for v in hb)      # ~hole when some texel is not a hole, else every texel
+                kb = ctypes_buf(keep) if keep is not None else (0, None); rbuf = ctypes_buf(rb)
+                L.lm_albedo(npx, rbuf[0], kind, 3 if len(sh) == 3 else 1, kb[0], out4.buffer_info()[0]); a_ = out4[0]; c_ = (out4[1], out4[2], out4[3])
+                h_ = (hw_[0], hw_[1], hb) if hb is not None and 1 in hb else None
+            mats[m0] = len(alb); alb.append(a_); albc.append(c_); holes.append(h_)
+        A = [tuple(float(v) for v in q) for q in P]; B = [tuple(float(v) for v in q) for q in U]
+        for tri in (((0, 1, 3), (1, 2, 3)) if len(P) == 4 else ((0, 1, 2),)):      # (four corners: split along 1 - 3 as the game draws them)
+            for i in tri: T.extend(A[i]); UV.extend(B[i])
+            M.append(mats[m0])
+    if rd is not None:                                                 # the road: two triangles per cell of its grid (np.stack([a, b, c], 2), then [a, c, d])
+        R = roadsight.rows(rd['V']); ns = len(R); nc = len(R[0]); k = len(alb); alb.append(0.22); albc.append((0.2, 0.22, 0.24)); holes.append(None)
+        for which in (0, 1):
+            for i in range(ns):
+                for j in range(nc - 1):
+                    a_, b_, c_, d_ = R[i][j], R[i][j + 1], R[(i + 1) % ns][j + 1], R[(i + 1) % ns][j]
+                    for q in ((a_, b_, c_) if which == 0 else (a_, c_, d_)): T.extend(float(v) for v in q)
+        nr = 2 * ns * (nc - 1); UV.extend(array('f', bytes(24 * nr))); M.extend(array('i', [k]) * nr)
+    nt = len(M); arr = lambda dt, sh, a: npyio.Arr(dt, sh, memoryview(a).cast('B'))
+    cen = array('d', [float(R[i][rd['hw']][c]) for i in range(len(R)) for c in (0, 2)]) if rd is not None else array('d', [0.0, 0.0])
+    scenefile.save_arrays(path + '.scene', holes, tris=arr('<f4', (nt, 3, 3), T), uv=arr('<f4', (nt, 3, 2), UV), mat=arr('<i4', (nt,), M), albedo=arr('<f4', (len(alb),), array('f', alb)),
+                          albedo_rgb=arr('<f4', (len(albc), 3), array('f', [v for c in albc for v in c])), sun=arr('<f8', (len(sun),), array('d', [float(v) for v in sun])), centre=arr('<f8', (len(cen) // 2, 2), cen))
+    log('       baked light: the scene for the rays, %d triangles, %d materials (%d with see-through texels) -> %s.scene' % (nt, len(alb), sum(h is not None for h in holes), path))
+
+def ctypes_buf(b):
+    """(address, keeper) of a bytes object's data for C to read"""
+    import ctypes
+    c = ctypes.create_string_buffer(b, len(b)) if b else ctypes.create_string_buffer(1); return ctypes.addressof(c), c
 
 def save_points(path, chunks, log=print):
+    import numpy as np
     if not chunks: return
     P = np.concatenate([c[0] for c in chunks]).astype(np.float32); N = np.concatenate([c[1] for c in chunks]).astype(np.float32); U = np.concatenate([c[2] for c in chunks]).astype(bool)
     K = keys(P, N); _, first = np.unique(K, return_index=True); first.sort()
@@ -81,16 +109,19 @@ def save_points(path, chunks, log=print):
 
 def keys(P, N):
     """one key per vertex and facing: the place to the millimetre and the direction to a third"""
+    import numpy as np
     q = np.concatenate([np.round(np.asarray(P, np.float64) * 1000.0), np.round(np.asarray(N, np.float64) * 3.0)], 1).astype(np.int32)
     return np.ascontiguousarray(q).view(np.dtype((np.void, 24))).ravel()
 
 def load_table(path):
+    import numpy as np
     D = np.load(path if path.endswith('.npz') else path + '.npz'); L = np.load(path + '.light.npy'); K = keys(D['P'], D['N'])
     full = {k.tobytes(): i for i, k in enumerate(K)}; place = {k.tobytes()[:12]: i for i, k in enumerate(K)}
     return dict(full=full, place=place, L=L, miss=[0, 0])
 
 def lookup(tab, P, N):
     """-> (n, 3) array V, A, B ; a vertex the table does not know is taken as lit and open"""
+    import numpy as np
     K = keys(P, N); idx = np.empty(len(K), np.int64); full, place = tab['full'], tab['place']
     for j, k in enumerate(K):
         b = k.tobytes(); i = full.get(b, -1)
@@ -101,7 +132,7 @@ def lookup(tab, P, N):
 
 def run_native(path, log=print):
     """the rays of bl_bake.py cast by rays.c (same fans, same rules) -> <path>.light.npy"""
-    import rays, math
+    import rays, math, numpy as np
     import scenefile; t0 = time.time(); S = scenefile.load(path + '.scene', numpy=True); D = np.load(path + '.npz'); P = D['P'].astype(float); N = D['N'].astype(float); U = D['U'].astype(bool)
     T = S['tris'].astype(float); TM = S['mat']; ALB = S['albedo'].astype(float); SUN = np.asarray(S['sun'], float); SUN = SUN / np.linalg.norm(SUN)
     sc = rays.Scene(T); sc.masks(TM, S['uv'], S['holes']); TN = np.cross(T[:, 1] - T[:, 0], T[:, 2] - T[:, 0]); TN /= np.maximum(np.linalg.norm(TN, axis=1), 1e-12)[:, None]
@@ -136,6 +167,7 @@ def run_native(path, log=print):
 
 def run(path, procs=8, log=print):
     """casts the rays for <path>(.npz) with several Blender processes -> <path>.light.npy"""
+    import numpy as np
     n = len(np.load(path + '.npz')['P']); t0 = time.time(); here = os.path.dirname(os.path.abspath(__file__)); ps = []
     for k in range(procs):
         a, b = n * k // procs, n * (k + 1) // procs

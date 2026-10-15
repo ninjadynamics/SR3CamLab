@@ -11,18 +11,83 @@ picture and one texel for all vertices). So light can be baked per TEXEL, in col
 
 A texel holds what the polygon rule's brightness must be multiplied by: 1 in the open, less where the sun is hidden ('shadows'), and with
 'rt' less again where little sky is seen, plus the COLOUR of the light that comes back from what stands near (red brick gives a warm shade).
-A light map cannot brighten (white = 1), so bounce only shows where something else took light away."""
+A light map cannot brighten (white = 1), so bounce only shows where something else took light away.
+Since 2026-10-15 (kb 31): save_collect and key_buf need no numpy (the chunks are read through the buffer protocol, keys and rows in fastlm.c,
+the file through npyio: the same .lm.npz); the other functions, which hand the build numpy arrays, import numpy themselves."""
 import os, sys, pickle, time, math
-import numpy as np
+from array import array
 
 PAGE = 2048; MAXC = 64
 
 def key(P4):
     """one key per polygon: its four corners to the millimetre"""
+    import numpy as np
     return np.ascontiguousarray(np.round(np.asarray(P4, np.float64).reshape(-1, 12) * 1000.0).astype(np.int32)).view(np.dtype((np.void, 48))).ravel()
 
+_FMT = {('d', 8): '<f8', ('f', 4): '<f4', ('?', 1): '|b1', ('q', 8): '<i8', ('l', 4): '<i4', ('i', 4): '<i4', ('l', 8): '<i8', ('B', 1): '|u1', ('b', 1): '|i1'}
+_TC = {'<f8': 'd', '<f4': 'f', '<i8': 'q', '<i4': 'i', '|b1': 'B', '|u1': 'B', '|i1': 'b'}
+def _raw(a, want=None):
+    """an ndarray (through the buffer protocol: no numpy needed, strided ones read in C order), npyio.Arr or list -> (dtype, shape, bytes);
+    want: the dtype it must come out as (the values converted, as np.asarray(a, want) does)"""
+    if type(a).__name__ == 'Arr': dt, shape, b = a.dtype, a.shape, bytes(memoryview(a.buf)[:a.nbytes])
+    elif hasattr(a, '__array_interface__') or isinstance(a, (memoryview, array)): m = memoryview(a); dt, shape, b = _FMT.get((m.format.lstrip('<=@!'), m.itemsize)), m.shape, m.tobytes()
+    else: dt, shape, b = None, (len(a),), None
+    if dt == want or (want is None and dt is not None): return dt, tuple(shape), b
+    vals = memoryview(a).tolist() if b is not None else list(a)
+    while vals and isinstance(vals[0], list): vals = [v for row in vals for v in row]
+    return want, tuple(shape), array(_TC[want], vals).tobytes()
+
+def rows_(a): return int(a.shape[0]) if hasattr(a, 'shape') else len(a)
+
+def key_buf(P4):
+    """key() without numpy: P4 (n x 4 x 3, any buffer) -> npyio.Arr '|V48' (n,), the same 48 bytes per polygon (12 int32, rint(x * 1000))"""
+    import fastlm, npyio
+    dt, shape, b = _raw(P4, '<f8'); n = len(b) // 96; src = array('d'); src.frombytes(b); K = array('i', bytes(48 * n))
+    fastlm.lib().lm_key12(n, src.buffer_info()[0], K.buffer_info()[0]); return npyio.Arr('|V48', (n,), memoryview(K).cast('B'))
+
 def save_collect(path, chunks, log=print):
+    """the polygons the meshes wrote (BC.LM_COLLECT: chunks P, N, I, F, U [, R, AB]) -> <path>.lm.npz, each polygon once (its first copy).
+    Without numpy (2026-10-15): the chunks' bytes put end to end, the keys and the rows picked in fastlm.c, written by npyio; the file is
+    the one _save_collect_numpy writes (that numpy original is kept for chunks whose types differ: only numpy can say what they become)."""
     if not chunks: return
+    import fastlm, npyio
+    L = fastlm.lib(); cols = {}; n = sum(rows_(c[0]) for c in chunks)
+    for name, j in (('P', 0), ('N', 1), ('I', 2), ('F', 3), ('U', 4)):
+        parts = [_raw(c[j]) for c in chunks]
+        if len({(q[0], q[1][1:]) for q in parts}) != 1: return _save_collect_numpy(path, chunks, log)
+        cols[name] = (parts[0][0], parts[0][1][1:], b''.join(q[2] for q in parts))
+    unit_ = array('d', [0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0])
+    R = array('q'); R.frombytes(b''.join(_raw(c[5], '<i8')[2] if len(c) > 5 else bytes(array('q', [-1]) * rows_(c[0])) for c in chunks))      # R: the rectangle a polygon lies in - a rounded polygon's pieces share one (round1995.PATCH), every other polygon has its own
+    AB = b''.join(_raw(c[6], '<f8')[2] if len(c) > 6 else bytes(unit_ * rows_(c[0])) for c in chunks)       # AB: where its corners are in that rectangle (np.tile(unit_, ...))
+    base = (max(R) + 1 if len(R) else 0); k = 0
+    for i in range(n):                                                # lone_ = R < 0; R = np.where(lone_, (R.max() + 1) + np.cumsum(lone_), R)
+        if R[i] < 0: k += 1; R[i] = base + k
+    G = array('i')
+    for k, c in enumerate(chunks): G.extend(array('i', [k]) * rows_(c[0]))      # which mesh-writer call a polygon came from = its material: a packer that keeps a material's polygons together needs one material copy per page it reaches, not one per page
+    F = cols['F'][2]; keep = array('q', [i for i in range(n) if not F[i]])
+    dtP, shP, bP = cols['P']; P8 = array('d'); P8.frombytes(bP if dtP == '<f8' else _raw(memoryview(bP).cast(_TC[dtP]), '<f8')[2])
+    Pk = array('d', bytes(96 * len(keep))); L.lm_gather(len(keep), keep.buffer_info()[0], 96, P8.buffer_info()[0], Pk.buffer_info()[0])
+    K = array('i', bytes(48 * len(keep))); L.lm_key12(len(keep), Pk.buffer_info()[0], K.buffer_info()[0]); Kb = bytes(K); seen = set(); sel = array('q')
+    for j in range(len(keep)):                                        # _, first = np.unique(K, return_index=True); first.sort(): each key's first polygon, in order
+        kb = Kb[48 * j:48 * j + 48]
+        if kb not in seen: seen.add(kb); sel.append(keep[j])
+    def pick(dt, sh, b):
+        rb = npyio.itemsize(dt) * math.prod(sh); out = bytearray(rb * len(sel)); src = ctypes_buf(b)
+        L.lm_gather(len(sel), sel.buffer_info()[0], rb, src[0], ctypes_addr(out)); return npyio.Arr(dt, (len(sel),) + tuple(sh), out)
+    out = dict(P=pick(*cols['P']), N=pick(*cols['N']), I=pick(*cols['I']), U=pick(*cols['U']), G=pick('<i4', (), bytes(G)), R=pick('<i8', (), bytes(R)), AB=pick('<f8', (4, 2), AB))
+    npyio.savez(path + '.lm.npz', **out); log('       light maps: %d polygons to light (%d written by the meshes, %d of them flat-lit) -> %s.lm.npz' % (len(sel), n, sum(F), path))
+
+def ctypes_buf(b):
+    """the address of a bytes object's data for C to read, and the object that keeps it"""
+    import ctypes
+    c = ctypes.create_string_buffer(b, len(b)) if b else ctypes.create_string_buffer(1); return ctypes.addressof(c), c
+
+def ctypes_addr(ba):
+    import ctypes
+    return ctypes.addressof((ctypes.c_char * max(1, len(ba))).from_buffer(ba)) if ba else ctypes.addressof(ctypes.create_string_buffer(1))
+
+def _save_collect_numpy(path, chunks, log=print):                     # (the numpy original of save_collect: reference, and for chunks of differing types)
+    import numpy as np
     P = np.concatenate([c[0] for c in chunks]); N = np.concatenate([c[1] for c in chunks]); I = np.concatenate([c[2] for c in chunks]); F = np.concatenate([c[3] for c in chunks]); U = np.concatenate([c[4] for c in chunks])
     unit_ = np.array([(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]); R = np.concatenate([np.asarray(c[5], np.int64) if len(c) > 5 else np.full(len(c[0]), -1, np.int64) for c in chunks]); AB = np.concatenate([np.asarray(c[6], np.float64) if len(c) > 6 else np.tile(unit_, (len(c[0]), 1, 1)) for c in chunks])
     lone_ = R < 0; R = np.where(lone_, (int(R.max()) + 1 if len(R) else 0) + np.cumsum(lone_), R)        # R: the rectangle a polygon lies in - a rounded polygon's pieces share one (round1995.PATCH), every other polygon has its own ; AB: where its corners are in that rectangle
@@ -32,6 +97,7 @@ def save_collect(path, chunks, log=print):
 
 def pack(P, centre, near=3.0, far=0.75, reach=60.0):
     """-> page, x0, y0, nu, nv per polygon (texel grid nu x nv; the rectangle it takes is rounded up to whole 4 x 4 compression blocks)"""
+    import numpy as np
     e = lambda a, b: np.linalg.norm(P[:, a] - P[:, b], axis=1); lu = np.maximum(e(1, 0), e(2, 3)); lv = np.maximum(e(3, 0), e(2, 1))
     c = P.mean(1)[:, [0, 2]]; cen = np.asarray(centre, float)[::4]; d = np.empty(len(P))
     for s in range(0, len(P), 4000): d[s:s + 4000] = np.sqrt(((c[s:s + 4000, None] - cen[None]) ** 2).sum(2).min(1))
@@ -46,6 +112,7 @@ def pack(P, centre, near=3.0, far=0.75, reach=60.0):
 
 def _light(sc, S, P, N, K0, rgb_alb):
     """V (n), A (n), B (n, 3) for points P with facing N (as bake1995.run_native, the bounce in colour)"""
+    import numpy as np
     T = S['tris'].astype(float); TM = S['mat']; SUN = np.asarray(S['sun'], float); SUN = SUN / np.linalg.norm(SUN)
     if not hasattr(_light, 'TN') or _light.key != id(S):
         TN = np.cross(T[:, 1] - T[:, 0], T[:, 2] - T[:, 0]); TN /= np.maximum(np.linalg.norm(TN, axis=1), 1e-12)[:, None]; _light.TN = TN; _light.key = id(S)
@@ -72,7 +139,7 @@ def bake(path, mode='rt', strength=1.0, shade=0.33, log=print):
     """(fastlm.c lights the texels, one polygon after the other on every core: 7 s where the arrays of _old_bake below took 85; 2026-10-08.
     _old_bake stays as the reference: SR3_FASTGEO=0 / SR3_FASTLM=0 selects it; SR3_FASTGEO_CHECK=1 runs both, counts the texels that
     differ and leaves the OLD pages in the files.)"""
-    import fastlm
+    import fastlm, numpy as np
     new = fastlm.bake(sys.modules[__name__], path, mode, strength, shade, (lambda s: None) if fastlm.CHECK else log) if fastlm.ON else None
     if new is None or fastlm.CHECK:
         if new is None and fastlm.ON: log('(lightmap1995.py: fastlm.c cannot take these polygons - the numpy code runs instead)')
@@ -80,7 +147,7 @@ def bake(path, mode='rt', strength=1.0, shade=0.33, log=print):
         if new is not None: old = np.load(path + '.lm.pages.npy'); same = old.shape == new[1:].shape and np.array_equal(old, new[1:]); fastlm.note('lightmap1995.bake', same, 'texel values that differ: %s' % (int((old != new[1:]).sum()) if old.shape == new[1:].shape else 'other pages'))
 
 def _old_bake(path, mode='rt', strength=1.0, shade=0.33, log=print):   # (the numpy original of bake: fallback and reference)
-    import rays
+    import rays, numpy as np
     t0 = time.time(); D = np.load(path + '.lm.npz'); P = D['P'].astype(float); N = D['N'].astype(float); I = D['I'].astype(float); U = D['U'].astype(bool); import scenefile; S = scenefile.load(path + '.scene', numpy=True)
     N = N / np.maximum(np.linalg.norm(N, axis=1), 1e-12)[:, None]; SUN = np.asarray(S['sun'], float); SUN = SUN / np.linalg.norm(SUN)
     page, x0, y0, nu, nv = pack(P, S['centre']); npg = int(page.max()); sc = rays.Scene(S['tris'].astype(float)); sc.masks(S['mat'], S['uv'], S['holes']); alb = np.asarray(S['albedo_rgb'], float)
@@ -114,11 +181,13 @@ def _old_bake(path, mode='rt', strength=1.0, shade=0.33, log=print):   # (the nu
     m = pages[1:].reshape(-1, 3); log('light maps (%s): %d polygons, %.1f million texels on %d pages of %d x %d, lit in %.1f s ; mean value %.2f ; texels darker than half: %.0f%%' % (mode, len(P), ntex / 1e6, npg, PAGE, PAGE, time.time() - t0, float(m.mean()) / 255, 100.0 * (m.max(1) < 128).mean()))
 
 def load_table(path):
+    import numpy as np
     T = np.load(path + '.lm.table.npz'); d = {k.tobytes(): i for i, k in enumerate(T['K'])}
     return dict(idx=d, page=T['page'], x0=T['x0'], y0=T['y0'], nu=T['nu'], nv=T['nv'], ab=T['ab'] if 'ab' in T.files else None, pages=np.load(path + '.lm.pages.npy', mmap_mode='r'), miss=[0], hit=[0])
 
 def lookup(tab, P4):
     """-> page per polygon (0 = not on any page: the white picture), uv1 (4 per polygon, u16)"""
+    import numpy as np
     K = key(P4); n = len(K); idx = np.array([tab['idx'].get(k.tobytes(), -1) for k in K], np.int64); ok = idx >= 0; j = np.maximum(idx, 0); tab['miss'][0] += int((~ok).sum()); tab['hit'][0] += int(ok.sum())
     x0 = tab['x0'][j].astype(float); y0 = tab['y0'][j].astype(float); nu = tab['nu'][j].astype(float); nv = tab['nv'][j].astype(float)
     cu = np.stack([x0 + 0.5, x0 + nu - 0.5, x0 + nu - 0.5, x0 + 0.5], 1) / PAGE; cv = np.stack([y0 + 0.5, y0 + 0.5, y0 + nv - 0.5, y0 + nv - 0.5], 1) / PAGE

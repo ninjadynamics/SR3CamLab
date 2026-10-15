@@ -322,4 +322,59 @@ EXPORT void lm_open_sides(void *sc, i64 nj, const double *pts, int np_, const do
     }
 }
 
+/* lightmap1995.key: one key per polygon, its four corners to the millimetre (2026-10-15, kb 31):
+     np.round(np.asarray(P4, np.float64).reshape(-1, 12) * 1000.0).astype(np.int32)          (np.round = rint, half to even) */
+EXPORT void lm_key12(i64 n, const double *P, int *K)
+{
+    #pragma omp parallel for schedule(static)
+    for (i64 i = 0; i < 12 * n; i++) K[i] = (int)rint(P[i] * 1000.0);
+}
+
+/* rows picked out of a C-ordered array: dst[k] = src[sel[k]], each row `rb` bytes (numpy's A[sel]) */
+EXPORT void lm_gather(i64 k, const i64 *sel, i64 rb, const unsigned char *src, unsigned char *dst)
+{
+    #pragma omp parallel for schedule(static)
+    for (i64 j = 0; j < k; j++) memcpy(dst + j * rb, src + sel[j] * rb, (size_t)rb);
+}
+
+/* numpy's pairwise sum of n doubles (np.add.reduce of a contiguous array): below 8 one after the other, up to 128 eight running sums,
+   above that the two halves cut at a multiple of 8 */
+static double np_pairwise(const double *v, i64 n)
+{
+    if (n < 8) { double s = 0.0; for (i64 i = 0; i < n; i++) s += v[i]; return s; }
+    if (n <= 128) {
+        double r[8]; i64 i, e = n - n % 8;
+        for (int j = 0; j < 8; j++) r[j] = v[j];
+        for (i = 8; i < e; i += 8) for (int j = 0; j < 8; j++) r[j] += v[i + j];
+        double s = ((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7]));
+        for (; i < n; i++) s += v[i];
+        return s;
+    }
+    i64 h = n / 2; h -= h % 8; return np_pairwise(v, h) + np_pairwise(v + h, n - h);
+}
+
+/* bake1995.save_scene's albedo of a tile (2026-10-15, kb 31):
+     rgb = np.asarray(rgb, float), an (h, w) grey picture taken three times; x = (rgb[keep] / 255.0) ** 2.2
+     a_ = float(x.mean()); c_ = tuple(x.mean(0))
+   x.mean(): numpy's pairwise sum over the k x 3 values in their order (pixel by pixel, the channels within), / 3k ; x.mean(0): per channel
+   the k values one after the other from 0 (an outer axis, kb 31), / k. pow is ucrtbase's (np.power calls it; lm_init finds it).
+   rgb: npx pixels of ch (1 or 3) values, kind 0 = u8, 1 = f8, 2 = f4; keep[npx] or NULL (every pixel). -> out = a_, c_[3]; returns k */
+static f2_t upow = NULL;
+EXPORT i64 lm_albedo(i64 npx, const void *rgb, int kind, int ch, const unsigned char *keep, double *out)
+{
+    if (!upow) { HMODULE h = GetModuleHandleA("ucrtbase.dll"); if (h) upow = (f2_t)(void *)GetProcAddress(h, "pow"); if (!upow) return -1; }
+    double *x = (double *)malloc((size_t)(npx ? npx : 1) * 3 * sizeof(double)), c[3] = { 0.0, 0.0, 0.0 }; i64 k = 0;
+    for (i64 p = 0; p < npx; p++) {
+        if (keep && !keep[p]) continue;
+        for (int a = 0; a < 3; a++) {
+            i64 q = p * ch + (ch == 3 ? a : 0); double v = kind == 0 ? (double)((const unsigned char *)rgb)[q] : kind == 1 ? ((const double *)rgb)[q] : (double)((const float *)rgb)[q];
+            x[3 * k + a] = upow(v / 255.0, 2.2); c[a] += x[3 * k + a];
+        }
+        k++;
+    }
+    out[0] = (0.0 + np_pairwise(x, 3 * k)) / (double)(3 * k);
+    for (int a = 0; a < 3; a++) out[1 + a] = c[a] / (double)k;
+    free(x); return k;
+}
+
 EXPORT int lm_threads(void) { return omp_get_max_threads(); }
