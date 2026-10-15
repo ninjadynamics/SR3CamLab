@@ -108,6 +108,7 @@ Lighting is flat through every milestone; all lighting is left to RT.
 | R4 | rounded polygons, nature only | CHOSEN 2026-10-13: the owner drove R1, R2 and R4 with baked light (scene v11) and took R4 ("R4 is the way to go!!! make it the default step"). Every edge cut in four (16 pieces a polygon), corners moved along the surface's normal only (`round: 4`, `round_slide: false`), with the two rules added that day: the ground stays where spectators stand, and no piece turns over (round1995.py, rules 6 and 7) |
 | RT | ray-traced light from R4 | installed 2026-10-13 as Classic 1 "Mountain RT" (R1 and R2 kept after it for comparison). The build route makes R4 unless told otherwise |
 | R4 (pinned) | R4 without its horns | INSTALLED 2026-10-14 as the only Mountain entry, Classic "Mountain R4" (track1\Desert4 = `step99_mountain_r4nv11h_d_desert4`: scene v11, baked light, shadows 27 % = `light_split 0.72`); the owner had the other Mountain variants deleted from the game. See 5.1 |
+| R4 (outward) | R4 rounded outwards, every seen side lit | ACCEPTED 2026-10-15 ("Mountain R4 is accepted, which means v11 is accepted too"): `step99_mountain_r4nv15_d_desert4` in track1\Desert4 (round_mode outward, open sides, the far-side light rectangles shared). See 5.2, 5.3 and 16_lighting 3.8. The v11 scene became patch 3 (5.3) |
 
 ### 5.1 R4's horns and lips, and the fix (2026-10-14)
 The owner's screenshots of R4 RT showed horns standing up on rims and tops, an overhanging lip on a pillar's top and odd
@@ -143,6 +144,23 @@ fillet allowance: 55 994 such edges, almost all the gentle foot of a bulge besid
 cm (nearly flat). With it: 5 248 to fix, 0 left; 124 000 of 228 000 corners curved, mean 5.9 cm, at most `round_cap` 1.5 m;
 by the counter above 168 edges over 20 degrees (all fillets of 1995 inside corners) against 2 605. `round_mode: shrink` builds
 the rule set before (pinned R4 with round_pin / round_fade as in 5.1).
+
+### 5.3 Accepted: Mountain R4, and the v11 scene as patch 3 (2026-10-15)
+Owner: "Mountain R4 is accepted, which means v11 is accepted too. Create patch 3 out of it and reapply the chain to reobtain an identical
+version of v11." Until then the v11 builds took patches 1, 2 and 3 from `courses\` (3 = the GENERATED patch of 2026-10-12: the plateau
+hand model and the cliff side, 3,641 faces), then the tree boards moved in the Blender scene v11 (`board_moves`, 1,139 corners, 792 cut-out
+polygons moved whole) and the scene's own patch (`scene_diff` patch 4 against the patch 1 - 3 build, the tree moves taken out: 4d; 27,860
+triangles removed, 34,385 faces added, 99 composed pictures) from a scratch folder. One ordinary patch file cannot hold that chain: a patch
+removes before it adds, and 4d removes and cuts down faces the generated patch 3 adds, with the board moves in between. So
+`courses\src.mountain.patch.3.json` is now a STAGED patch (`blendpatch\stage_patch.py`; `coursepatch.apply_file`): `{"stages": [the
+generated patch 3, {"board_moves": [...]}, 4d]}`, needs 1 and 2, 12.8 MB, applied stage after stage exactly as the separate steps were
+(`coursepatch.move_boards` is the importer's old board_moves block). The generated patch 3 of 2026-10-12 is its first stage and in git history.
+Checked: the importer's polygons as the rounding gets them (`rtbake\chain_dump.sh`, old chain against new) are the same 58,156 polygons in the
+same order, pickled byte for byte; then the whole R4 build (collect, bake, compose, 27 % shadows) from the course patches alone
+(`NO_SCENE_PATCH=1 rtbake\fast_all.sh` / `build_variant.sh`, which now also read the repo's own raw_recipe, bake and compose scripts)
+against the installed build `step99_mountain_r4nv15_d_desert4`: all 11 files the same byte for byte (VERIFIED 2026-10-15, build v16, 357 s).
+The next Blender round on Mountain starts from this chain: its scene is diffed against a build of patches 1 - 3 (the p3 base build
+`step99_mountain_p3_desert4` used for v11 is the OLD patch 3 and must be built again first), and becomes patch 4.
 
 - "Full island infill is a waste of polygons": authored geometry only, and see whether that is enough.
 - The code for rounding, fill, baked light and light maps is all still in the importer, switched off by the RAW settings.

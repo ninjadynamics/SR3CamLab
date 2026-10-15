@@ -139,9 +139,47 @@ def remove(faces, rem, sr3, path, log, split=None, keep=()):
         path.replace('\\', '/').split('/')[-1], len(rem), whole, trimmed, back, lost, stuck))
     return out
 
+def move_boards(faces, BM, ox, oz, log):
+    """cut-out boards moved in Blender (trees lifted onto new ground, 2026-10-13): the ORIGINAL polygons are moved whole, so they keep their
+    corner count, their front / back marks and their mapping (owner: "reimport the trees ... at the right positions"). BM: [[x, y, z, dx, dy, dz],
+    ...] per corner, in the decoded scene's coordinates. A polygon moves when at least three of its corners are listed with the same shift (its
+    other corners go along). Was import_classic's board_moves block (course setting board_moves); here since 2026-10-15 so that a staged patch
+    file can carry its board moves (apply_file)."""
+    BMv_ = np.array(BM, float); ob_ = np.argsort(BMv_[:, 0], kind='stable'); bx_ = BMv_[ob_, 0]; nb_ = 0
+    def shift_(p_):                                                     # the listed corner within 3 mm of p_ (decoded coordinates) -> its shift, or None
+        q_ = np.array([p_[0] - ox, p_[1], -(p_[2] - oz)]); lo_, hi_ = np.searchsorted(bx_, [q_[0] - 0.003, q_[0] + 0.003]); c_ = BMv_[ob_[lo_:hi_]]
+        if not len(c_): return None
+        d_ = np.linalg.norm(c_[:, :3] - q_, axis=1); k_ = int(np.argmin(d_)); return c_[k_, 3:6] if d_[k_] < 0.003 else None
+    for fc in faces:
+        if not str(fc[0]).split('|')[0].endswith('_t') or len(fc[2]) < 3: continue
+        sh_ = [s_ for s_ in (shift_(p_) for p_ in fc[2]) if s_ is not None]
+        if len(sh_) < 3 or any(float(np.abs(s_ - sh_[0]).max()) > 0.004 for s_ in sh_): continue
+        d_ = sh_[0]; fc[2][:] = [(p_[0] + float(d_[0]), p_[1] + float(d_[1]), p_[2] - float(d_[2])) for p_ in fc[2]]; nb_ += 1
+    log('       boards moved whole (board_moves): %d cut-out polygons' % nb_)
+    return faces
+
+def apply_file(faces, path, ox, oz, export, log, applied=(), **kw):
+    """a numbered patch file: a plain patch (apply), or a STAGED one (2026-10-15, owner: "Mountain R4 is accepted, which means v11 is accepted
+    too. Create patch 3 out of it"): {"stages": [patch, {"board_moves": [...]}, patch, ...]} applied one after the other exactly as separate
+    patches and a board_moves setting would be, so the file holds a chain that was built in steps and gives the same build."""
+    J = json.load(open(path))
+    if 'stages' not in J: return apply(faces, path, ox, oz, export, log, applied=applied, **kw)
+    assert J.get('format') == 'sr3lab course patch', 'not a course patch file this importer knows: ' + path
+    miss = [k for k in J.get('base', {}).get('needs', []) if k not in applied]
+    if miss: raise SystemExit('PATCH REFUSED: %s needs patch %s of this course applied before it' % (path, miss))
+    name = path.replace('\\', '/').split('/')[-1]
+    for i, st in enumerate(J['stages']):
+        if 'board_moves' in st: faces = move_boards(faces, st['board_moves'], ox, oz, log); continue
+        st = dict(st); st['label'] = '%s stage %d' % (name, i + 1); st['base'] = {k: v for k, v in st.get('base', {}).items() if k != 'needs'}      # (the file's needs are checked above)
+        faces = apply(faces, st, ox, oz, export, log, applied=applied, **kw)
+    return faces
+
 def apply(faces, path, ox, oz, export, log, fill_uv=True, applied=(), settings=None, pixels=None, save=None, origin=None, split=None, keep=()):
-    """faces: the build's (material, section, [corners in SR3 coordinates], [uv]) -> the same list with the patch applied"""
-    J = json.load(open(path)); assert J.get('format') == 'sr3lab course patch' and J.get('version') in (1, 2, 3), 'not a course patch file this importer knows: ' + path
+    """faces: the build's (material, section, [corners in SR3 coordinates], [uv]) -> the same list with the patch applied.
+    path: a patch file, or one stage of a staged patch file as a dict (its 'label' names it in the log; see apply_file)"""
+    if isinstance(path, dict): J = path; path = str(J.get('label', 'patch stage'))
+    else: J = json.load(open(path))
+    assert J.get('format') == 'sr3lab course patch' and J.get('version') in (1, 2, 3), 'not a course patch file this importer knows: ' + path
     want = J['base'].get('course_export_sha1'); got = export_sha1(export)
     if want and want != got: raise SystemExit('PATCH REFUSED: %s was made on another export of the course (%s; this build reads %s)' % (path, want[:12], got[:12]))
     miss = [k for k in J['base'].get('needs', []) if k not in applied]                                 # patches are made one on the result of the other (owner, 2026-10-09)

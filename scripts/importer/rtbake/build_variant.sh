@@ -5,8 +5,9 @@ SP="C:/Users/bruno/AppData/Local/Temp/claude/F--Jogos-SEGA-Rally-3/7efd0921-014b
 W="F:/Jogos/SEGA Rally 3/SR3 track format/work"; IMP="F:/Jogos/SEGA Rally 3/SR3CamLab/scripts/importer"; TAG="$1"; L="$2"; V="$3"; shift 3
 G1="$SP/game_$TAG"; BASE="$W/out/step99_mountain_p3_desert4/Desert4"; cd "$IMP" || exit 1; export PYTHONPATH="$(cygpath -w "$PWD")"
 if [ "$L" = 1 ]; then G="$G1"; n="step99_mountain_${TAG}_${V}_desert4"; else G="$SP/game_r${L}n$TAG"; n="step99_mountain_r${L}n${TAG}_${V}_desert4"; fi
-args=(); while IFS= read -r kv; do [ -n "$kv" ] && args+=(--set "$kv"); done < "$SP/raw_recipe.txt"
-COMMON=("${args[@]}" --set light_contrast=0.01 --set lit_sides=false --set seen_sides=true --set stitch=true --set lm_cutouts=[\"tex_s1_x0960_y0576_64x128_c10D_t\",\"tex_s1_x0960_y0576_64x128_c10F_t\"] --set patch=true --set patch_clean=true --set "board_moves=\"$G1/board_moves.json\"" --set "patch_files=[\"$G1/src.mountain.patch.4d.json\"]")
+args=(); while IFS= read -r kv; do [ -n "$kv" ] && args+=(--set "$kv"); done < "$IMP/rtbake/raw_recipe.txt"
+COMMON=("${args[@]}" --set light_contrast=0.01 --set lit_sides=false --set seen_sides=true --set stitch=true --set lm_cutouts=[\"tex_s1_x0960_y0576_64x128_c10D_t\",\"tex_s1_x0960_y0576_64x128_c10F_t\"] --set patch=true --set patch_clean=true)
+[ -z "$NO_SCENE_PATCH" ] && COMMON+=(--set "board_moves=\"$G1/board_moves.json\"" --set "patch_files=[\"$G1/src.mountain.patch.4d.json\"]")      # (NO_SCENE_PATCH=1: the course patches only - patch 3 holds the v11 scene since 2026-10-15)
 [ "$L" != 1 ] && COMMON+=(--set round=$L --set round_slide=false)
 for kv in "$@"; do COMMON+=(--set "$kv"); done
 t0=$(date +%s); python import_classic.py src 1 classic --norender --name $n "${COMMON[@]}" --set "car_shade=\"$G/lm.carshade.npz\"" --set "seen_sides_file=\"$G/lm.sides.npz\"" --set "lm_table=\"$G/lmA\"" > "$G/build_$V.log" 2>&1; e=$?

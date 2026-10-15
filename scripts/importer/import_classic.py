@@ -195,22 +195,12 @@ def stage_build(cfg, variant, name):
         have_ = sorted(_gl.glob(os.path.join(pd_, '%s.%s.patch.*.json' % (cfg['game'], cfg['name']))), key=num_); want_ = cfg['patch']
         if want_ is not True: want_ = [int(w_) for w_ in (want_ if isinstance(want_, list) else [want_])]; miss_ = [w_ for w_ in want_ if w_ not in [num_(p_) for p_ in have_]]; assert not miss_, 'no patch file number %s for this course in %s' % (miss_, pd_); have_ = [p_ for p_ in have_ if num_(p_) in want_]
         done_ = []; pset_ = {}
-        for p_ in have_: faces = coursepatch.apply(faces, p_, rd['ox'], rd['oz'], BC.HI, log, fill_uv=bool(cfg.get('patch_uv', True)), applied=done_, settings=pset_, pixels=BC.tile_pixels, save=BC.save_baked, origin=__import__('overlay_bake').ORIGIN, split=BC.uv_split, keep=BC.PAIRS); done_.append(num_(p_))
+        for p_ in have_: faces = coursepatch.apply_file(faces, p_, rd['ox'], rd['oz'], BC.HI, log, fill_uv=bool(cfg.get('patch_uv', True)), applied=done_, settings=pset_, pixels=BC.tile_pixels, save=BC.save_baked, origin=__import__('overlay_bake').ORIGIN, split=BC.uv_split, keep=BC.PAIRS); done_.append(num_(p_))
         for k_, v_ in pset_.items(): cfg[k_] = {**cfg[k_], **v_} if (isinstance(v_, dict) and isinstance(cfg.get(k_), dict)) else v_
         if pset_: log('       settings brought by the patches: %s' % pset_)
     if variant == 'classic' and cfg.get('board_moves'):                 # OPT-IN (2026-10-13): cut-out boards moved in Blender (trees lifted onto new ground) - the ORIGINAL polygons are moved whole, so they keep
-        import json as _jb                                              # their corner count, their front / back marks and their mapping (owner: "reimport the trees ... at the right positions"). File: [[x, y, z, dx, dy, dz], ...]
-        BMv_ = np.array(_jb.load(open(cfg['board_moves'])), float); ob_ = np.argsort(BMv_[:, 0], kind='stable'); bx_ = BMv_[ob_, 0]; nb_ = 0      # per corner, in the decoded scene's coordinates
-        def shift_(p_):                                                 # the listed corner within 3 mm of p_ (decoded coordinates) -> its shift, or None
-            q_ = np.array([p_[0] - rd['ox'], p_[1], -(p_[2] - rd['oz'])]); lo_, hi_ = np.searchsorted(bx_, [q_[0] - 0.003, q_[0] + 0.003]); c_ = BMv_[ob_[lo_:hi_]]
-            if not len(c_): return None
-            d_ = np.linalg.norm(c_[:, :3] - q_, axis=1); k_ = int(np.argmin(d_)); return c_[k_, 3:6] if d_[k_] < 0.003 else None
-        for fc in faces:                                                # a polygon moves when at least three of its corners are listed with the same shift (its other corners go along)
-            if not str(fc[0]).split('|')[0].endswith('_t') or len(fc[2]) < 3: continue
-            sh_ = [s_ for s_ in (shift_(p_) for p_ in fc[2]) if s_ is not None]
-            if len(sh_) < 3 or any(float(np.abs(s_ - sh_[0]).max()) > 0.004 for s_ in sh_): continue
-            d_ = sh_[0]; fc[2][:] = [(p_[0] + float(d_[0]), p_[1] + float(d_[1]), p_[2] - float(d_[2])) for p_ in fc[2]]; nb_ += 1
-        log('       boards moved whole (board_moves): %d cut-out polygons' % nb_)
+        import json as _jb, coursepatch                                 # their corner count, their front / back marks and their mapping (coursepatch.move_boards; a staged patch file carries its own)
+        faces = coursepatch.move_boards(faces, _jb.load(open(cfg['board_moves'])), rd['ox'], rd['oz'], log)
     if variant == 'classic' and cfg.get('patch_files'):                # OPT-IN (genpatch1995.py): patch files given by PATH, applied after the numbered ones in the order given. A generated patch is kept outside courses\ so that "patch": true never picks it up beside the hand patches
         import coursepatch; pset_ = {}
         for p_ in ([cfg['patch_files']] if isinstance(cfg['patch_files'], str) else cfg['patch_files']):

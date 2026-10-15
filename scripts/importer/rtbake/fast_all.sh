@@ -16,9 +16,10 @@ now() { date +%s.%N; }; since() { python -c "import sys; print('%.1f' % (float(s
 say() { echo "$(date +%H:%M:%S) $*" | tee -a "$LOG"; }
 gdir() { if [ "$1" = 1 ]; then echo "$G1"; else echo "$SP/game_r${1}n$TAG"; fi; }
 bname() { if [ "$1" = 1 ]; then echo "step99_mountain_${TAG}"; else echo "step99_mountain_r${1}n${TAG}"; fi; }
-args=(); while IFS= read -r kv; do [ -n "$kv" ] && args+=(--set "$kv"); done < "$SP/raw_recipe.txt"
+args=(); while IFS= read -r kv; do [ -n "$kv" ] && args+=(--set "$kv"); done < "$IMP/rtbake/raw_recipe.txt"
 common() {      # $1 = level -> the array COMMON
-  COMMON=("${args[@]}" --set light_contrast=0.01 --set lit_sides=false --set seen_sides=true --set stitch=true --set lm_cutouts=[\"tex_s1_x0960_y0576_64x128_c10D_t\",\"tex_s1_x0960_y0576_64x128_c10F_t\"] --set patch=true --set patch_clean=true --set "board_moves=\"$G1/board_moves.json\"" --set "patch_files=[\"$G1/src.mountain.patch.4d.json\"]")
+  COMMON=("${args[@]}" --set light_contrast=0.01 --set lit_sides=false --set seen_sides=true --set stitch=true --set lm_cutouts=[\"tex_s1_x0960_y0576_64x128_c10D_t\",\"tex_s1_x0960_y0576_64x128_c10F_t\"] --set patch=true --set patch_clean=true)
+  [ -z "$NO_SCENE_PATCH" ] && COMMON+=(--set "board_moves=\"$G1/board_moves.json\"" --set "patch_files=[\"$G1/src.mountain.patch.4d.json\"]")      # (NO_SCENE_PATCH=1: the course patches only - patch 3 holds the v11 scene since 2026-10-15)
   [ "$1" != 1 ] && COMMON+=(--set round=$1 --set round_slide=false)
 }
 scene() {
@@ -40,8 +41,8 @@ collect() {     # $1 = level
 }
 bake() {        # $1 = level
   local L=$1 G=$(gdir $1) t=$(now) py=rt_bake_game5.py      # (every level: its rays are rt_bake_game4.py's, compared on a whole R1 bake)
-  OMP_NUM_THREADS=31 python -u "$SP/rtbake/$py" "$G/lm" "$G/faces.pkl" slow > "$G/bake4.log" 2>&1; local e=$?
-  python "$SP/rt_compose_game.py" "$G/lm" "$G/lmA" 0.34 > "$G/compose.log" 2>&1
+  OMP_NUM_THREADS=31 python -u "$IMP/rtbake/$py" "$G/lm" "$G/faces.pkl" slow > "$G/bake4.log" 2>&1; local e=$?
+  python "$IMP/rtbake/rt_compose_game.py" "$G/lm" "$G/lmA" 0.34 > "$G/compose.log" 2>&1
   say "R$L bake: exit $e, $(since $t) s ; $(grep -E '^RTG[45] ' "$G/bake4.log" | cut -c1-150)"
   grep -E "Traceback|Error" "$G/bake4.log" "$G/compose.log" | cut -c1-300 >> "$LOG"
 }
