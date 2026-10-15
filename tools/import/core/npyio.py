@@ -7,6 +7,8 @@ and buf (the raw bytes: bytes, bytearray, or an mmap for big files). C helpers t
     a = npyio.load(path [, mmap=True])        d = npyio.loadz(path)       (a dict of Arr; members stored or deflated)
     npyio.save(path, a)                       npyio.savez(path, name=a, ...)   (stored, fixed timestamps: the same bytes each time)
                                               npyio.savez_compressed(path, name=a, ...)   (deflated, as np.savez_compressed)
+    npyio.text(s) / npyio.string(a)           a str as np.savez stores one ('<U..', 0-d) and back
+    npyio.scalar(v)                           an int / float as np.savez stores one (0-d)
 
 numpy itself would be np.load / np.save / np.savez; it isn't used because the toolchain zip doesn't carry numpy (13 MB)
 any more for the processes that are done with it. save() writes the header exactly as numpy 1.24 does (the dict repr,
@@ -20,7 +22,21 @@ _EMPTY = (ctypes.c_char * 16)()                                       # what ptr
 
 def itemsize(dtype):
     k = dtype[1:]
-    return int(k[1:]) if k[0] in 'VS' else ITEMSIZE[k]
+    return int(k[1:]) if k[0] in 'VS' else (4 * int(k[1:]) if k[0] == 'U' else ITEMSIZE[k])      # ('U': numpy's text, 4 bytes a character)
+
+def text(s):
+    """a Python str as numpy stores one in an .npz (np.savez(f, k=s): a 0-d '<U<len>' array, UTF-32 little-endian)"""
+    return Arr('<U%d' % max(1, len(s)), (), bytearray(s.encode('utf-32-le') or bytes(4)))
+
+def string(a):
+    """the str of such an array (str(np.load(f)[k]))"""
+    return bytes(a.buf[:a.nbytes]).decode('utf-32-le').rstrip('\0')
+
+def scalar(v):
+    """a Python int or float as np.savez stores it: a 0-d array of numpy's default type for it (int32 on Windows while it fits, else
+    int64; float64)"""
+    if isinstance(v, float): return Arr('<f8', (), bytearray(struct.pack('<d', v)))
+    return Arr('<i4', (), bytearray(struct.pack('<i', v))) if -2 ** 31 <= v < 2 ** 31 else Arr('<i8', (), bytearray(struct.pack('<q', v)))
 
 class Arr:
     """dtype (descr), shape (tuple), buf (raw bytes, C order). Use .view() for element access, .ptr() for C."""
@@ -110,8 +126,8 @@ def savez(path, **arrays):
     _savez(path, zipfile.ZIP_STORED, arrays)
 
 def savez_compressed(path, **arrays):
-    """np.savez_compressed: as savez, the members deflated as numpy's are (zipfile's default level), so each member's bytes are numpy's;
-    numpy's own file differs only in its timestamps (the time of writing)"""
+    """np.savez_compressed: as savez, the members deflated as numpy's are (zipfile's default level): the same file numpy writes (its
+    ZipFile.open(name, 'w') also stamps 1980-01-01 and mode 0600; checked on the bake's carshade.npz, 2026-10-15)"""
     _savez(path, zipfile.ZIP_DEFLATED, arrays)
 
 def _savez(path, method, arrays):

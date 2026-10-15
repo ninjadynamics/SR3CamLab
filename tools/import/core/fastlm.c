@@ -240,4 +240,86 @@ EXPORT i64 lm_rs_prep(i64 n, const double *X, const i64 *off, const i64 *lens, c
     return nj;
 }
 
+/* seenside.orient's set-up for the numpy-free path (2026-10-15, kb 31): n polygons packed (X, off, lens: geobuf.pack), use[n] (opaque or
+   judged: their corners are filled in), opaque[n], judged[n]. The numpy lines:
+     Q[i, :len(P)] = P[:, :3]; Q[i, 3] = Q[i, 2] for three corners ; tri = np.linalg.norm(Q[:, 2] - Q[:, 3], axis=1) < 1e-9
+     T = np.concatenate([Q[opaque][:, [0, 1, 2]], Q[opaque & ~tri][:, [0, 2, 3]]])
+     Pj = Q[idx]; nrm = np.cross(P1 - P0, P2 - P0) + np.cross(P2 - P0, P3 - P0); nrm /= np.maximum(np.linalg.norm(nrm, axis=1), 1e-12)[:, None]
+     mix = lambda a, b, c, w: w * Pj[:, a] + (1 - w) / 2 * (Pj[:, b] + Pj[:, c]); cen = (P0 + P2) / 2
+     pairs: (mix(1, 0, 2, 1/3), tri ? mix(0, 1, 2, 1/3) : mix(3, 0, 2, 1/3)), (mix(1, 0, 2, 0.6), tri ? mix(0, 1, 2, 0.6) : mix(3, 0, 2, 0.6)),
+            (mix(0, 1, 2, 0.6), tri ? mix(2, 0, 1, 0.6) : mix(2, 0, 3, 0.6))
+     area = 0.5 * (np.linalg.norm(np.cross(P1 - P0, P2 - P0), axis=1) + np.linalg.norm(np.cross(P2 - P0, P3 - P0), axis=1))
+   -> T[9 * ntri] (sized by the caller: opaque + opaque non-tri; returns ntri through *nt), idx[nj], Pj[12 * nj], tri_j[nj], nrm / cen [3 nj],
+      S[6][3 nj] (the three pairs), area[nj]; returns nj. */
+static inline void ss_corners(const double *X, const i64 *off, const i64 *lens, i64 i, double Q[4][3])
+{
+    for (int k = 0; k < 4; k++) { int kk = k < lens[i] ? k : (int)lens[i] - 1; memcpy(Q[k], X + 3 * (off[i] + kk), 3 * sizeof(double)); }
+}
+static inline void ss_mix(double Q[4][3], int a, int b, int c, double w, double *out)
+{
+    double v = (1.0 - w) / 2.0;
+    for (int k = 0; k < 3; k++) out[k] = w * Q[a][k] + v * (Q[b][k] + Q[c][k]);
+}
+EXPORT i64 lm_ss_prep(i64 n, const double *X, const i64 *off, const i64 *lens, const unsigned char *use, const unsigned char *opaque, const unsigned char *judged,
+                      double *T, i64 *nt, i64 *idx, double *Pj, unsigned char *trij, double *nrm, double *cen, double *S, double *area)
+{
+    i64 t = 0, nj = 0;
+    unsigned char *tri = (unsigned char *)malloc((size_t)(n ? n : 1));
+    for (i64 i = 0; i < n; i++) {
+        tri[i] = 1;                                                     /* (Q stays zero for the others: |0 - 0| < 1e-9) */
+        if (!use[i]) continue;
+        double Q[4][3]; ss_corners(X, off, lens, i, Q); double d[3] = { Q[2][0] - Q[3][0], Q[2][1] - Q[3][1], Q[2][2] - Q[3][2] };
+        tri[i] = NORM3(d) < 1e-9;
+    }
+    for (i64 i = 0; i < n; i++) if (opaque[i]) { double Q[4][3]; ss_corners(X, off, lens, i, Q); memcpy(T + 9 * t, Q[0], 24); memcpy(T + 9 * t + 3, Q[1], 24); memcpy(T + 9 * t + 6, Q[2], 24); t++; }
+    for (i64 i = 0; i < n; i++) if (opaque[i] && !tri[i]) { double Q[4][3]; ss_corners(X, off, lens, i, Q); memcpy(T + 9 * t, Q[0], 24); memcpy(T + 9 * t + 3, Q[2], 24); memcpy(T + 9 * t + 6, Q[3], 24); t++; }
+    for (i64 i = 0; i < n; i++) if (judged[i]) idx[nj++] = i;
+    *nt = t;
+    #pragma omp parallel for schedule(static)
+    for (i64 j = 0; j < nj; j++) {
+        i64 i = idx[j]; double Q[4][3], e1[3], e2[3], e3[3], c1[3], c2[3], s[3]; ss_corners(X, off, lens, i, Q); int tj = tri[i]; trij[j] = (unsigned char)tj;
+        memcpy(Pj + 12 * j, Q, 12 * sizeof(double));
+        for (int k = 0; k < 3; k++) { e1[k] = Q[1][k] - Q[0][k]; e2[k] = Q[2][k] - Q[0][k]; e3[k] = Q[3][k] - Q[0][k]; }
+        cross3(e1, e2, c1); cross3(e2, e3, c2);
+        for (int k = 0; k < 3; k++) s[k] = c1[k] + c2[k];
+        double l = NORM3(s), dd = isnan(l) ? l : (l > 1e-12 ? l : 1e-12);
+        for (int k = 0; k < 3; k++) { nrm[3 * j + k] = s[k] / dd; cen[3 * j + k] = (Q[0][k] + Q[2][k]) / 2.0; }
+        double *S0 = S + 3 * j, *S1 = S + 3 * (nj + j), *S2 = S + 3 * (2 * nj + j), *S3 = S + 3 * (3 * nj + j), *S4 = S + 3 * (4 * nj + j), *S5 = S + 3 * (5 * nj + j);
+        ss_mix(Q, 1, 0, 2, 1.0 / 3.0, S0); if (tj) ss_mix(Q, 0, 1, 2, 1.0 / 3.0, S1); else ss_mix(Q, 3, 0, 2, 1.0 / 3.0, S1);
+        ss_mix(Q, 1, 0, 2, 0.6, S2);        if (tj) ss_mix(Q, 0, 1, 2, 0.6, S3);       else ss_mix(Q, 3, 0, 2, 0.6, S3);
+        ss_mix(Q, 0, 1, 2, 0.6, S4);        if (tj) ss_mix(Q, 2, 0, 1, 0.6, S5);       else ss_mix(Q, 2, 0, 3, 0.6, S5);
+        area[j] = 0.5 * (NORM3(c1) + NORM3(c2));
+    }
+    free(tri);
+    return nj;
+}
+
+/* seenside._open_sides: the share of each polygon's rays that reach the sky, on its winding side (fo) and its other side (bo).
+     ax = np.where((np.abs(nrm[:, 1]) < 0.9)[:, None], [0, 1, 0], [1, 0, 0]); t = np.cross(nrm, ax) / np.maximum(norm, 1e-12); b = np.cross(nrm, t)
+     for sgn in (1, -1): n_ = nrm * sgn; D = H0 * t + H1 * b + H2 * n_ ; up = D[:, :, 1] > 0.02
+         for P in pts: o = P + n_ * lift; hit = rx_any(o, D, 4000) ; esc += ((hit < 0) & up).sum(0) ; m += 24      -> esc / m
+   pts: np sets of 3 nj (the six sample points). A ray whose direction is not up is not counted, so it is not cast (the count is the same). */
+EXPORT void lm_open_sides(void *sc, i64 nj, const double *pts, int np_, const double *nrm, double lift, const double *H, int nh, double *fo, double *bo)
+{
+    #pragma omp parallel for schedule(dynamic, 64)
+    for (i64 j = 0; j < nj; j++) {
+        const double *n = nrm + 3 * j; double ax[3] = { 0.0, 1.0, 0.0 }, t[3], b[3];
+        if (!(fabs(n[1]) < 0.9)) { ax[0] = 1.0; ax[1] = 0.0; }
+        cross3(n, ax, t); double l = NORM3(t), dd = isnan(l) ? l : (l > 1e-12 ? l : 1e-12); t[0] /= dd; t[1] /= dd; t[2] /= dd; cross3(n, t, b);
+        for (int side = 0; side < 2; side++) {
+            double sg = side ? -1.0 : 1.0, nn[3] = { n[0] * sg, n[1] * sg, n[2] * sg }; i64 esc = 0;
+            for (int h = 0; h < nh; h++) {
+                const double *hh = H + 3 * h; double d[3];
+                for (int k = 0; k < 3; k++) d[k] = (hh[0] * t[k] + hh[1] * b[k]) + hh[2] * nn[k];
+                if (!(d[1] > 0.02)) continue;
+                for (int p = 0; p < np_; p++) {
+                    const double *P = pts + 3 * ((i64)p * nj + j); double o[3] = { P[0] + nn[0] * lift, P[1] + nn[1] * lift, P[2] + nn[2] * lift };
+                    esc += !rx_any(sc, o, d, 4000.0);
+                }
+            }
+            (side ? bo : fo)[j] = (double)esc / (double)(nh * np_);
+        }
+    }
+}
+
 EXPORT int lm_threads(void) { return omp_get_max_threads(); }

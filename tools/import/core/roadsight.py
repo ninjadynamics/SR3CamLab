@@ -34,18 +34,23 @@ def orient(lists, rd, log=print):
     T = array('d', bytes(72 * ntri)); idx = array('q', bytes(8 * nj)); cen, S1, S2, nrm = (array('d', bytes(24 * nj)) for _ in range(4))
     fastlm.lib().lm_rs_prep(n, X.ptr(), off.ptr(), lens.ptr(), *(a.buffer_info()[0] for a in (opaque, J, T, idx, cen, S1, S2, nrm)))      # (fastlm.c quotes the numpy lines)
     sc = fastlm.Scene(T, ntri)
-    # viewpoints: every STEP-th point of the road's middle, left and right of it, at two heights (numpy: C = V[::STEP, hw];
-    # nx = np.roll(C, -1, 0) - np.roll(C, 1, 0); nx[:, 1] = 0; nx /= np.maximum(np.linalg.norm(nx, axis=1), 1e-9)[:, None]; sd = (nx_z, 0, -nx_x);
-    # E = np.concatenate([C + sd * s + [0, h, 0] for s in SIDE for h in HEIGHT]) - the same arithmetic on plain floats, zeros included)
-    V = rows(rd['V']); hw = rd['hw']; C = [tuple(V[r][hw]) for r in range(0, len(V), STEP)]; m = len(C); sd = []
+    C, E = viewpoints(rd, STEP, SIDE, HEIGHT); per = len(SIDE) * len(HEIGHT)
+    front, back, nrays = fastlm.roadsight(sc, cen, S1, S2, nrm, C, E, per, REACH)
+    res = _decide(lists, allf, idx, front, back, len(E) // 3, nrays, t0, log)
+    if fastlm.CHECK: old = _old_orient(lists, rd, lambda s: None); fastlm.note('roadsight.orient', old == res, sum(1 for a, b in zip([fc for L in old for fc in L], [fc for L in res for fc in L]) if a != b)); return old
+    return res
+
+def viewpoints(rd, step, side, height):
+    """the viewpoints on the road: every step-th point of its middle, beside it at `side`, at `height` -> C, E (array.array of doubles;
+    viewpoint k of road point r = E[r + len(C) * k]). The numpy lines (here and in seenside.py) and the same arithmetic on floats, zeros too:
+        C = V[::step, hw]; nx = np.roll(C, -1, 0) - np.roll(C, 1, 0); nx[:, 1] = 0; nx /= np.maximum(np.linalg.norm(nx, axis=1), 1e-9)[:, None]
+        sd = np.stack([nx[:, 2], np.zeros(len(nx)), -nx[:, 0]], 1); E = np.concatenate([C + sd * s + np.array([0.0, h, 0.0]) for s in side for h in height])"""
+    V = rows(rd['V']); hw = rd['hw']; C = [tuple(V[r][hw]) for r in range(0, len(V), step)]; m = len(C); sd = []
     for r in range(m):
         a, b = C[(r + 1) % m], C[(r - 1) % m]; x, z = a[0] - b[0], a[2] - b[2]; l = math.sqrt((x * x + 0.0 * 0.0) + z * z); l = l if (l != l or l > 1e-9) else 1e-9
         sd.append((z / l, 0.0, -(x / l)))
-    E = [tuple(((C[r][i] + sd[r][i] * s) + (0.0, h, 0.0)[i]) for i in range(3)) for s in SIDE for h in HEIGHT for r in range(m)]; per = len(SIDE) * len(HEIGHT)
-    front, back, nrays = fastlm.roadsight(sc, cen, S1, S2, nrm, array('d', [v for p in C for v in p]), array('d', [v for p in E for v in p]), per, REACH)
-    res = _decide(lists, allf, idx, front, back, len(E), nrays, t0, log)
-    if fastlm.CHECK: old = _old_orient(lists, rd, lambda s: None); fastlm.note('roadsight.orient', old == res, sum(1 for a, b in zip([fc for L in old for fc in L], [fc for L in res for fc in L]) if a != b)); return old
-    return res
+    E = [((C[r][i] + sd[r][i] * s) + (0.0, h, 0.0)[i]) for s in side for h in height for r in range(m) for i in range(3)]
+    return array('d', [v for p in C for v in p]), array('d', E)
 
 def rows(V):
     """rd['V'] as nested lists of floats: a numpy array (any float type: np.asarray(V, float)'s values), an npyio.Arr, or lists"""

@@ -89,8 +89,8 @@ just for those). A stage's time includes about 3 s whenever it is the first proc
 image (the system scans the file); that hits the numpy and the numpy-free version alike.
 
 The bake reads the material classes straight from `retex`'s CSV and takes `PAGE = 2048` by value: `retex.py` and
-`lightmap1995.py` still import numpy. The two `.npz` files differ from numpy's only in their zip timestamps (numpy
-writes the time of writing, `npyio` 1980-01-01).
+`lightmap1995.py` still import numpy. The two `.npz` files are byte for byte numpy's as whole files too: numpy's
+`savez` opens each member with `ZipFile.open(name, 'w')`, whose ZipInfo carries 1980-01-01 and mode 0600, as npyio's.
 
 The logged "mean light over the pages" is now summed in double (numpy summed in float32); it can differ in its last
 digit, and nothing reads it.
