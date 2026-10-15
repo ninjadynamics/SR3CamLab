@@ -25,7 +25,10 @@ OPT-IN (the owner's hand edits as far as they go by rule; document section 10; o
   C  kerb caps   the open end of a kerb or low wall gets its end face                                                         (patch 1)
   G  gaps        a small hole seen from straight above beside the road is closed with ground                                  (patch 1)
   B  flanks      a building front gets a wall running back under its roof's side eave, wearing the front's picture            (patch 2)
-  F  variants    forest=bridges: the band is laid along a 'bridge' too ; forest_foot: corners standing on a kerb top go down to its foot"""
+  F  variants    forest=bridges: the band is laid along a 'bridge' too ; forest_foot: corners standing on a kerb top go down to its foot
+OPT-IN, patch 3 (the v11 scene, accepted 2026-10-15; document section 12): only=...K T
+  K  cliffs down a natural upright face whose foot is an open edge hanging in the air is carried straight down to the sea / the ground
+  T  tops        a level rim with its own faces hanging down from it and nothing on top (a stack, a mesa) is capped: grass where trees or grass are"""
 import os, sys, json, pickle, math, collections, fnmatch
 import numpy as np
 
@@ -53,6 +56,9 @@ CFG = dict(
     gap_min=0.3, gap_area=20.0, gap_reach=20.0, gap_rise=2.0,  # G (opt-in): a hole seen from above of this size, wholly within gap_reach of the centre line, its rim within gap_rise in height
     foot_min=0.3, foot_max=1.5, forest_foot=False,             # F (opt-in): a kerb is an upright face this tall ; forest_foot = set forest-floor corners standing on a kerb top down to its foot
     flank_min=3.0, flank_expose=0.0,                                          # B (opt-in): a roof eave running back from a front for at least this far gets a flank under it
+    cliff_road=12.0, cliff_deck=2.0, cliff_clear=6.0, cliff_run=6.0,           # K: not the sides of the road deck / verge (within cliff_road of the centre line, top less than cliff_deck above it), not onto the road or within cliff_clear of it, runs of foot edges of at least cliff_run m
+    cliff_min=0.5, cliff_drop=0.3, cliff_max=80.0, cliff_skip=0.05,            # K (opt-in, patch 3): a rock face's open foot edge at least cliff_min long, hanging more than cliff_drop (up to cliff_max) above the sea or the ground, is carried down to it
+    top_min=20.0, top_area=16000.0, top_rise=3.0, top_slope=0.08, top_wall=1.0,   # T (opt-in, patch 3): a hole seen from above of this size whose rim is level (top_rise + top_slope x its width) and whose own faces hang down from it (by top_wall) is a top: capped
     sliver=0.02, onface=0.03)                                  # A: thinner than 2 cm ; lying within 3 cm of another face's plane
 
 def _match(c, pats): return any(fnmatch.fnmatchcase(c or '', p) for p in pats)
@@ -906,6 +912,122 @@ def plan_holes(sc):
     sc.note('G', 'holes seen from above (%.1f .. %.0f m2, within %.0f m of the centre line) closed: %d (%d triangles, %.1f m2): %s ; left: %s' % (C['gap_min'], C['gap_area'], C['gap_reach'], len(made), sum(m[1] for m in made), sum(m[0] for m in made), sorted(made, reverse=True), dict(rej)))
     for i, m in enumerate(sorted(made, reverse=True)[:8]): sc.view('gap_%d' % i, m[2], 14.0, 12.0)
 
+# ------------------------------------------------------------------------------------------------------------ patch 3 (the v11 scene, accepted 2026-10-15), as far as it goes by rule (OPT-IN: letters K T in "only")
+NATURAL_CLS = ('rock', 'grass', 'dirt', 'sand', 'gravel')
+TREE_CLS = ('crown', 'tree', 'trunk', 'bare', 'tree_wall')
+
+def cliffs_down(sc):
+    """rule K (patch 3: "cliff it down", the sea cliffs and stacks of the v11 scene): a natural face standing upright whose FOOT is an open edge hanging in the air -
+    the 1995 cliffs stop above the sea and show the sea under them from any camera off the road - is carried straight down to what is under it: the ground, or
+    the sea where the course has one. Its picture runs on downwards (the face's own mapping, continued)."""
+    C = sc.cfg; key = lambda p: (round(float(p[0]), 2), round(float(p[1]), 2), round(float(p[2]), 2)); use = collections.Counter()
+    solid = [k for k in range(sc.N) if not sc.cut[k] and sc.area[k] > 1e-6]
+    for k in solid:
+        ks = [key(p) for p in sc.P[k]]
+        for i in range(len(ks)):
+            if ks[i] != ks[(i + 1) % len(ks)]: use[frozenset((ks[i], ks[(i + 1) % len(ks)]))] += 1
+    lying = [sc.P[k][list(ix)] for k in solid if abs(sc.n[k][1]) > 0.5 for ix in sc.tris(k)]
+    floor = Floor(lying, cell=6.0); sea = (sc.S['cfg'].get('sea') or {}).get('level'); cover = Cover(sc); made = []; rej = collections.Counter(); up = 0
+    roadfloor = Floor([sc.P[k][list(ix)] for k in solid if sc.road[k] and abs(sc.n[k][1]) > 0.5 for ix in sc.tris(k)], cell=6.0)
+    cand = []
+    for k in solid:
+        if sc.cls[k] not in NATURAL_CLS or abs(sc.n[k][1]) > 0.5 or sc.role[k] not in ('',): continue
+        P = sc.P[k]; lo = float(P[:, 1].min()); hi = float(P[:, 1].max()); ks = [key(p) for p in P]
+        dc, ic = sc.cenkd.query(sc.ctr[k][[0, 2]])
+        if dc < C['cliff_road'] and hi < sc.cen[ic][1] + C['cliff_deck']: rej['a side of the road deck or verge (a bridge, a kerb)'] += 1; continue      # (the owner left the bay's bridge open)
+        for i in range(len(P)):
+            a, b = P[i], P[(i + 1) % len(P)]; L = float(np.linalg.norm(b - a))
+            if L < C['cliff_min'] or use[frozenset((ks[i], ks[(i + 1) % len(P)]))] != 1: continue
+            if abs(a[1] - b[1]) > 0.3 * L or max(a[1], b[1]) > lo + 0.3: continue      # not a level edge at the face's foot
+            ga = floor.at(a[0], a[1] - C['cliff_skip'], a[2], C['cliff_max'], up=0.0); gb = floor.at(b[0], b[1] - C['cliff_skip'], b[2], C['cliff_max'], up=0.0)
+            if sea is not None:
+                ga = max(ga if ga is not None else -1e9, sea - 0.3); gb = max(gb if gb is not None else -1e9, sea - 0.3)
+            if ga is None or gb is None: rej['nothing under it'] += 1; continue
+            da, db = a[1] - ga, b[1] - gb
+            if max(da, db) < C['cliff_drop']: rej['stands on something'] += 1; continue
+            if min(da, db) > C['cliff_max']: rej['too far down'] += 1; continue
+            if min(sc.cenkd.query(a[[0, 2]])[0], sc.cenkd.query(b[[0, 2]])[0]) < C['cliff_clear'] or roadfloor.at(a[0], a[1] - C['cliff_skip'], a[2], C['cliff_max'], up=0.0) is not None or roadfloor.at(b[0], b[1] - C['cliff_skip'], b[2], C['cliff_max'], up=0.0) is not None: rej['it would stand on or by the road'] += 1; continue
+            qa = np.array([a[0], ga - 0.02, a[2]]); qb = np.array([b[0], gb - 0.02, b[2]])
+            d = b - a; d[1] = 0; Ld = max(float(np.linalg.norm(d)), 1e-6); d /= Ld; s_ = lambda p: float((p - a) @ d)
+            M = np.linalg.lstsq(np.array([[s_(p), p[1], 1.0] for p in P]), sc.UV[k], rcond=None)[0]      # the face's own mapping as a function of (along the edge, height)
+            quad = [a, b, qb, qa]
+            if cover.on(np.array(quad)): rej['lies on a face that is there'] += 1; continue
+            cand.append((k, a, b, qa, qb, M, d, L, max(da, db), ks[i], ks[(i + 1) % len(P)]))
+    par = {}                                                           # runs of foot edges joined end to end: a run shorter than cliff_run (or than a quarter of its drop) is a fin, not a cliff
+    def find(x):
+        while par.setdefault(x, x) != x: par[x] = par[par[x]]; x = par[x]
+        return x
+    for c in cand: par[find(c[9])] = find(c[10])
+    run = collections.defaultdict(lambda: [0.0, 0.0])
+    for c in cand: r = run[find(c[9])]; r[0] += c[7]; r[1] = max(r[1], c[8])
+    for k, a, b, qa, qb, M, d, L, dmax, ka, kb in cand:
+        r = run[find(ka)]
+        if r[0] < max(C['cliff_run'], 0.25 * r[1]): rej['a fin (its run of foot edges too short for its drop)'] += 1; continue
+        s_ = lambda p: float((p - a) @ d)
+        for tri in ((a, b, qb), (a, qb, qa)):
+            tri = [np.asarray(x, float) for x in tri]; nn = np.cross(tri[1] - tri[0], tri[2] - tri[0])
+            if np.linalg.norm(nn) < 1e-7: continue
+            if nn @ sc.n[k] < 0: tri = tri[::-1]
+            sc.put(sc.mat[k], tri, [np.array([s_(c), c[1], 1.0]) @ M for c in tri], 'K'); up += 1
+        made.append((round(L * (a[1] - qa[1] + b[1] - qb[1]) / 2, 1), [round(float(x), 1) for x in (a + b) / 2], round(float(dmax), 1)))
+    sc.note('K', 'foot edges of natural upright faces carried down to %s: %d (%d triangles, %.0f m2, drop median %.1f m, largest %.1f m) ; left: %s' % (
+        'the sea (%.1f) or the ground' % sea if sea is not None else 'the ground', len(made), up, sum(m[0] for m in made), float(np.median([m[2] for m in made])) if made else 0, max([m[2] for m in made] or [0]), dict(rej)))
+    for i, m in enumerate(sorted(made, reverse=True)[:6]): sc.view('cliff_%d' % i, m[1], 25.0, 60.0)
+
+def tops(sc):
+    """rule T (patch 3: "make the top of the mesa look like every other seastack (with grass)", "fill all the mesa/plateau tops you can find"): seen from straight
+    above, a hole whose rim is level and whose own faces hang DOWN from the rim (walls of a stack, a mesa, a rock) is a top left open - from above the walls'
+    insides and the sea show - and is capped over the rim's own corners. Grass where trees stand on it or grass lies beside it, else the rim's own tile."""
+    import shapely
+    from shapely.geometry import Polygon, LineString, Point
+    from shapely.ops import unary_union
+    from scipy.spatial import cKDTree
+    C = sc.cfg; G = []; corners = []
+    for k in range(sc.N):
+        if sc.cut[k] or sc.area[k] < 1e-6 or all((k, ti) in sc.rm for ti in range(len(sc.tris(k)))): continue
+        P = sc.P[k]; q = [r2(p) for p in P]; g = Polygon(q); G.append(g.buffer(0.02) if (g.is_valid and g.area > 1e-4) else LineString(q + [q[0]]).buffer(0.02))
+        for p in P: corners.append((p[0], p[2], p[1], k))
+    for i, (t, P, uv, r) in enumerate(sc.add):
+        q = [r2(p) for p in P]; g = Polygon(q); G.append(g.buffer(0.02) if (g.is_valid and g.area > 1e-4) else LineString(q + [q[0]]).buffer(0.02))
+    U = unary_union(G); CA = np.array(corners, float); kc = cKDTree(CA[:, :2]); made = []; rej = collections.Counter()
+    trees = np.array([sc.ctr[k] for k in range(sc.N) if sc.cut[k] and sc.cls[k] in TREE_CLS] or [[1e9, 0, 1e9]], float); tk = cKDTree(trees[:, [0, 2]])
+    grass = [k for k in range(sc.N) if not sc.cut[k] and sc.cls[k] == 'grass' and abs(sc.n[k][1]) > 0.7]; gkd = cKDTree(np.array([sc.ctr[k][[0, 2]] for k in grass] or [[1e9, 1e9]]))
+    up = -1.0 if sum(sc.n[k][1] for k in range(sc.N) if sc.road[k]) < 0 else 1.0      # which way "up" winds in these coordinates (as rule G)
+    for g in _geoms(U):
+        for ring in g.interiors:
+            h = Polygon(ring)
+            if not C['top_min'] <= h.area <= C['top_area']: continue
+            hs = h.buffer(0.021, join_style=2).simplify(0.10); pts = list(hs.exterior.coords)[:-1] if hs.geom_type == 'Polygon' else []
+            if len(pts) < 3: rej['outline closes up'] += 1; continue
+            cand = [kc.query_ball_point(p, 0.3) for p in pts]
+            V = []
+            for p, c in zip(pts, cand):
+                if c: j = max(c, key=lambda j: CA[j, 2]); V.append((round(CA[j, 0], 3), round(CA[j, 2], 3), round(CA[j, 1], 3), int(CA[j, 3])))      # the rim: the highest corner there
+            V = [v for i, v in enumerate(V) if v[:3] != V[i - 1][:3]]
+            if len(V) < 3: rej['fewer than 3 corners round it'] += 1; continue
+            ys = np.array([v[1] for v in V]); width = math.sqrt(h.area)
+            if np.ptp(ys) > C['top_rise'] + C['top_slope'] * width: rej['its rim is not level'] += 1; continue
+            down = [float(np.mean([v[1] - float(sc.P[v[3]][:, 1].min()) for v in V]))]      # how far the rim's own faces reach below it
+            if down[0] < C['top_wall']: rej['nothing hangs down from its rim (not a top)'] += 1; continue
+            pg = Polygon([(v[0], v[2]) for v in V]); pg = pg if pg.is_valid else pg.buffer(0); Y = {(v[0], v[2]): v[1] for v in V}; tris = []
+            for q in _geoms(pg, mina=0.05):
+                for t in shapely.constrained_delaunay_triangles(q).geoms:
+                    kk = [(round(x, 3), round(z, 3)) for x, z in list(t.exterior.coords)[:3]]
+                    if all(k_ in Y for k_ in kk) and t.area > 1e-3: tris.append(np.array([[k_[0], Y[k_], k_[1]] for k_ in kk]))
+            if not tris: rej['could not be cut'] += 1; continue
+            c = h.centroid; ntree = len(tk.query_ball_point([c.x, c.y], width / 2 + 3.0))
+            if grass:                                                   # (the owner: the tops grass "like every other seastack": the course's own grass, its tile nearest by)
+                gi = [i for i in gkd.query_ball_point([c.x, c.y], width / 2 + 150.0) if i < len(grass)] or [int(gkd.query([c.x, c.y], k=1)[1])]
+                kb = grass[max(gi, key=lambda i: sc.area[grass[i]])]; tile = sc.mat[kb]; uv0 = sc.UV[kb][0]; what = 'grass'
+            else:
+                kr = collections.Counter(v[3] for v in V).most_common(1)[0][0]; tile = sc.mat[kr]; uv0 = sc.UV[kr][0]; what = sc.cls[kr] or 'rim'
+            for P in tris:
+                if (np.cross(P[1] - P[0], P[2] - P[0])[1] > 0) != (up > 0): P = P[::-1]
+                sc.put(tile, P, [uv0] * 3, 'T')
+            made.append((round(h.area), len(tris), [round(c.x, 1), round(float(np.median(ys)), 1), round(c.y, 1)], what, ntree, round(down[0], 1)))
+    sc.note('T', 'tops seen from above (%.0f .. %.0f m2, rim level, its faces hanging down) capped: %d (%d triangles, %.0f m2): %s ; left: %s' % (C['top_min'], C['top_area'], len(made), sum(m[1] for m in made), sum(m[0] for m in made), sorted(made, reverse=True), dict(rej)))
+    for i, m in enumerate(sorted(made, reverse=True)[:8]): sc.view('top_%d' % i, m[2], 40.0, 70.0)
+
 def forest_foot(sc):
     """rule F's opt-in correction (the owner's hand edit in the forest villages): a corner of the forest floor that stands on the TOP of a kerb goes down to the kerb's foot,
     straight under it ("uprights are met at their foot, never at their top")."""
@@ -1098,6 +1220,8 @@ def run(S, out=None, log=print, **over):
         c = T['closed'].centroid; y = sc.road_y(c.x, c.y)
         for i, (dx, dz) in enumerate(((1, 0), (-1, 0), (0, 1), (0, -1))): sc.views.append(dict(name='town_%d_%d' % (TW.index(T), i), eye=[c.x + 70 * dx, y + 45, c.y + 70 * dz], target=[c.x, y + 5, c.y]))
     if 'G' in only: plan_holes(sc)                                      # after the towns: a hole the pavement closes is no hole
+    if 'K' in only: cliffs_down(sc)                                     # patch 3 (opt-in): cliffs carried down, then tops capped
+    if 'T' in only: tops(sc)
     if 'A' in only: audit(sc)
     return write_patch(sc, out)
 

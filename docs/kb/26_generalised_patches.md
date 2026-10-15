@@ -394,3 +394,69 @@ Each rule is one function taking the `Scene` (faces in decoded coordinates with 
 `sc.put(tile, corners, uv, rule letter)` = a face to add, `sc.note(rule, text)` = a report line, `sc.view(name, place)` = a picture to
 take). Add the function, call it in `run()` in the order its inputs need (ground before pavement, pavement before facades, facades before
 roofs), give its thresholds to `CFG` with the reason, and let rule A see what it adds. Work on the snapshot (seconds), build only to check.
+
+## 12. Patch 3 (the Blender scene v11, accepted 2026-10-15): what the owner did, why, and what goes by rule
+
+The owner, 2026-10-15: "Mountain R4 is accepted, which means v11 is accepted too" (25, section 5.3: `courses\src.mountain.patch.3.json`, staged:
+the generated patch 3 of 2026-10-12, the board moves, the v11 scene's 4d); then "pick up generalization" - the task of 2026-10-11 / 12 now for
+patch 3: "explain my manual patches (what and why I did it) ... AND, IF POSSIBLE generalize them as well", results "sound, with proper
+geometry and no holes", "generalizes well enough to patch the other SRC tracks".
+
+### 12.1 What it holds, measured (`blendpatch\patch_places.py`, `patch_kinds.py`, `kind_places.py`)
+- Stage 1, the generated patch 3 of 2026-10-12 (`patch3_1995.py`): 3,641 faces, 80,000 m2 in two places: the PLATEAU hand model (51,500 m2 of
+  rock, 64 % upright, at (-267, 108, -204)) and the CLIFF SIDE along the coast road (28,600 m2, mostly lying rock and grass, x 59..262, 676 m long).
+- Stage 3, the v11 scene against the patch 1 - 3 build: 34,385 faces added (512,000 m2), 27,860 triangles removed (209,000 m2). An added face
+  is RECUT when a removed triangle of its tile lies in its plane under its middle (the same surface in other triangles), MOVED when one is
+  within 1.5 m but not in its plane, NEW otherwise: RECUT 130,000 m2 (25 %), MOVED 3,900 m2 (1 %), NEW 378,000 m2 (74 %).
+- NEW by kind (classes from the labels; a picture composed from tiles = a facade): rock walls 120,000 m2 (16 places) ; grass and soil lying
+  107,000 m2 (16) ; facades 95,000 m2 (18) ; rock lying 20,000 m2 ; pavement 11,800 m2 (2) ; roofs 9,900 m2 (16) ; trees 8,700 m2 (15).
+
+### 12.2 The kinds, place by place (renders before = the patch 1 - 3 build, after = v11; `scratchpad\patch3\kinds_a.jpg`, `kinds_b.jpg`)
+| Kind | Where (decoded x, y, z) | Before | After | Why (the owner's words, 2026-10-12 / 13) |
+|---|---|---|---|---|
+| The castle island | (385, 21, 22), 280 m across: grass 44,500 m2, rock ground 4,800, trees 8,700, castle courtyard paving 3,400, castle walls | a ring of trees and the castle's boards standing over the sea | a whole island: grass top at the rim's height, rock cliff round it down to the sea, the castle standing on it, trees on the grass | "complete the castle island and infill with natural terrain ... using the existing 1995 texturization, don't deviate" ; "use natural ground but not much higher (or lower for that matter) than the 1995 rim" ; "trees should stand on grass which may give in to rock" |
+| The mesa / plateau | (-275, 70, -210): walls 34,000 m2, top grass 14,200 at y 122..127, a composed rock picture on the walls (33,000 m2) | the generated plateau model (rock everywhere) | walls carried down to the sea, a grass top | "Redo the big mesa/plateau from the old version. Make it pretty and natural without straying away from the 1995 look. Fill all the mesa/plateau tops you can find" ; "make the top of the mesa look like every other seastack (with grass)" |
+| Sea cliffs and stacks | (-81, 29, -332) walls 38,300 m2 ; (72, 12, -391) 14,600 ; tops (77, 106, -344) and (73, 99, -430), 2,366 m2 each | the 1995 cliffs stop in the air above the sea; stack tops open | walls down to the water; grass caps | "cliff it down" ; "fix the hole that seastack/karst" ; the tops as above |
+| Ground under the floating trees, the coast road | (160, 10, 120): rock walls 8,700 m2, rock ground 10,800 m2 | trees standing over the sea beside the road (the 1995 game's own: "lot's of trees floating in the air, above the sea, in the Model 2 lap, lol what was SEGA thinking?") | a cliff edge widened where trees stand near it and narrowed where none do, natural ground under the trees | "widen the cliff in places where trees are close to the edge and narrow the cliff in places with no trees. the widening and narrowing should be rough (natural), but graceful" ; "make sure the ground at the top of the cliff is irregular (yet natural) enough to ensure no tree is floating in the air (roots underground allowed)" |
+| The tunnel top | (7, 34, -104): grass 2,900 m2 ; rock (-64, 30, -172) 7,200, (20, 13, -163) 4,600 | holes in the arch, the rock top open | arch holes closed, the top filled | "fill the top of the tunnel, using the trees as reference to the ground level" ; "patch all these holes in the tunnel arch ... longitudinally the arch should bulge slightly up at the middle" |
+| The town | (-5, 23, 389) facades 51,700 m2, pavement 8,400, roofs 9,900 in 16 places ; south side ground (-15, 13, 388) 17,300 | fronts as cardboard, many small faces | every building a box with roof; a second row behind the front row; the facades welded (rule W's "one facade, 2 triangles") | "Expand the town inwards as well, using copy-pasted completed buildings (4 walls and roof) and completing the existing ones" (v6) ; v10: weld window / door faces into the wall, "one facade, 2 triangles", "every facade connects ... to the next one" |
+| Re-cut, welded, re-mapped | everywhere (130,000 m2 RECUT) | thin triangles, corners nearly on each other, smeared pictures | the same shapes in mid-sized triangles, corners merged, pictures re-mapped | "I want mid-sized triangles ... the shapes themselves !!!!!CANNOT CHANGE!!!!!" ; "merge all [vertices sharing the same position], excluding sprites" ; "fix all the 1995 smeared textures" |
+| Trees moved | 792 cut-out polygons moved whole (the board moves stage) | trees clipping through rock or standing beside the new ground | on the new ground | "the tree on the left is clipping through the rock. move it to the corner of the grass" |
+What he did NOT keep: the island infill inside the track ("I'm dropping the island infill for now because I want to get this project moving to
+other tracks"; "the full island infill will be patch-4"). His standing rules for all of it: "don't change or protrude (through) 1995 geometry
+unless I ask you to"; ground at the lowest level that makes sense; extend ground from the road's vertices; textures as asked (the memory note
+"infill ground rules"); "The inner side of the track shouldn't be cliffs"; "it shouldn't scream 'this wasn't here before' to seasoned
+players"; "We're adding all this stuff because of 2 things: 1. We want to fix 1995's mistakes and missing geometry 2. the extra camera angles".
+
+### 12.3 The rules made (OPT-IN letters K and T; the default `only=HFSPWRDA` writes the patch of 2026-10-12 byte for byte, VERIFIED)
+- **K - cliffs down**: a natural face standing upright (label class rock / grass / dirt / sand / gravel, no role) whose foot is an open edge
+  (used by one polygon), level, at least 0.5 m long, hanging more than 0.3 m (and up to 80 m) above the sea or the ground, is carried straight
+  down to it, in its own tile with its own mapping continued. Not: the sides of the road deck or verge (within 12 m of the centre line, top
+  less than 2 m above it: the first try hung curtains under the bay's bridge, which the owner left open), anything standing on or within 6 m
+  of the road, and FINS (a run of foot edges joined end to end shorter than 6 m or than a quarter of its drop). Mountain: 245 foot edges,
+  490 triangles, 51,000 m2, drop median 22 m (the owner's NEW rock walls: 120,000 m2, much of it on the mesa and the island, which K cannot
+  find on the raw import). Build: z-fight gate 0 + 0, 0 consistency problems. Looked at (`scratchpad\patch3\kt_sheet2.jpg`): the stacks' and
+  the sea cliffs' walls reach the water as his do; LEFT WRONG: one long foot edge high on the cliff over the bay carried 79 m down as a
+  single thin sheet, and a few narrow strips beside the mesa (a fin test by the run's own width would be the next step).
+- **T - tops**: seen from straight above, a hole of 20 .. 16,000 m2 whose rim is level (within 3 m + 0.08 x its width) and whose own faces
+  hang at least 1 m DOWN from the rim (a stack, a mesa, a rock - this keeps bays and the island inside the track out) is capped over the
+  rim's own corners; grass (the course's grass tile nearest by) when the course has grass, else the rim's tile. Mountain: 5 tops, 68
+  triangles, 9,470 m2 - among them the two stack tops he capped (2,361 m2 each against his 2,366, the same places), the top at (14, 65, -209)
+  (2,271 against his 2,275) and one more stack (-19, 83, -266). The mesa top is not on the raw import (the plateau model is patch 3's own).
+- Other courses (snapshots of 2026-10-12): Desert, Forest and Lake Side have no sea; K finds cliff feet with NOTHING under them (Desert 29,
+  Forest 147, Lake Side 1) and T finds no tops. Patch 3's kinds are coastal: on those courses the void under the scenery is the question,
+  and it needs a ground to stand on first (an island infill, patch 4 in the owner's numbering).
+
+### 12.4 Not made, and what a rule would need
+- **The castle island**: the rim is a ring of cut-out trees and boards, not edges; a rule would take the plan of a ring of trees standing
+  over the sea, lay grass over it at the trees' feet, and a cliff from its outline down to the sea (rule K on the new outline).
+- **Ground under floating trees by the coast road**: patch 2's generator already lays a shoulder under trees within reach of the road (25,
+  section 9.1, R10); the owner's cliff edge that widens where trees stand and narrows where none do would follow the trees' feet as its
+  outline with a margin (his: rough but graceful), then K for its face to the sea.
+- **The town's second row and the buildings as boxes**: copies of completed buildings placed behind the front row; rule B makes flanks; a
+  back wall and a copied row need a decision per town (he did it by hand, "copy-pasted").
+- **Re-cutting and welding**: a shape-keeping re-triangulation into mid-sized triangles and a merge of corners within a few millimetres
+  (cut-outs excepted) are general and safe; to be made as a rule that writes RECUT faces only (remove + add of the same surface).
+- **Smeared pictures**: a face whose mapping is stretched far beyond its neighbours' (texels per metre) gets its neighbours' mapping
+  continued; not attempted.
+- **Trees moved**: after new ground exists, a cut-out tree whose foot is above or inside it moves to stand on it (board moves).

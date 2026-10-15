@@ -82,32 +82,110 @@ The mu meaning is LIKELY (ordering; in game the traction limit scales with it).
 ### The tyre force models (chunk 27 + 8), read from the code (2026-10-15)
 The names (Standard, SegaRally, PowerslideSteer, AlwaysSteer) are SR3's own class names (RTTI). What the code does with each
 (Rally.exe, static reading; VERIFIED = read in the code, LIKELY = inferred):
-- Built by 0x46D4B0 from chunk 27 (+4 the load model: 0 or 2 -> a 0x18-byte Topham object, vtable 0x679990, at tyre + 0x34;
-  + 8 the force model through the jump table 0x46D5C8 -> an object at tyre + 0x38). VERIFIED.
+- Built by 0x46D4B0 (called from 0x46E236 / 0x46E5FB with the vehicle being built) from chunk 27: + 4 the load model (0 or 2
+  -> a 0x18-byte Topham object, vtable 0x679990, at vehicle + 0x34), + 8 the force model through the jump table 0x46D5C8 -> an
+  object at vehicle + 0x38 (one per car; an earlier version of this page said tyre + 0x34 / + 0x38: wrong). Only + 4, + 8 and
+  the pointer + 0xC (Topham's four floats) are read; + 0x20 .. + 0x2C (zero in every file) are not. VERIFIED.
   | + 8 | name | object (vtable, size, constructor) | reset (slot 2) | model number (slot 3) | per-step update (slot 4) |
   |---|---|---|---|---|---|
-  | 0 | Standard | 0x6779EC, 0x38, 0x447800 | 0x46C6D0 | 0x430AB0 -> 0 | 0x430AF0: none (ret) |
-  | 1 | SegaRally | 0x6799A8, 0x38, 0x447800 | 0x46C5B0 | 0x471C80 -> 1 | 0x44FC30 |
-  | 2 | PowerslideSteer (every SR3 car) | 0x6799C0, 0x3C, 0x46C630 | 0x46C650 | 0x4478D0 -> 2 | 0x4500C0 |
+  | 0 | Standard | 0x6779EC, 0x38, 0x447800 | 0x46C6D0: + 8 .. + 0x1C only | 0x430AB0 -> 0 | 0x430AF0: none (ret) |
+  | 1 | SegaRally | 0x6799A8, 0x38, 0x447800 | 0x46C5B0: + 8 .. + 0x34 | 0x471C80 -> 1 | 0x44FC30 |
+  | 2 | PowerslideSteer (every SR3 car) | 0x6799C0, 0x3C, 0x46C630 | 0x46C650: + 8 .. + 0x38 | 0x4478D0 -> 2 | 0x4500C0 |
   | 3 | AlwaysSteer | 0x6799D8, 0x38, 0x447800 | 0x46C6D0 (Standard's) | 0x465DD0 -> 3 | 0x44FC20: none (ret) |
-  The base class's vtable is 0x6779A4 (slot 2 purecall 0x4AEFD1). Slot 0 is the destructor, slot 1 0x4308E0 is shared by all.
-- A flag at model + 0x24 switches the wheels' steering off: 0x448C00 (the vehicle takes the steering value, stored at
-  [[wrapper + 4] + 0x28] + 8) asks 0x45A9F0 for each wheel's angle and writes it to wheel + 0x190, or 0 when
-  [[wheel + 0x30] + 0x38] + 0x24 != 0 (0x448C68 - 0x448C86). VERIFIED. The flag is also read at 0x452C12, 0x45CF9D, 0x45E4B4.
-  PowerslideSteer's update tests and clears it (0x450274, 0x4502A6, 0x4503A7, 0x450436); every reset clears it; no write of
-  a non-zero value has been found yet. LIKELY: it is PowerslideSteer's "in a powerslide" state, during which the car is
-  turned by the model rather than by the wheels.
-- AlwaysSteer = Standard with another model number: the same reset (zeroes + 8 .. + 0x1C), no per-step update, never sets
-  the flag. LIKELY from the name and the flag: the wheels always follow the steering, with no powerslide state; where the
-  game branches on the model number (slot 3) has not been found (no call of slot 3 through tyre + 0x38).
-- SegaRally's update 0x44FC30 (VERIFIED as far as read): zeroes its outputs; reads the body's velocity against two of its axes
-  (+ 0x170..0x178 against + 0xF8.. / + 0x104..); returns early below a threshold (0x677F30) or when the side speed ratio is
-  small; reads the steering value [controls + 8] and the lock factor [controls + 0xC] (0x44FE38 -); sums each wheel's forces
-  (0x451B10 / 0x451A60 over [vehicle + 0x2C]); writes a vector to + 0x14 .. + 0x1C (through 0x42DD50) and a value to + 0x20.
-  LIKELY a turning torque of its own, made from the steering, in place of (or on top of) the tyres' side forces.
-- In game (owner, 2026-10-15): the SRC files with + 8 = 1 instead of 2 (built from flavor_src.json, the only change in the ten
-  files) - "steering seems to be completely disabled". Why is being confirmed live (the wheels' + 0x190, the model's
-  + 0x14 .. + 0x24 and the yaw rate in one race); see the port section of 29_src_steering_code.md when it is done.
+  The base class's vtable is 0x6779A4 (slot 2 purecall 0x4AEFD1). Slot 0 is the destructor, slot 1 0x4308E0 (sets + 4 = the
+  vehicle) is shared by all. Common fields: + 8 .. + 0x10 force, + 0x14 .. + 0x1C torque (world), + 0x20 the yaw torque as a
+  number, + 0x24 the hit flag, + 0x28 its timer, + 0x2C .. + 0x34 the direction to turn back to (below).
+- Where the outputs go (VERIFIED): the vehicle step 0x44F5F0 (CVehicle 0x678864 slot 5 0x45C820 -> 0x45C9A1) calls 0x44DB80:
+  the load model's update, every tyre's forces (0x453530), then the force model's update (0x44DBD2). 0x44D6C0 then adds the
+  wheels' forces and torques (0x45E120, 0x45E1D0, 0x451B10, 0x451A60), two vectors of [vehicle + 0xC] (+ 0x18, + 0x24;
+  LIKELY aero) and the model's + 8 .. + 0x1C
+  (0x44D956) to the body's force (body + 0x1A4) and torque (+ 0x1D4) sums. + 0x20 is read by nothing. The tyres never look
+  at the force model: 0x453530 branches on the tyre's own class (vtable 0x6781C4, its slot 3 = 0x430AB0 -> 0) and turns each
+  tyre's axes by its wheel angle (0x45A980 -> wheel + 0x190, 0x452650, sin / cos table 0xA33A00).
+- Where the game asks the model number: one place, 0x4490D0 (called every frame from the human driver's update 0x5EA0AB and
+  from 0x5D1960): if slot 3 returns 2, + 0x38 = 90.0 ([0x6EDCC4]); nothing reads + 0x38 (LIKELY a leftover). No code compares
+  the vtables (they are only written by the constructors; 0x4490F0, which would swap in a Standard model, is never called).
+  VERIFIED (code).
+- The + 0x24 flag is a HIT state, not a powerslide state (corrected; the earlier "no non-zero write found" was wrong):
+  0x44F910 writes + 0x24 = 1, + 0x28 = 1.0 (s). It is reached only through the wrapper method 0x449080 from the contact
+  handler 0x5B2F00 (0x5B34A3; called from 0x5B3654 when the car has contacts): for a contact with the car, when the contact's
+  speed x 2.2369 (mph) > 40 and acos|n . a| x 57.3 > 40 degrees (n the contact normal, a a car axis from the car object's
+  vtable + 0xC; LIKELY its forward axis, so a hit from the side or at an angle, not head on). Any model gets it. While it is
+  set (VERIFIED): 0x448C00 and the second steering setter 0x45CF40 (from 0x449A4B) write 0 to every wheel's angle (wheel +
+  0x190, 0x448C68 - 0x448C86, 0x45CF9D); 0x452B40 multiplies the tyre's load term (tyre + 0x50, and the value it hands to
+  0x452570) by 0.3 (0x452C12); 0x45E4B0, the throttle getter (vehicle controls + 0x18, read by the engine 0x450B6A / 0x450BBC
+  / 0x450D8C and the tyre forces 0x452DCA), returns half (0x45E4B4). + 0x2C .. + 0x34 is written by 0x449090 from 0x5AC27C
+  (in 0x5ABE40; LIKELY the road direction at the car).
+- Who clears the flag (VERIFIED): PowerslideSteer's update (the timer runs down by dt and the flag drops below 0, 0x4502A6;
+  or earlier, 0x4503A7, once the heading is within 15 degrees of + 0x2C's direction and |yaw rate| < 0.262 rad/s), and the
+  resets of SegaRally (0x46C5B0) and PowerslideSteer (0x46C650). Standard's / AlwaysSteer's reset 0x46C6D0 does NOT. So with
+  model 2 a hard hit takes the steering away for at most 1 s while the model swings the car back toward the road; with
+  models 0, 1 and 3 nothing runs the timer down: after the first such hit the wheels stay straight, the tyres keep 0.3 of
+  their load term and the throttle half for the rest of the race, until the vehicle is reset (CVehicle slot 2 0x45BF10 calls
+  every component's slot 2; when the game calls it was not traced, LIKELY a respawn or restart; for 0 and 3 not even then).
+- PowerslideSteer's update 0x4500C0 (VERIFIED, read in full; X = body + 0xF8 side axis, Z = body + 0x104 forward axis, up =
+  body + 0xEC, rows of the matrix at body + 0xA4 (0x459F80); the wheel hubs lie at x +-0.62, z +-1.2; m = body + 8 = mass;
+  vehicle controls: + 8 steering, + 0xC lock factor, + 0x10 brake, + 0x14 handbrake, + 0x18 throttle (0x448BD0 / 0x448BE0 /
+  0x448BF0 / 0x448C00 / 0x448CA0 from 0x5CFE90); wheel + 0x18 = spin rate, 0x45F310):
+  ```
+  F = T = 0
+  sn = steer / |lock| ;  vs = |v.X| ; vf = |v.Z| ; r = w.up               (sn: the stick after the speed table)
+  cap = |r| > 3.4 [0x707414] ? -5000 (r - 3.4 sign r) : 0                  yaw-rate cap, always on
+  if hit:                                                                  timer -= dt; timer < 0 -> hit = 0
+      d1 = dir.Z' , d2 = dir.X'   (Z', X' flattened, normalised)
+      d1 >= 0: d1 > cos 15 deg and |r| < 0.262 -> hit = 0 ; else Th = 25000 (0.6 d2 + 0.4 sign d2)
+      d1 <  0: Th = 25000 sign(d2) (1 - 2 d1)
+  elif [0x707400] (= 2) and handbrake <= 0 and wheel[0].spin > 0:
+      for each wheel: if in contact (susp + 0x58) and -susp+0x2C < susp+0x8C < susp+0x28 (LIKELY within its travel):
+          if vs < 3 or vf < 3: break                                        (3 m/s, 0x677F30)
+          t = m min(|v|, 25)
+          r sn < 0 (turning against the steering):  T = t (0.84 sn - 0.4 r)            0x707408, 0x6F0098
+          else:  k = 1 - min(|sn|, 0.3) / 0.3 ;   T = t (0.4 sn - 0.2 k^2 r)            0x707404, 0x6EFED0
+          break
+  T = hit ? Th : T + cap ;   torque = T x up ;  + 0x20 = T
+  ```
+  So the slide torque only exists with at least 3 m/s sideways (about 6 degrees of slip at 100 km/h): it turns the car with
+  the stick in any slide (0.4 m v sn, e.g. 13 kN m = 4 rad/s^2 at 25 m/s and sn = 1 on 1300 kg / 3250 kg m^2; sn = the stick
+  x the car's speed table, so about 0.66 at full stick and 25 m/s on the ST205) and
+  catches it hard when the stick is against the rotation. Below that, SR3's cars turn by the tyres alone, as with model 1.
+- SegaRally's update 0x44FC30 (VERIFIED, read in full):
+  ```
+  F = T = 0
+  vs = v.X ; vf = |v.Z|
+  |vs| < 3 and vf < 3 -> return ;  a tyre's + 0x4C < 0 -> return (LIKELY its load; nearly never)
+  q = (|vs| - vf) / (|vs| + vf) ;  q <= 0 -> return                       only with more than 45 degrees of body slip
+  steer <= 0 -> return                                                    only ONE steering sign (s > 0: right, LIKELY)
+  sn = steer / |lock| ;  p = |m vs| ;  r = w.up
+  r steer > 0: c = 0.75 |sn| (0x6F00B0); |r| >= c -> return; g = 1 - |r| / c      else g = 1
+  Tt = (sum of every tyre's torque about the CoM, 0x451B10 + 0x451A60) . up
+  T = (p - Tt) q g sn ;  torque = T x up (0x42DD50) ;  + 0x20 = T
+  ```
+  The car's yaw torque becomes Tt (1 - f) + p f, f = q g sn: pulled toward |m vs| (a momentum used as a torque) in a spin, to
+  one side only. It never touches the hit flag. Nothing it reads comes from a file (mass, velocities, axes, steering, the
+  tyres' torques, 3 and 0.75), so no SR3 file leaves a parameter of it at 0. LIKELY an unfinished experiment.
+- Standard (0) and AlwaysSteer (3) are the same code (update `ret 4`, reset 0x46C6D0); the only reader of the number tests for
+  2, so "AlwaysSteer" has nothing behind its name in this build. Against PowerslideSteer both lose the slide torque, the
+  3.4 rad/s yaw cap and the swing back after a hit, and a hit leaves the wheels straight for good (even a reset keeps it).
+- Files (VERIFIED, fm_list.py over Main_release\cars and \car1): every SEGA car file carries load model 2, Topham (-8000,
+  16000, 0.25, 50) and force model 2: the ten bespoke files, the Revo leftovers (MitsubishiEvo / SubaruImpreza / delta_hf
+  Desert / Gravel / Tarmac, hornetgravel; Topham 0.35 in the three Desert files, tyres Tyre_Road / Tyre_Rally /
+  Tyre_AllTerrain); delta_hf_data, enduro{desert,gravel,tarmac}_data and subaruimprezadesertwheels_data are not physics
+  files. None uses model 1. The installed SRC files (car1): model 1, Tyre_Road, torque 2175.
+- In game (owner, 2026-10-15): the SRC files with + 8 = 1 - "steering seems to be completely disabled". Cause LIKELY (from the
+  code; not yet seen live): the hit flag set by the first hard hit (over 40 mph, over 40 degrees) and never cleared, since
+  only PowerslideSteer runs its timer: wheels straight, tyres at 0.3 of their load term, half throttle, for the rest of the
+  race or until a reset. Before that hit model 1 steers with the tyres alone, with no slide torque. If the live check shows
+  the steering gone with the flag still 0, the cause is the missing slide torque instead (the tyres alone too weak).
+  Ways to make model 1 steer: (a) force model 2 again (the SRC port plans that); (b) only PowerslideSteer cars take the hit
+  state: 0x449080 (16 bytes, now 8B 41 04 8B 48 38 E9 85 68 00 00 CC x5) -> `mov eax,[ecx+4]; mov ecx,[eax+0x38]; cmp byte
+  [ecx],0xC0; je 0x44F910; ret` = 8B 41 04 8B 48 38 80 39 C0 0F 84 81 68 00 00 C3 (the four vtables' low bytes C0 / A8 / D8 /
+  EC differ). (b) leaves model 1 without the slide torque, the yaw cap and the swing back after a hit.
+- Live check (one race, about 5 minutes; scratch agent_fm1\fm_watch.py, read only: logs speed, side / forward speed, yaw rate,
+  steering, lock, throttle, handbrake, the model's class, flag, timer, + 0x20 and the four wheel angles every 10 ms, and prints
+  each flag change): SRC flavor (model 1) on the ST205, any track with walls. 1) 30 s of weaving at 40-60 km/h without touching
+  anything: flag 0, wheel angles follow the stick, yaw rate follows it. 2) Hit a wall from the side above 65 km/h: flag 1,
+  timer 1.00 that never runs down, wheel angles 0, the yaw rate no longer follows the stick. 3) Leave the course for a
+  respawn: does the flag go back to 0? 4) The same hit on SR3's handling (key 1, model 2): flag 1, cleared within 1 s.
 
 ## 2. The old games, measured
 
