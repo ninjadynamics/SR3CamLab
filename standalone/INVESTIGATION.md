@@ -210,3 +210,65 @@ only the optional mod DLL for comparison; the user's regular settings are
 unchanged. The failing instruction calls a resource's vtable+8 method through
 a freed-heap marker, consistent with a stale resource pointer during cleanup;
 this observation does not establish which component freed the resource.
+
+Short natural-close comparison (Claude, chat #157): with the same windowed
+settings, both mods enabled and patches.enabled: off booted to attract/title,
+then closed through the runtime Escape/WM_CLOSE path with exit code zero and
+no dump. Each close took about six seconds. This does not reproduce the prior
+AV and does not clear the longer-session failure. The failing session ran about
+98 seconds from watchdog start to the crash, with no gameplay/menu input before
+Escape. Two external Windows Graphics Capture attempts timed out during that
+session; no request was made to the runtime's backbuffer capture bridge.
+A longer idle comparison without external capture was requested (chat #158).
+
+Long idle comparison (Claude, chat #161): both mods and nomods reproduced the
+same 0x586F74 AV after 110 seconds idle from data loaded, with no input or capture
+before Escape. Evidence is in SR3-investigation/exit-ab-long; short passing logs
+are in exit-ab-short. Dumps: crash_20261015_194058.dmp (mods) and
+crash_20261015_194259.dmp (nomods). Neither sr3mods.dll nor WGC is necessary to
+trigger this failure. The runtime and original game teardown remain in scope.
+
+Static analysis: faulting descriptor 0x8134E0 belongs to the resource list of
+SegaRally_System_GHeap at 0x9C4AE4; flags/size = 0x50040000. Cleanup 0x586ED0
+clears device texture bindings, then releases entries by resource type. Type 5
+passes through 0x585CB0: search pointer field 0x87AEAC with stride 0x2C, up to
+1024 entries; decrement software references at 0x874EA8 when found, or allow
+Release when absent. The dangling resource is freed heap memory before Release.
+Its creator and original freeing call have not yet been identified. WMV player
+involvement is a hypothesis, not established by the FilterGraph window count.
+Saved-dump inspection (inspect_exit_dump.py, no live attachment) finds the same
+single stale resource descriptor in both long-run dumps. At crash time no entry
+in the resource registry matches its pointer, and the global D3D device pointer
+at 0x7ED10C is already zero. This is compatible with 0x590810 graphics teardown,
+which releases the device then clears that global at 0x590899; it does not prove
+that device release freed this particular resource. Also, 0x585CB0 itself can
+clear a matching registry entry immediately before the failing Release, so the
+registry snapshot cannot distinguish a previously absent entry from that case.
+Results saved in SR3-investigation/exit-ab-long/resource-analysis.txt.
+
+Live probes resolved the texture lifetime cause (2026-10-15, chats #167-174).
+At 12 seconds, System_GHeap descriptor 0x8134E0 and registry row 4 share a live
+512x512 DXT5 texture with software reference count 2. At 110 seconds (demo race,
+state 0x27), the registry has a new live texture but the descriptor still holds
+the freed old one. The device remains alive: this predates shutdown. Both
+exit-probe and exit-probe-2 preserve the snapshots and repeat the exit AV.
+
+The rebuild at 0x631CA0 releases the old texture (0x631D3D), then writes the
+replacement into the registry (0x631DE2) and only the current heap descriptor
+(0x631DE6). Software sharing at 0x5862E4/0x58633D creates additional descriptors
+without COM AddRef. The new texture_rebind hook keeps all matching type-5
+aliases in the fixed descriptor pool synchronized when that replacement occurs;
+it preserves the original stores, pushed argument, registers and flags, without
+changing COM or software reference counts. The complete EXE text identity guard
+and exact six-byte instruction guard precede installation. The native x86 test
+executes the actual hook and checks aliases, resource types and calling contract.
+
+The opt-in candidate passed the same nomods 12/110-second live comparison and
+Escape close (exit-rebind-test, chat #174): the System_GHeap descriptor now
+matches row 4's replacement 0x3B2563A0, with a valid D3D vtable and refs still 2.
+Exit was 0x00000000 with no dump. The private overlay's previous DLL and candidate
+hashes are retained in exit-rebind-candidate. This corrects the earlier shutdown
+failure for the tested attract-to-demo sequence; it is not yet a full-race or
+physical-controller validation. Promoted to the default runtime path after this
+result; SR3LAB_TEXTURE_REBIND is no longer needed. Mods-enabled confirmation of
+the default build is pending. Original game and baseline remain unchanged.

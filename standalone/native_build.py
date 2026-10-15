@@ -184,7 +184,7 @@ class Build:
         sdlflags = self.x86 + includes + ['-DSDL_STATIC_LIB', '-DSDL_BUILDING_LIBRARY', '-DWIN32_LEAN_AND_MEAN']
         headers = {'vendor': pin, 'config': sha(ROOT / 'sdl_config/SDL_build_config.h')}
         sdlobjs = self.compile('sdl', [(p, sdl / p) for p in paths], sdlflags, headers)
-        names = ['runtime.c', 'capture.c', 'test_capture.c', 'patch_loader.c', 'settings.c', 'command_line.c', 'test_command_line.c', 'launch.c', 'watch_launcher.c', 'launcher.c', 'launcher_entry.c',
+        names = ['runtime.c', 'texture_rebind.c', 'test_texture_rebind.c', 'capture.c', 'test_capture.c', 'patch_loader.c', 'settings.c', 'command_line.c', 'test_command_line.c', 'launch.c', 'watch_launcher.c', 'launcher.c', 'launcher_entry.c',
                  'ucrt_stdio.c', 'windows_guids.c', 'test_entry.c', 'test_input.c',
                  'test_settings.c', 'test_ucrt.c', 'test_sdl.c', 'test_guard.c',
                  'test_patch_mock.c', 'test_patch_loader.c']
@@ -192,11 +192,14 @@ class Build:
                             self.x86 + includes + ['-DSDL_STATIC_LIB'], self.own_headers)
         o = dict(zip(names + ['builtins.c'], objs))
         base = [o['ucrt_stdio.c'], o['builtins.c']]
-        dll = self.link32('dinput8.dll', [o['runtime.c'], o['capture.c'], o['patch_loader.c'], o['settings.c'], o['windows_guids.c'], *sdlobjs, *base],
+        dll = self.link32('dinput8.dll', [o['runtime.c'], o['texture_rebind.c'], o['capture.c'], o['patch_loader.c'], o['settings.c'], o['windows_guids.c'], *sdlobjs, *base],
                           '_DllMain@12', True, ROOT / 'runtime.def')
         self.link32('launch.exe', [o[n] for n in ['launcher.c', 'command_line.c', 'launch.c', 'watch_launcher.c', 'settings.c', 'launcher_entry.c']] + base, '_launcher_entry')
-        for test in ['test_input', 'test_settings', 'test_ucrt', 'test_sdl', 'test_guard', 'test_capture', 'test_command_line']:
+        for test in ['test_input', 'test_settings', 'test_ucrt', 'test_sdl', 'test_guard', 'test_capture', 'test_command_line', 'test_texture_rebind']:
             extras = [o['settings.c']] if test == 'test_settings' else []
+            if test == 'test_texture_rebind':
+                extras = self.compile('texture-test', [('texture_rebind.c', ROOT / 'texture_rebind.c')],
+                                      self.x86 + ['-DSR3_TEXTURE_REBIND_TEST'], self.own_headers)
             if test == 'test_command_line':
                 extras = [o['command_line.c'], o['launch.c'], o['watch_launcher.c'], o['settings.c']]
             if test == 'test_sdl':

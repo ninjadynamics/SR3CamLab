@@ -16,6 +16,7 @@
 #include "settings.h"
 #include "patch_loader.h"
 #include "capture.h"
+#include "texture_rebind.h"
 #ifdef _MSC_VER
 /* Win32 x86 IAT/vtable replacement uses equal-sized function and data pointers. */
 #pragma warning(disable:4152)
@@ -351,6 +352,15 @@ BOOL WINAPI DllMain(HINSTANCE self,DWORD reason,LPVOID reserved) {
         logline("REFUSED: unsupported or already modified Rally.exe. No game patches applied.\n");return FALSE;
     }
     /* Complete text identity was checked above, before any mutation. No SEGA code is shipped. */
+    {
+        const unsigned char expected[]={0x89,0x45,0x04,0x57,0x89,0x02};
+        unsigned char call[]={0xe8,0,0,0,0,0x90};
+        int32_t relative=(int32_t)((uintptr_t)sr3_texture_rebind_hook-(0x631de2+5));
+        if(memcmp((void*)0x631de2,expected,sizeof(expected)))return FALSE;
+        memcpy(call+1,&relative,4);
+        if(!writeMemory((void*)0x631de2,call,sizeof(call)))return FALSE;
+        logline("Shared texture rebind enabled.\n");
+    }
     if(!writeMemory((void*)0x57b2f0,yes,sizeof(yes)) ||
        !writeMemory((void*)0x57b670,nops,15) || !writeMemory((void*)0x57b684,nops,3) ||
        !replacePointer((void*)0x57b696,&cabinetReadPointer))return FALSE;
