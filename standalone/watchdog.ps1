@@ -74,7 +74,12 @@ try {
     [Sr3Watchdog]::Values = [string]$config.WatchdogValues
     $started = [Sr3Watchdog]::Start($ProcessId, [IO.Path]::GetFullPath($CrashDirectory), [int]$config.FreezeSeconds, [long]$config.GameWindowVA)
     if (-not $started) { throw 'The recorder refused to start a new session.' }
-    Write-Output "Watchdog source SHA256: $((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash)"
+    # Get-FileHash is a module function and may be absent when launched from a
+    # shell with a different PSModulePath. Hash with the already-loaded CLR.
+    $hasher = [Security.Cryptography.SHA256]::Create()
+    try { $sourceHash = [BitConverter]::ToString($hasher.ComputeHash([IO.File]::ReadAllBytes($source))).Replace('-', '') }
+    finally { $hasher.Dispose() }
+    Write-Output "Watchdog source SHA256: $sourceHash"
     $reported = $false
     $attachDeadline = [DateTime]::UtcNow.AddSeconds(15)
     while (-not [Sr3Watchdog]::Finished) {
