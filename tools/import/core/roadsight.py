@@ -9,9 +9,12 @@ couple of seconds). The side a polygon is reached on is its seen side:
     reached on both sides              -> drawn two-sided and lit as its brighter side (material key '|4', as lightside does)
     never reached from the road        -> left as lightside decided
 Only opaque polygons are judged and only they block the view (cut-outs are mostly holes).  A drone camera off the road can still find a
-polygon turned away: 'right' here means right from where the cars are."""
-import time
-import numpy as np
+polygon turned away: 'right' here means right from where the cars are.
+Without numpy since 2026-10-15 (kb 31): the corners are packed by geobuf.pack, the triangles, normals and sample points made by fastlm.c
+(lm_rs_prep), the viewpoints and the decision computed in plain Python, every number as numpy's code computed it; the lists that come out
+are the numpy version's. _old_orient (the numpy original, the reference) still imports numpy."""
+import time, math
+from array import array
 
 STEP = 4; SIDE = (-3.5, 3.5); HEIGHT = (1.1, 3.2); REACH = 170.0; MIN_HITS = 2; RATIO = 8.0
 
@@ -19,37 +22,50 @@ def orient(lists, rd, log=print):
     """lists = (faces, sky, extra) -> the same three lists, judged together
     (fastlm.c casts the rays, one polygon after the other on every core: 2 s where the arrays of _old_orient below took 20; 2026-10-08.
     _old_orient stays as the reference: SR3_FASTGEO=0 / SR3_FASTLM=0 selects it, SR3_FASTGEO_CHECK=1 runs both and counts differences.)"""
-    import fastlm, fastgeo
+    import fastlm, geobuf
     if not fastlm.ON: return _old_orient(lists, rd, log)
     t0 = time.time(); allf = [fc for L in lists for fc in L]; n = len(allf)
     def judged(fc):
         m = str(fc[0]); return not m.split('|')[0].endswith('_t') and str(fc[1]) != 'sea' and not str(fc[1]).startswith('gate_') and len(fc[2]) in (3, 4) and ('|' not in m or m.endswith('|4'))
-    opaque = np.array([not str(fc[0]).split('|')[0].endswith('_t') and len(fc[2]) in (3, 4) for fc in allf], bool); J = np.array([judged(fc) for fc in allf], bool)
-    try: X, off, lens = fastgeo.pack(allf)                             # the corners of all polygons in one array (the loop of _old_orient, per polygon)
+    opaque = array('B', [not str(fc[0]).split('|')[0].endswith('_t') and len(fc[2]) in (3, 4) for fc in allf]); J = array('B', [judged(fc) for fc in allf])
+    try: X, off, lens = geobuf.pack(allf)                              # the corners of all polygons in one array (the loop of _old_orient, per polygon)
     except (ValueError, TypeError): log('       (roadsight.py: a polygon whose corners are not x, y, z - the numpy code runs instead of fastlm.c)'); return _old_orient(lists, rd, log)
-    Q = np.zeros((n, 4, 3)); tri = opaque & (lens == 3); op = np.nonzero(opaque)[0]
-    for k in range(3): Q[op, k] = X[off[op] + k]
-    q4 = np.nonzero(opaque & (lens == 4))[0]; Q[q4, 3] = X[off[q4] + 3]
-    Q[tri, 3] = Q[tri, 2]; T = np.concatenate([Q[opaque][:, [0, 1, 3]], Q[opaque & ~tri][:, [1, 2, 3]]]); sc = fastlm.Scene(T)
-    V = np.asarray(rd['V'], float); hw = rd['hw']; C = V[::STEP, hw]; nx = np.roll(C, -1, axis=0) - np.roll(C, 1, axis=0); nx[:, 1] = 0; nx /= np.maximum(np.linalg.norm(nx, axis=1), 1e-9)[:, None]; sd = np.stack([nx[:, 2], np.zeros(len(nx)), -nx[:, 0]], 1)
-    E = np.concatenate([C + sd * s + np.array([0.0, h, 0.0]) for s in SIDE for h in HEIGHT]); per = len(SIDE) * len(HEIGHT)
-    idx = np.nonzero(J)[0]; Pj = Q[idx]; nrm = np.cross(Pj, np.roll(Pj, -1, axis=1)).sum(1); ln = np.linalg.norm(nrm, axis=1); nrm /= np.maximum(ln, 1e-12)[:, None]
-    S1 = (Pj[:, 0] + Pj[:, 1] + Pj[:, 3]) / 3.0; S2 = np.where(tri[idx][:, None], S1, (Pj[:, 1] + Pj[:, 2] + Pj[:, 3]) / 3.0); cen = Pj.mean(1)
-    front, back, nrays = fastlm.roadsight(sc, cen, S1, S2, nrm, C, E, per, REACH)
+    ntri = sum(opaque) + sum(1 for o, k in zip(opaque, lens.view()) if o and k == 4); nj = sum(J)      # T: a triangle per opaque polygon, a second per four-corner one
+    T = array('d', bytes(72 * ntri)); idx = array('q', bytes(8 * nj)); cen, S1, S2, nrm = (array('d', bytes(24 * nj)) for _ in range(4))
+    fastlm.lib().lm_rs_prep(n, X.ptr(), off.ptr(), lens.ptr(), *(a.buffer_info()[0] for a in (opaque, J, T, idx, cen, S1, S2, nrm)))      # (fastlm.c quotes the numpy lines)
+    sc = fastlm.Scene(T, ntri)
+    # viewpoints: every STEP-th point of the road's middle, left and right of it, at two heights (numpy: C = V[::STEP, hw];
+    # nx = np.roll(C, -1, 0) - np.roll(C, 1, 0); nx[:, 1] = 0; nx /= np.maximum(np.linalg.norm(nx, axis=1), 1e-9)[:, None]; sd = (nx_z, 0, -nx_x);
+    # E = np.concatenate([C + sd * s + [0, h, 0] for s in SIDE for h in HEIGHT]) - the same arithmetic on plain floats, zeros included)
+    V = rows(rd['V']); hw = rd['hw']; C = [tuple(V[r][hw]) for r in range(0, len(V), STEP)]; m = len(C); sd = []
+    for r in range(m):
+        a, b = C[(r + 1) % m], C[(r - 1) % m]; x, z = a[0] - b[0], a[2] - b[2]; l = math.sqrt((x * x + 0.0 * 0.0) + z * z); l = l if (l != l or l > 1e-9) else 1e-9
+        sd.append((z / l, 0.0, -(x / l)))
+    E = [tuple(((C[r][i] + sd[r][i] * s) + (0.0, h, 0.0)[i]) for i in range(3)) for s in SIDE for h in HEIGHT for r in range(m)]; per = len(SIDE) * len(HEIGHT)
+    front, back, nrays = fastlm.roadsight(sc, cen, S1, S2, nrm, array('d', [v for p in C for v in p]), array('d', [v for p in E for v in p]), per, REACH)
     res = _decide(lists, allf, idx, front, back, len(E), nrays, t0, log)
     if fastlm.CHECK: old = _old_orient(lists, rd, lambda s: None); fastlm.note('roadsight.orient', old == res, sum(1 for a, b in zip([fc for L in old for fc in L], [fc for L in res for fc in L]) if a != b)); return old
     return res
 
+def rows(V):
+    """rd['V'] as nested lists of floats: a numpy array (any float type: np.asarray(V, float)'s values), an npyio.Arr, or lists"""
+    if isinstance(V, list): return V
+    if hasattr(V, 'view') and hasattr(V, 'shape') and type(V).__name__ == 'Arr':
+        f = V.view().tolist(); a, b, c = V.shape; return [[f[(i * b + j) * c:(i * b + j + 1) * c] for j in range(b)] for i in range(a)]
+    return memoryview(V).tolist()
+
 def _decide(lists, allf, idx, front, back, nview, nrays, t0, log):
-    """the rule of _old_orient on the counts front / back (the same lines)"""
-    F = front >= MIN_HITS; B = back >= MIN_HITS; onlyf = F & (~B | (front >= RATIO * back)); onlyb = B & (~F | (back >= RATIO * front)); both = F & B & ~onlyf & ~onlyb
-    out = list(allf); st = dict(judged=int(len(idx)), seen_on_winding_side=int(onlyf.sum()), turned_round=int(onlyb.sum()), seen_from_both_sides=int(both.sum()), never_seen_from_the_road=int((~F & ~B).sum()))
-    was_unsure = np.array([str(allf[i][0]).endswith('|4') for i in idx], bool); st['were_unsure_now_sure'] = int((was_unsure & (onlyf | onlyb)).sum()); st['were_sure_now_turned'] = int((~was_unsure & onlyb).sum())
+    """the rule of _old_orient on the counts front / back (the same rule, one polygon after the other; numpy compared front >= RATIO * back
+    as floats, as Python does here)"""
+    out = list(allf); c_f = c_b = c_both = c_never = c_us = c_tu = 0
     for k, i in enumerate(idx):
-        mat, sec, P, UV = allf[i]; base = str(mat).split('|')[0]
-        if onlyf[k]: out[i] = (base, sec, P, UV)
-        elif onlyb[k]: out[i] = (base, sec, list(P)[::-1], list(UV)[::-1])
-        elif both[k]: out[i] = (base + '|4', sec, P, UV)
+        f, b = front[k], back[k]; F = f >= MIN_HITS; B = b >= MIN_HITS; onlyf = F and (not B or f >= RATIO * b); onlyb = B and (not F or b >= RATIO * f); both = F and B and not onlyf and not onlyb
+        mat, sec, P, UV = allf[i]; base = str(mat).split('|')[0]; unsure = str(mat).endswith('|4')
+        c_f += onlyf; c_b += onlyb; c_both += both; c_never += not F and not B; c_us += unsure and (onlyf or onlyb); c_tu += (not unsure) and onlyb
+        if onlyf: out[i] = (base, sec, P, UV)
+        elif onlyb: out[i] = (base, sec, list(P)[::-1], list(UV)[::-1])
+        elif both: out[i] = (base + '|4', sec, P, UV)
+    st = dict(judged=len(idx), seen_on_winding_side=c_f, turned_round=c_b, seen_from_both_sides=c_both, never_seen_from_the_road=c_never, were_unsure_now_sure=c_us, were_sure_now_turned=c_tu)
     log('       which side the PLAYER sees (roadsight.py: %d viewpoints on the road, %.1f million rays, %.1f s): %s' % (nview, nrays / 1e6, time.time() - t0, st))
     res = []; a = 0
     for L in lists: res.append(out[a:a + len(L)]); a += len(L)
@@ -57,7 +73,7 @@ def _decide(lists, allf, idx, front, back, nview, nrays, t0, log):
 
 def _old_orient(lists, rd, log=print):                                # (the numpy original of orient: fallback and reference)
     """lists = (faces, sky, extra) -> the same three lists, judged together"""
-    import rays
+    import rays, numpy as np
     t0 = time.time(); allf = [fc for L in lists for fc in L]; n = len(allf)
     def judged(fc):
         m = str(fc[0]); return not m.split('|')[0].endswith('_t') and str(fc[1]) != 'sea' and not str(fc[1]).startswith('gate_') and len(fc[2]) in (3, 4) and ('|' not in m or m.endswith('|4'))

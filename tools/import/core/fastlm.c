@@ -206,4 +206,38 @@ EXPORT i64 lm_roadsight(void *sc, int use_ordered, const double *cen, const doub
     return nray;
 }
 
+/* roadsight.orient's set-up for the numpy-free path (2026-10-15, kb 31): n polygons packed by geobuf.pack (X corners, off[n + 1],
+   lens[n]), opaque[n], judged[n] (0 / 1; a judged polygon is opaque). The numpy lines it replaces:
+     Q = np.zeros((n, 4, 3)); Q[op, k] = X[off[op] + k] (k < 3); Q[q4, 3] = X[off[q4] + 3]; Q[tri, 3] = Q[tri, 2]
+     T = np.concatenate([Q[opaque][:, [0, 1, 3]], Q[opaque & ~tri][:, [1, 2, 3]]])
+     Pj = Q[idx]; nrm = np.cross(Pj, np.roll(Pj, -1, axis=1)).sum(1); ln = np.linalg.norm(nrm, axis=1); nrm /= np.maximum(ln, 1e-12)[:, None]
+     S1 = (Pj[:, 0] + Pj[:, 1] + Pj[:, 3]) / 3.0; S2 = np.where(tri[idx][:, None], S1, (Pj[:, 1] + Pj[:, 2] + Pj[:, 3]) / 3.0); cen = Pj.mean(1)
+   numpy's order kept: the sum and the mean over the four corners add them one after the other from 0 (an outer axis, kb 31), the norm
+   is (x*x + y*y) + z*z, np.maximum passes a NaN on. -> T[9 * ntri] (the caller sizes it: opaque + opaque four-corner polygons),
+   idx[nj] the judged polygons, cen / S1 / S2 / nrm [3 * nj]; returns nj. */
+EXPORT i64 lm_rs_prep(i64 n, const double *X, const i64 *off, const i64 *lens, const unsigned char *opaque, const unsigned char *judged,
+                      double *T, i64 *idx, double *cen, double *S1, double *S2, double *nrm)
+{
+    i64 t = 0, nj = 0;
+    #define CORNER(i, k, q) do { i64 kk_ = (k) == 3 && lens[i] == 3 ? 2 : (k); memcpy((q), X + 3 * (off[i] + kk_), 3 * sizeof(double)); } while (0)
+    for (i64 i = 0; i < n; i++) if (opaque[i]) { CORNER(i, 0, T + 9 * t); CORNER(i, 1, T + 9 * t + 3); CORNER(i, 3, T + 9 * t + 6); t++; }
+    for (i64 i = 0; i < n; i++) if (opaque[i] && lens[i] == 4) { CORNER(i, 1, T + 9 * t); CORNER(i, 2, T + 9 * t + 3); CORNER(i, 3, T + 9 * t + 6); t++; }
+    for (i64 i = 0; i < n; i++) if (judged[i]) idx[nj++] = i;
+    #pragma omp parallel for schedule(static)
+    for (i64 j = 0; j < nj; j++) {
+        i64 i = idx[j]; double Q[4][3], s[3] = { 0.0, 0.0, 0.0 }, c[3];
+        for (int k = 0; k < 4; k++) CORNER(i, k, Q[k]);
+        for (int k = 0; k < 4; k++) { cross3(Q[k], Q[(k + 1) % 4], c); s[0] += c[0]; s[1] += c[1]; s[2] += c[2]; }
+        double l = NORM3(s), d = isnan(l) ? l : (l > 1e-12 ? l : 1e-12);
+        for (int a = 0; a < 3; a++) {
+            nrm[3 * j + a] = s[a] / d;
+            S1[3 * j + a] = ((Q[0][a] + Q[1][a]) + Q[3][a]) / 3.0;
+            S2[3 * j + a] = lens[i] == 3 ? S1[3 * j + a] : ((Q[1][a] + Q[2][a]) + Q[3][a]) / 3.0;
+            cen[3 * j + a] = ((((0.0 + Q[0][a]) + Q[1][a]) + Q[2][a]) + Q[3][a]) / 4.0;
+        }
+    }
+    #undef CORNER
+    return nj;
+}
+
 EXPORT int lm_threads(void) { return omp_get_max_threads(); }

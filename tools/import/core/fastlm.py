@@ -14,9 +14,11 @@ Nothing here decides anything new; the old code stays in lightmap1995._old_bake 
 What 'the same' rests on is written at the top of fastlm.c (numpy's formulas, and the one BLAS product that numpy does not pin down)
 and of fastlm_rays.c (why another tree over the same leaves reaches the same leaves, and the one assumption the nearest-hit walks make).
 selftest(path) compares the walks with rays.dll on the rays of a real bake, bit for bit.
-Measured 2026-10-08, Mountain: pages / table / all nine built files the bytes of the old code; bake 85 s -> 7 s, roadsight 21 s -> 2 s."""
+Measured 2026-10-08, Mountain: pages / table / all nine built files the bytes of the old code; bake 85 s -> 7 s, roadsight 21 s -> 2 s.
+Since 2026-10-15 (kb 31) the module imports numpy only inside the functions that compute with it; Scene and roadsight also take
+array.array (roadsight.orient's numpy-free path, with lm_rs_prep for its set-up)."""
 import os, sys, ctypes, subprocess, hashlib, glob, math, time, pickle, tempfile
-import numpy as np
+from array import array
 
 HERE = os.path.dirname(os.path.abspath(__file__)); import cbuild as _cb; from cbuild import runtime as _runtime
 SRCS = [os.path.join(HERE, f) for f in ('rays.c', 'fastlm_rays.c', 'fastlm.c')]
@@ -46,16 +48,20 @@ def lib():
         L.lm_bake.argtypes = [P, I, P, P, P, P, P, P, P, P, P, P, LL, P, P, P, I, P, P, I, P, I, I, D, D, P, I, P]; L.lm_bake.restype = LL
         L.lm_light.argtypes = [P, I, P, P, P, LL, P, P, P, I, P, P, I, P, I, P, P, P, P]; L.lm_light.restype = LL
         L.lm_roadsight.argtypes = [P, I, P, P, P, P, LL, P, LL, P, I, D, P, P, P]; L.lm_roadsight.restype = LL
+        L.lm_rs_prep.argtypes = [LL] + [P] * 11; L.lm_rs_prep.restype = LL
         _lib = L
     return _lib
 
-def _d(a): return np.ascontiguousarray(a, np.float64)
-def _p(a): return a.ctypes.data_as(ctypes.c_void_p)
+def _d(a):
+    import numpy as np                                                # (numpy only for the callers that hand numpy arrays; kb 31)
+    return np.ascontiguousarray(a, np.float64)
+def _p(a): return a.buffer_info()[0] if isinstance(a, array) else (a.ptr() if hasattr(a, 'ptr') else a.ctypes.data_as(ctypes.c_void_p))      # array.array / npyio.Arr (the numpy-free path) or a numpy array
 
 class Scene:
     """rays.Scene, on this DLL. .depth = the deepest leaf of the tree ; .ordered = the quicker walks may be used"""
-    def __init__(self, tris):
-        self.x = None; self.tris = _d(tris).reshape(-1, 9); self.h = lib().rt_build(_p(self.tris), len(self.tris)); self.keep = []
+    def __init__(self, tris, n=None):
+        """tris: an (n, 3, 3) array, or (the numpy-free path) an array.array of 9 n doubles and n"""
+        self.x = None; self.tris = _d(tris).reshape(-1, 9) if n is None else tris; self.h = lib().rt_build(_p(self.tris), len(self.tris) if n is None else n); self.keep = []
         self.x = lib().rx_open(self.h, 1 if TREE else 0)                 # .h: the scene of rays.c (rt_ functions) ; .x: that scene + the tree of the quick walks (rx_ / lm_ functions)
         if not self.x: raise MemoryError('fastlm.Scene')
         self.depth = int(lib().rx_depth(self.x)); self.depth2 = int(lib().rx_depth2(self.x)); self.ordered = bool(ORDERED and self.depth < MAX_DEPTH and self.depth2 < 100)      # (the quick walks' own stack: 512 boxes, three waiting at every level)
@@ -65,6 +71,7 @@ class Scene:
             if self.h: lib().rt_free(self.h); self.h = None
         except Exception: pass
     def masks(self, tri_mat, tri_uv, holes):
+        import numpy as np
         tm = np.ascontiguousarray(tri_mat, np.int32); tu = _d(tri_uv).reshape(-1, 6); n = len(holes); w = np.zeros(n, np.int32); h = np.zeros(n, np.int32); off = np.full(n, -1, np.int64); parts = []; pos = 0
         for m, hm in enumerate(holes):
             if hm is None: continue
@@ -73,12 +80,14 @@ class Scene:
         lib().rt_masks(self.h, _p(tm), _p(tu), n, _p(w), _p(h), _p(off), _p(bits))
     def cast(self, org, dir, tmax=600.0, how=0, limits=None):
         """how 0: cast_one (= rays.Scene.cast) ; 1: rx_near ; 2: rx_nearer with a limit per ray (hit 0 = something nearer than the limit, -1 = nothing) ; 3: rx_any (hit 0 / -1).  -> hit, t, rays handed back to cast_one"""
+        import numpy as np
         o = _d(org).reshape(-1, 3); d = _d(dir).reshape(-1, 3); n = len(o); hit = np.empty(n, np.int32); t = np.empty(n, np.float64) if limits is None else _d(limits).copy(); fell = ctypes.c_longlong(0)
         lib().rx_cast(self.x, how, _p(o), _p(d), n, float(tmax), _p(hit), _p(t), ctypes.byref(fell)); return hit, t, fell.value
 
 # ---------------------------------------------------------------- lightmap1995
 def sun_fans(SUN):
     """the directions of lightmap1995._light (the same expressions): 7 round the sun, 16 over the half space"""
+    import numpy as np
     def frame(n):
         ax = np.where((np.abs(n[:, 1]) < 0.9)[:, None], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]); t = np.cross(n, ax); t /= np.maximum(np.linalg.norm(t, axis=1), 1e-12)[:, None]; return t, np.cross(n, t)
     st, sb = frame(SUN[None]); R = math.radians(1.6); SD = [SUN] + [SUN + math.tan(R) * (math.cos(a) * st[0] + math.sin(a) * sb[0]) for a in np.arange(6) * math.pi / 3]; SD = np.array([d / np.linalg.norm(d) for d in SD])
@@ -88,6 +97,7 @@ def sun_fans(SUN):
 class Lights:
     """what the texels are lit with: the scene's tree, its triangle normals and colours, the sun (all as lightmap1995._light makes them)"""
     def __init__(self, S):
+        import numpy as np
         T = S['tris'].astype(float); self.sc = Scene(T); self.sc.masks(S['mat'], S['uv'], S['holes'])
         TN = np.cross(T[:, 1] - T[:, 0], T[:, 2] - T[:, 0]); TN /= np.maximum(np.linalg.norm(TN, axis=1), 1e-12)[:, None]; self.TN = _d(TN); self.TM = np.ascontiguousarray(S['mat'], np.int32)
         self.alb = _d(np.asarray(S['albedo_rgb'], float)).reshape(-1, 3); SUN = np.asarray(S['sun'], float); self.SUN = _d(SUN / np.linalg.norm(SUN)); self.SD, self.HEMI = sun_fans(self.SUN)
@@ -96,13 +106,14 @@ class Lights:
     def args(self): return [_p(self.TN), _p(self.TM), _p(self.alb), len(self.alb), _p(self.SUN), _p(self.SD), len(self.SD), _p(self.HEMI), len(self.HEMI)]
     def light(self, P, N, K0):
         """lightmap1995._light(sc, S, P, N, K0, alb) -> V, A, B"""
+        import numpy as np
         P = _d(P).reshape(-1, 3); N = _d(N).reshape(-1, 3); K0 = _d(K0); n = len(P); V = np.zeros(n); A = np.zeros(n); B = np.zeros((n, 3)); fell = ctypes.c_longlong(0)
         self.nray = lib().lm_light(self.sc.x, 1 if self.sc.ordered else 0, _p(P), _p(N), _p(K0), n, *self.args(), _p(V), _p(A), _p(B), ctypes.byref(fell)); self.fell = fell.value
         return V, A, B
 
 def pack(LM, P, centre, near=3.0, far=0.75, reach=60.0):
     """lightmap1995.pack: the same numbers (the distance from the road on every core, the shelves on plain Python numbers)"""
-    import fastgeo
+    import fastgeo, numpy as np
     PAGE, MAXC = LM.PAGE, LM.MAXC
     e = lambda a, b: np.linalg.norm(P[:, a] - P[:, b], axis=1); lu = np.maximum(e(1, 0), e(2, 3)); lv = np.maximum(e(3, 0), e(2, 1))
     c = P.mean(1)[:, [0, 2]]; cen = np.asarray(centre, float)[::4]; d = np.sqrt(fastgeo.mindist2(c, cen))
@@ -119,6 +130,7 @@ def pack(LM, P, centre, near=3.0, far=0.75, reach=60.0):
 
 def bake(LM, path, mode='rt', strength=1.0, shade=0.33, log=print):
     """lightmap1995.bake (LM = that module): the same two files.  None = this code cannot take the input (the caller runs the old code)"""
+    import numpy as np
     t0 = time.time(); D = np.load(path + '.lm.npz'); P = D['P'].astype(float); N = D['N'].astype(float); I = D['I'].astype(float); U = D['U'].astype(bool); import scenefile; S = scenefile.load(path + '.scene', numpy=True)
     if not len(P) or P.shape[1:] != (4, 3) or I.shape != (len(P), 4): return None
     N = N / np.maximum(np.linalg.norm(N, axis=1), 1e-12)[:, None]
@@ -139,17 +151,21 @@ def bake(LM, path, mode='rt', strength=1.0, shade=0.33, log=print):
 
 # ---------------------------------------------------------------- roadsight
 def roadsight(sc, cen, S1, S2, nrm, C, E, per, reach):
-    """roadsight.orient's loop: -> front, back (samples reached on the winding side / the other side per judged polygon), rays cast.  sc = fastlm.Scene"""
-    cen = _d(cen); S1 = _d(S1); S2 = _d(S2); nrm = _d(nrm); C = _d(C); E = _d(E); n = len(cen); front = np.zeros(n, np.int32); back = np.zeros(n, np.int32)
-    if len(E) != len(C) * per: raise ValueError('fastlm.roadsight: viewpoints')
+    """roadsight.orient's loop: -> front, back (samples reached on the winding side / the other side per judged polygon), rays cast.  sc = fastlm.Scene
+    The inputs as (n, 3) numpy arrays, or (the numpy-free path, 2026-10-15) as array.array of doubles: front / back are then array.array too."""
+    if isinstance(cen, array): n = len(cen) // 3; nC = len(C) // 3; nE = len(E) // 3; front = array('i', bytes(4 * n)); back = array('i', bytes(4 * n))
+    else:
+        import numpy as np
+        cen = _d(cen); S1 = _d(S1); S2 = _d(S2); nrm = _d(nrm); C = _d(C); E = _d(E); n = len(cen); nC = len(C); nE = len(E); front = np.zeros(n, np.int32); back = np.zeros(n, np.int32)
+    if nE != nC * per: raise ValueError('fastlm.roadsight: viewpoints')
     fell = ctypes.c_longlong(0)
-    nray = lib().lm_roadsight(sc.x, 1 if sc.ordered else 0, _p(cen), _p(S1), _p(S2), _p(nrm), n, _p(C), len(C), _p(E), int(per), float(reach), _p(front), _p(back), ctypes.byref(fell)) if n else 0
+    nray = lib().lm_roadsight(sc.x, 1 if sc.ordered else 0, _p(cen), _p(S1), _p(S2), _p(nrm), n, _p(C), nC, _p(E), int(per), float(reach), _p(front), _p(back), ctypes.byref(fell)) if n else 0
     roadsight.fell = fell.value; return front, back, int(nray)
 
 # ---------------------------------------------------------------- the walks against rays.dll
 def selftest(path, nmax=40000000, log=print):
     """the rays of a real bake (<path>.lm.npz + .scene: sky fans from the polygons' corners) through rays.dll and through this DLL's three walks, bit for bit"""
-    import rays
+    import rays, numpy as np
     import scenefile; D = np.load(path + '.lm.npz'); S = scenefile.load(path + '.scene', numpy=True); T = S['tris'].astype(float); a = rays.Scene(T); a.masks(S['mat'], S['uv'], S['holes']); Lg = Lights(S); b = Lg.sc
     P = D['P'].astype(float).reshape(-1, 3); N = np.repeat(D['N'].astype(float), 4, axis=0); N /= np.maximum(np.linalg.norm(N, axis=1), 1e-12)[:, None]; k = max(1, nmax // 16); sel = np.linspace(0, len(P) - 1, min(k, len(P))).astype(int); P = P[sel]; N = N[sel]
     def frame(n):
