@@ -11,7 +11,6 @@ Restart the game (PLAY.bat) to see the result. The game must be closed while a t
 Covered: scenery tiles, cut-outs, gate pictures, and the pictures the importer composes from two tiles (lettering on its panel).
 Not covered: the road's tarmac pieces and anything whose shape or see-through outline decides geometry."""
 import os, sys, json, time, hashlib, glob, struct, subprocess
-import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import GAME as _GAME
@@ -36,6 +35,7 @@ class Pix:
         name = str(name).split('|')[0]
         if name not in self.memo:
             if name in self.rec:
+                import numpy as np                                     # (the composed pictures are numpy arrays of overlay_bake's)
                 lo, up, T, rect = self.rec[name]; self.memo[name] = self.OB._recipe(lo, up, np.array(T, float).reshape(3, 2), self, None if rect is None else tuple(rect))
             else: self.memo[name] = self.BC.tile_pixels(name)
         return self.memo[name]
@@ -46,7 +46,7 @@ class Pix:
         return self.base(self.rec[name][0]) | self.base(self.rec[name][1])
 
 def refresh(slot_dir, log=print, force=False):
-    import build_classic as BC, overlay_bake as OB, sbfw
+    import build_classic as BC, overlay_bake as OB, sbfw, numpy as np  # (the build's texture writers take numpy arrays; save_map needs no numpy - kb 31)
     mp = os.path.join(slot_dir, 'texmap.json')
     if not os.path.exists(mp): return None
     M = json.load(open(mp)); BC.EXTRA_TEX = M['extra_tex']; BC.HD_USED.clear(); BC.BAKED.clear(); now = hd_hashes(BC.EXTRA_TEX); was = M.get('hd', {})
