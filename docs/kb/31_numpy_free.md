@@ -1,5 +1,9 @@
 # 31. The stack without numpy
 
+Evidence paths beginning `SR3-investigation/` refer to the author's local workspace beside this repository;
+they are not files shipped in the repository or links available on GitHub.
+
+
 Started 2026-10-15. Goal (the owner): the toolchain no bigger than the tiniest Linux distros. Initially numpy was 13 of its 48 zipped
 MB; the user's path is moved off it, process by process, to our own C (OpenMP) and plain Python. Speed and parallelism
 come first: nothing may get slower, and every step gives the same bytes as v15.
@@ -183,16 +187,16 @@ not general replacements for all NumPy operations.
 
 | Area | Implemented boundary and evidence |
 |---|---|
-| `geobuf`, `fastround` | Packed float64 xyz and int64 offsets/lengths; preparation, subdivision, gap/order limits and canonical/corner keys coexist with legacy array APIs. See [subdivision notes](../../../SR3-investigation/import-numpy-audit/SUBDIVISION-KEYS-BOUNDARY.md) and [rounding notes](../../../SR3-investigation/import-numpy-audit/ROUNDING-BOUNDARY.md). |
-| `meshbuf`, `meshgen` | Safe 48-byte vertex records, borrowed readonly vertex/index parsing, cloning and winding. `meshgen.VTX` is lazy through `__getattr__`; a failed NumPy import can recover later. Remaining array functions import NumPy locally. See [mesh boundary](../../../SR3-investigation/import-numpy-audit/MESH-BUFFER-BOUNDARY.md). |
-| `sidebuf`, `sideorient` | float32 (n,4) scores: 320,914 real records exact. Full orientation replay: 335,604 faces plus info/log/UV reversal exact. The older optional `lit_sides` path was not replaced; default builds do not cover it. See [side boundary](../../../SR3-investigation/import-numpy-audit/SIDE-BUFFER-BOUNDARY.md). |
-| Fill helpers and adapters | 37 helper/test files integrated in `dcd5390`; production wrappers cover hanging boards, unsmear up to eight corners, island caps, sea clipping, coplanar reporting, trunk extension and verge retiling. Larger unsmear inputs use the legacy path. Ground-skirt helper remains additive. Image adapters preserve owned arrays, cache identity and negative caching. See [fill boundary](../../../SR3-investigation/import-numpy-audit/FILL-BUFFER-BOUNDARY.md). |
-| Road / pieces / mesh / normals | `buildroad.RoadHeight`; `buildpieces` grouping/splitting/draping; `buildmesh` UV packing; `buildnormals` tables. Saved replays include 2,047 -> 2,449 pieces with 12 callbacks, 335,604 faces for mesh packing, and 202,518 normal keys. See [build boundary](../../../SR3-investigation/import-numpy-audit/BUILD-BUFFER-BOUNDARY.md). |
+| `geobuf`, `fastround` | Packed float64 xyz and int64 offsets/lengths; preparation, subdivision, gap/order limits and canonical/corner keys coexist with legacy array APIs. See subdivision notes (`SR3-investigation/import-numpy-audit/SUBDIVISION-KEYS-BOUNDARY.md`) and rounding notes (`SR3-investigation/import-numpy-audit/ROUNDING-BOUNDARY.md`). |
+| `meshbuf`, `meshgen` | Safe 48-byte vertex records, borrowed readonly vertex/index parsing, cloning and winding. `meshgen.VTX` is lazy through `__getattr__`; a failed NumPy import can recover later. Remaining array functions import NumPy locally. See mesh boundary (`SR3-investigation/import-numpy-audit/MESH-BUFFER-BOUNDARY.md`). |
+| `sidebuf`, `sideorient` | float32 (n,4) scores: 320,914 real records exact. Full orientation replay: 335,604 faces plus info/log/UV reversal exact. The older optional `lit_sides` path was not replaced; default builds do not cover it. See side boundary (`SR3-investigation/import-numpy-audit/SIDE-BUFFER-BOUNDARY.md`). |
+| Fill helpers and adapters | 37 helper/test files integrated in `dcd5390`; production wrappers cover hanging boards, unsmear up to eight corners, island caps, sea clipping, coplanar reporting, trunk extension and verge retiling. Larger unsmear inputs use the legacy path. Ground-skirt helper remains additive. Image adapters preserve owned arrays, cache identity and negative caching. See fill boundary (`SR3-investigation/import-numpy-audit/FILL-BUFFER-BOUNDARY.md`). |
+| Road / pieces / mesh / normals | `buildroad.RoadHeight`; `buildpieces` grouping/splitting/draping; `buildmesh` UV packing; `buildnormals` tables. Saved replays include 2,047 -> 2,449 pieces with 12 callbacks, 335,604 faces for mesh packing, and 202,518 normal keys. See build boundary (`SR3-investigation/import-numpy-audit/BUILD-BUFFER-BOUNDARY.md`). |
 | `buildfaces` and public adapter | 58 scenes x five policies x three UV modes, smoothing, eight fallback guards, global-state effects, ownership and empty inputs. Real replay: 335,604 faces -> 1,342,416 vertices, 3,153 clamps, three policies. Shared fast dispatch serves both APIs. `faces_to_mesh_buf` returns owned writable Arr('|V48', (nq*4,)), nq, clamp; public `faces_to_mesh` keeps its owned writable ndarray. Unsupported bake/bump/other cases use `_faces_to_mesh_numpy`; the buffer fallback copies records while preserving KEEP_T, LM_LAST and other effects. `build_classic` itself still imports NumPy. |
 | `buildpixels` | `Tiles` / `RomTiles` return RGB uint8 and boolean holes with BAKED > HD > ROM > PNG precedence and a shared cache contract. 130 ROM materials / 3,070,976 pixels exact, plus PNG/HD/ROM fixtures. `build_classic.tile_pixels_buf` is a bridge to the legacy loader, not a standalone NumPy-free loader. |
 | `buildvivid`, `buildtexture` | Native UCRT gamma with explicit float32 operations; vertical then horizontal mip reduction, edge padding, alpha minimum and DXT5. 29 policies, 39 DXT5 fixtures, and all chunks for 117 textures under two policies match. `vivid_buf` and `make_texture_dxt5_buf` use current build state. |
 | `retexuv`, `builduv` | Four public retex UV aliases now return ordinary lists; the two known callers were audited. 950 fixtures and full 335,604-face mappings / 43,799 trees match. UV splitting covers finite coordinates of magnitude <= 1e12, at least three corners, positive max span and a two-million-piece cap; full replay 335,604 -> 362,583 pieces. Values alone do not establish scalar-type compatibility: the add_scenery substitution was rejected, see [27](27_build_speed.md). |
-| `buildmirror` | 66 fixtures; real 335,600 post-import faces: three boards / 176.8 m -> five pieces, preserving outer identity and untouched records. Public importer adapter still belongs to a NumPy-dependent module. See [mirror boundary](../../../SR3-investigation/import-numpy-audit/MIRROR-BUFFER-BOUNDARY.md). |
+| `buildmirror` | 66 fixtures; real 335,600 post-import faces: three boards / 176.8 m -> five pieces, preserving outer identity and untouched records. Public importer adapter still belongs to a NumPy-dependent module. See mirror boundary (`SR3-investigation/import-numpy-audit/MIRROR-BUFFER-BOUNDARY.md`). |
 
 Fill evidence includes 953 boards; 117 textures / 586,496 pixels; 50 island, 59 sea and 40 overlap fixtures; real
 14/16/14 cap outputs, 1,787 sea faces, 64,700 square metres removed and 41 overlaps. Trunk coverage includes 51
@@ -212,7 +216,7 @@ One historical golden (`dot_order_False`) had captured the old fastbuild bug. On
 from the original NumPy per-row expression; the other 48 were unchanged. Codex ran 49 scenes x three storage modes
 x two strides with NumPy blocked, the fastbuild cases plus offset cancellation, and the full face-adapter fixtures.
 The saved 202,518-key / 1,342,416-normal scene still matches byte for byte
-([replay](../../../SR3-investigation/import-numpy-audit/build-smooth-replay.json)). Claude's address-parity check
+(replay (`SR3-investigation/import-numpy-audit/build-smooth-replay.json`)). Claude's address-parity check
 matched 120/120 cases against NumPy on the same memory. The old index rule passed 60/60 aligned but only 40/60
 offset cases: the 20 cancellation failures demonstrate test sensitivity. Clean chaincheck6 includes both fixes.
 

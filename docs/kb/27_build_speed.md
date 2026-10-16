@@ -1,5 +1,9 @@
 # 27. How long the route from a Blender scene to a game build takes (2026-10-13 / 14)
 
+Evidence paths beginning `SR3-investigation/` refer to the author's local workspace beside this repository;
+they are not files shipped in the repository or links available on GitHub.
+
+
 The owner asked for the route to be made fast ("turbo optimize everything in C. Multi threaded."), and chose R4 as the level every build
 is made at (25_verbatim_road_and_milestones.md). All times are wall-clock seconds on the owner's PC (i9-13900K, 8 + 16 cores, 64 GB),
 measured with nothing else running unless said. Scripts: `tools/import/core/rtbake/` (copies of the working files; they carry the
@@ -116,7 +120,7 @@ are interchangeable.
 Claude's final clean-tree chaincheck6 used ROM plus the selected existing HD input, then light, RT and build.
 Codex independently SHA256-compared all ten saved game files against v15: all equal. `texmap.json` records the
 output folder and is excluded. Execution conditions and times below are Claude-reported, not a Codex rerun.
-The [manifest](../../../SR3-investigation/import-numpy-audit/claude-chaincheck6-v15-comparison.json) records the
+The manifest (`SR3-investigation/import-numpy-audit/claude-chaincheck6-v15-comparison.json`) records the
 independent saved-output comparison.
 
 | Stage | Earlier October 15 stack | Final fd8707c chaincheck6 |

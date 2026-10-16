@@ -1,5 +1,13 @@
 # 26 - Mountain's patches 1 and 2 as rules for any 1995 course (`genpatch1995.py`)
 
+Packaging update (2026-10-16, `fef54cb`): Mountain's approved numbered JSONs now ship in
+`tools/import/src/tracks/courses/src.mountain.patches.zip`. Their paths below still apply after automatic `unzip`
+at the start of the chain (or the first `common.courses_dir()` call). This does not regenerate the approved patches.
+After adopting or editing a numbered JSON in a courses folder, run `python tools/import/core/patchzip.py pack`
+from the repository root and commit the ZIP. Loose JSONs/stamps are ignored; local edits are not overwritten by
+unpack. Full rules and evidence: [30](30_import_stack.md#8-course-patches-ship-compressed-october-16-fef54cb).
+
+
 Written 2026-10-12 for an agent that has none of the conversation behind it. Confidence tags as elsewhere: VERIFIED (and how), LIKELY, UNKNOWN.
 Read [25_verbatim_road_and_milestones.md](25_verbatim_road_and_milestones.md) first (RAW settings, what a course patch file is, sections 6, 7, 9).
 

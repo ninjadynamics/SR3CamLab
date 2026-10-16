@@ -1,5 +1,9 @@
 # 30. The import stack, from the ROM set to the installed track (2026-10-15)
 
+Evidence paths beginning `SR3-investigation/` refer to the author's local workspace beside this repository;
+they are not files shipped in the repository or links available on GitHub.
+
+
 The public form of the work in 14, 16, 25 and 26: one runner (`tools\import\stack.py`) and its window (`IMPORT.bat` ->
 `tools\import\stack_window.ps1`) that take your own `srallyc.zip` to a Classic mode track in SEGA Rally 3, every step
 with an optional `.blend` of what it made. Folders come from `tools\import\settings.json` (`core\common.py`).
@@ -8,6 +12,7 @@ with an optional `.blend` of what it made. Folders come from `tools\import\setti
 
 | Step | Writes | Reads |
 |---|---|---|
+| unzip (always first, including custom `--steps`) | numbered patch JSONs beside each course archive; ignored unpack stamp | `<game>.<course>.patches.zip`; existing local JSON edits are preserved |
 | rom (`src\tracks\rom\rom_import.py`) | `<work>\tmp\m2\` region images + colour tables; `<classic>\obj\` collision and centre lines (all four courses); `<classic>\courses\src\course<N>_<name>\` objects, sky, low detail, tiles, props, gameplay.json, gates; `<work>\classic_tex\course<N>\` the importer's own export; `<classic>\sr2_gameplay\src\` checkpoint times and labelled pace notes; derived tiles; `<work>\retex\tile_labels.csv` (only when there is none); an empty `textures_hd\` | `srallyc.zip` only (the course JSON and patch files for the derived tiles, the shipped labels) |
 | collect (patch, round, light) | `<work>\tmp\stack\<name>\` faces.pkl (GAPFILL_DUMP), patched.pkl (ROUND_IN, with a patch `.blend`), lm.*, gate.json | the rom step's files, the course JSON, its patch files, the recipe, SR3's own track templates |
 | rt | lm.lm.npz, lmA.* (the composed light), lm.carshade.npz | the collect files |
@@ -97,3 +102,41 @@ process/helper migrations and compatibility fallbacks, and [32](32_session_2026_
 The importer as a whole still uses NumPy; the toolchain cannot yet remove it. The later compiler-closure work also
 covers standalone x86 builds (`3f0fd27`, `f61d10d`), with dependency hashes; the earlier 314-file importer-only snapshot
 above should not be read as the final combined closure size.
+
+## 8. Course patches ship compressed (October 16, fef54cb)
+
+The repository now stores Mountain's approved patches 1, 2 and 3 in
+`tools/import/src/tracks/courses/src.mountain.patches.zip` (LZMA, 1,788,848 bytes).
+The individual JSON files retain their names and format when unpacked beside the archive, but those working files
+and `src.mountain.patches.unpacked.json` are ignored by Git. JSON paths in [25](25_verbatim_road_and_milestones.md)
+and [26](26_generalised_patches.md) describe these unpacked working files or archive members, not tracked loose files.
+
+`stack.py` always starts with `unzip`, regardless of the selected steps. `common.courses_dir(game)` also checks the
+folder on its first call in each process, so direct importer runs obtain the same patch files. The stack window's
+patch count reads the archive too. This extracts approved data; it does not run a patch generator.
+
+`core/patchzip.py` records the archive hash and the last unpacked hashes in the stamp. When the archive changes,
+unchanged old working files can be replaced, but locally changed or previously untracked differing files are kept.
+An unchanged archive with all its member files present takes a fast path; this is not a fresh content verification
+of every local JSON. Local edits remain effective inputs until intentionally packed or otherwise reconciled.
+
+After `patch3_1995.py`, `roadfill1995.py`, Blender's `patch_to_json.py`, or a deliberate manual edit writes JSON beside
+the archive, run from the repository root:
+
+```text
+python tools/import/core/patchzip.py pack
+```
+
+With no folder arguments this packs every game's courses folders; explicit courses-folder arguments can narrow
+it. Commit the updated archive, not the ignored JSONs or stamp. Members are ordered by patch number with fixed
+ZIP metadata, so unchanged content packs identically. A member missing from the working folder is retained from
+the existing archive: deleting a loose JSON is not an archive-member deletion operation. Manual extraction is
+available as `python tools/import/core/patchzip.py unpack`; the chain normally handles it automatically.
+
+Codex independently compared all three archive members to their previous committed JSONs: exact bytes
+(28,116; 3,222,566; 12,818,583). Claude reports a fresh Git worktree containing only the archive completed the full
+chain (`chaincheck_wt_data`), with all game files equal to v15. Codex independently SHA256-compared those ten saved
+outputs against the verified reference: all equal; see the
+comparison manifest (`SR3-investigation/import-numpy-audit/claude-chaincheck-wt-v15-comparison.json`).
+Codex did not rerun the chain. Claude reports tracked HEAD content shrinking 29.3 -> 15.6 MB and its ZIP download
+7.9 -> 5.6 MB; these are repository/archive measurements, not installed toolchain sizes or Git-history pruning.

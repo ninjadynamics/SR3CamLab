@@ -1,5 +1,12 @@
 # 25 - The 1995 road kept verbatim, the game's road not drawn, and the milestone plan
 
+Current packaging (2026-10-16, `fef54cb`): the numbered Mountain patch JSON paths below are unpacked working
+files. Their tracked source is `tools/import/src/tracks/courses/src.mountain.patches.zip`. The chain always runs
+`unzip` first; direct importer runs check through `common.courses_dir()`. Local edits are preserved. Generators
+still write JSON; run `python tools/import/core/patchzip.py pack` from the repository root before committing the
+updated archive. See [30, course-patch packaging](30_import_stack.md#8-course-patches-ship-compressed-october-16-fef54cb).
+
+
 Findings of 2026-10-08 (late evening) and 2026-10-09. Confidence tags as elsewhere: VERIFIED (and how), LIKELY, UNKNOWN.
 "In game" = the owner drove the build on the cabinet. This file supersedes the road handling described in
 [22_gapfill_zfighting_scenery_rules.md](22_gapfill_zfighting_scenery_rules.md) section 3 for the builds named RAW onwards.
@@ -214,7 +221,7 @@ Since 2026-10-15 (the public layout) everything that runs is in the repository u
 
 ## 9. Patch 2: the roadside fill, generated (2026-10-09, awaiting the owner's verdict)
 
-Owner: "patch 1 fixes bad authoring, patch 2 fixes bad design decisions, patch 3 complements and enhances the track". Patch 2 is made by a program (`tools\import\core\roadfill1995.py`, run with `--set patch=[1] --set patch_gen=2`) and shipped as `tools\import\src\tracks\courses\src.mountain.patch.2.json` in the format of patch 1; it carries `"needs": [1]` and the importer refuses it without patch 1. A build does not run the generator.
+Owner: "patch 1 fixes bad authoring, patch 2 fixes bad design decisions, patch 3 complements and enhances the track". Patch 2 is made by a program (`tools\import\core\roadfill1995.py`, run with `--set patch=[1] --set patch_gen=2`) and consumed as `tools\import\src\tracks\courses\src.mountain.patch.2.json` (now shipped inside the patches ZIP) in the format of patch 1; it carries `"needs": [1]` and the importer refuses it without patch 1. A build does not run the generator.
 
 - **What the course is missing, measured** (cuts across the road every metre): the first solid upright scenery stands 0.24 m (median) from the road's edge, 95 % within 4 m, and there is ground in front of it nearly everywhere (61 m of cut line missing on the whole course). What is missing lies BEHIND it: about 68 000 m2 within 20 m. In the forest the soil verge is 5 to 15 m wide and ends in the air; the forest wall (class `tree_wall`) stands on nothing 5 to 20 m further out. In the village inside the forest there is a 1 m kerb and then nothing up to the forest wall; the houses stand on nothing.
 - **Four versions were thrown away** (the module's text lists them): a grid of cells under the holes in front of the first scenery (62 triangles: nothing is missing there); cuts that each closed their own gaps and started from the top of rock (upright sheets, shards, 19 "bridges" - owner: "huge fuck up"); a band per gap between two pieces of cover (every house cut the bands apart); "level" measured from the road's height (the verge is terraced: half the forest was skipped).
