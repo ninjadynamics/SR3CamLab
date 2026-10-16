@@ -994,6 +994,87 @@ def _faces_to_mesh_numpy(faces, uv_mode, up_normals=False):
     for ax in (0, 1):
         if len(uvs): m_ = uvs[:, :, ax].max(1) > 1.00002; uvs[m_, :, ax] -= 1.0      # exactly 1.0 stays (stored as 0x7FFF)
     v = meshgen.make_verts_safe(quads)
+    mt_ = {}                                                           # (2026-10-16) the per-polygon material tests once per material: polygons share a few hundred keys
+    def per_mat(f_):
+        out_ = []
+        for fc in faces:
+            k_ = fc[0]; r_ = mt_.get((f_, k_))
+            if r_ is None: r_ = mt_[(f_, k_)] = f_(k_)
+            out_.append(r_)
+        return out_
+    globals()['KEEP_T'] = None; bm_ = np.array(per_mat(lambda m_: bump_of(m_) > 0), bool) if (BUMP and up_normals) else None; gn_ = v['n'].copy() if (bm_ is not None and bm_.any()) else None
+    if up_normals and LIGHT_K > 0:
+        # SHADING BY THE SUN (course JSON 'light_contrast' K, 0 = flat .. 1 = strongest). The importer decides how bright every polygon is, by one
+        # rule, and hands the game a normal that gives exactly that brightness under the slot's sun (the game lights with ambient + sun x N.L):
+        #     d = polygon's direction . a "design sun" (the real sun's compass direction, 45 degrees up)
+        #     brightness = floor + (1 - floor) x clamp((d + 0.2) / 0.907)      floor = 1 - 0.6 K      (1 = as bright as flat ground)
+        #   -> flat ground and walls that face the sun: 1 ; walls side-on to it: a little above the floor ; walls facing away: the floor.
+        # Why not the plain physical N.L of the 1995 sun (70 degrees up): a wall facing that sun squarely gets cos 70 = a third of what the
+        # ground gets, so every wall was dim and every polygon turned from the sun nearly black (build Z13L75: "these faces are way too dark
+        # for something exposed to direct sunlight ... wtf are these dark patches", user 2026-10-08). The 1995 picture has lit walls as
+        # bright as the ground and shaded ones at about 0.55.
+        # A polygon whose seen side is NOT certain (lightside.py, material key '|4') takes the brighter of its two sides: never a dark patch
+        # by mistake; the price is that a real sheet seen from its shaded side is shown lit.
+        nv_ = v['n'].astype(np.float64).copy()
+        if SMOOTH_N: _smooth_into(nv_, np.round(v['p'][:, :3].astype(np.float64), 2))      # natural ground: the mean direction of the faces round a corner, taken on this side
+        amb_, sun_, sv_ = LIGHT_ENV; sv_ = np.asarray(sv_, float) / np.linalg.norm(sv_); sh_ = np.array([sv_[0], 0.0, sv_[2]]); lh_ = float(np.linalg.norm(sh_))
+        sd_ = (sh_ / lh_ * 0.7071 + np.array([0.0, 0.7071, 0.0])) if lh_ > 1e-6 else np.array([0.0, 1.0, 0.0]); floor_ = 1.0 - 0.6 * LIGHT_K
+        bright = lambda n_: floor_ + (1.0 - floor_) * np.clip((n_ @ sd_ + 0.2) / 0.907, 0.0, 1.0)
+        I_ = bright(nv_); unsure = np.repeat(np.array(per_mat(lambda m_: str(m_).endswith('|4')), bool), 4); I_ = np.where(unsure, np.maximum(I_, bright(-nv_)), I_)
+        flat = np.repeat(np.array(per_mat(lambda m_: (lambda b_: (b_.endswith('_t') and b_ not in LM_CUTOUTS) or b_ in FLAT_LIT)(str(m_).split('|')[0])), bool), 4); I_ = np.where(flat, 1.0, I_)      # cut-out boards and signs: as flat ground
+        if BAKE_COLLECT is not None or BAKE_TABLE is not None: I_ = bake_light(v, nv_, I_, flat, unsure)
+        if LM_COLLECT is not None:
+            import round1995 as _r95; pid_, pab_ = _r95.patch_lookup(v['p'][:, :3].reshape(-1, 4, 3), back=np.array(per_mat(lambda m_: str(m_).endswith('|3')), bool))      # pieces of a rounded polygon lie in ITS rectangle (round1995.PATCH)
+            LM_COLLECT.append((v['p'][:, :3].reshape(-1, 4, 3).astype(np.float64), nv_.reshape(-1, 4, 3).mean(1), I_.reshape(-1, 4).astype(np.float32), np.asarray(flat, bool).reshape(-1, 4)[:, 0].copy(), np.asarray(unsure, bool).reshape(-1, 4)[:, 0].copy(), pid_, pab_))
+        if LM_TABLE is not None:
+            import lightmap1995; fl_ = np.asarray(flat, bool).reshape(-1, 4)[:, 0]; m0_ = LM_TABLE['miss'][0]; pg_, uv1_ = lightmap1995.lookup(LM_TABLE, v['p'][:, :3].reshape(-1, 4, 3).astype(np.float64)); LM_TABLE['miss'][0] = m0_ + int((~fl_ & (pg_ == 0)).sum()); pg_ = np.where(fl_, 0, pg_)
+            v['uv1'] = np.where(np.repeat(fl_, 4)[:, None], v['uv1'], uv1_); globals()['LM_LAST'] = pg_
+        ground_ = amb_ + sun_ * max(float(sv_[1]), 0.0); cosT = np.clip((I_ * ground_ - amb_) / max(sun_, 1e-6), -1.0, 1.0)      # the N.L that gives this brightness
+        e_ = nv_ - (nv_ @ sv_)[:, None] * sv_; le_ = np.linalg.norm(e_, axis=1); alt_ = np.cross(sv_, [1.0, 0.0, 0.0]); alt_ /= np.linalg.norm(alt_)
+        e_ = np.where((le_ > 1e-6)[:, None], e_ / np.maximum(le_, 1e-9)[:, None], alt_)
+        v['n'] = (cosT[:, None] * sv_ + np.sqrt(1.0 - cosT ** 2)[:, None] * e_).astype(np.float32)
+    elif up_normals: v['n'] = (0.0, 1.0, 0.0)                         # classic faces are lit like flat ground: 1995 textures carry their own shading, and crossed tree boards must not shade differently
+    if LM_TEST and len(v):                                            # (see _lm_test_texture) the square of the map the polygon's middle stands in picks one of the four texels
+        c_ = v['p'][:, :3].reshape(-1, 4, 3).mean(1); q_ = (np.floor(c_[:, 0] / 16.0).astype(np.int64) + 2 * np.floor(c_[:, 2] / 16.0).astype(np.int64)) % 4
+        v['uv1'] = np.repeat(np.stack([np.where(q_ % 2 == 0, 8192, 24576), np.where(q_ < 2, 8192, 24576)], 1).astype(np.uint16), 4, axis=0)
+    if not up_normals and uv_mode == 'tile' and LIGHT_K > 0 and (BAKE_COLLECT is not None or BAKE_TABLE is not None):      # the ROAD (its 1995 tarmac pieces keep their own normals): what the game shows now is
+        amb_, sun_, sv_ = LIGHT_ENV; sv_ = np.asarray(sv_, float) / np.linalg.norm(sv_); nr_ = v['n'].astype(np.float64)                 # ambient + sun x N.L ; the baked light changes that brightness
+        Ir_ = (amb_ + sun_ * np.clip(nr_ @ sv_, 0.0, 1.0)) / (amb_ + sun_ * max(float(sv_[1]), 0.0)); I2_ = bake_light(v, nr_, Ir_, np.zeros(len(v), bool), np.zeros(len(v), bool))
+        if BAKE_TABLE is not None: v['n'] = _encode_light(nr_, I2_)
+    if not up_normals and uv_mode == 'tile' and LIGHT_K > 0 and (LM_COLLECT is not None or LM_TABLE is not None) and len(v):      # the ROAD on the light maps too (LIGHTMAP-RT had none: "the road has no shadows", user 2026-10-08)
+        amb_, sun_, sv_ = LIGHT_ENV; sv_ = np.asarray(sv_, float) / np.linalg.norm(sv_); nr_ = v['n'].astype(np.float64); Ir_ = (amb_ + sun_ * np.clip(nr_ @ sv_, 0.0, 1.0)) / (amb_ + sun_ * max(float(sv_[1]), 0.0))
+        if LM_COLLECT is not None: LM_COLLECT.append((v['p'][:, :3].reshape(-1, 4, 3).astype(np.float64), nr_.reshape(-1, 4, 3).mean(1), Ir_.reshape(-1, 4).astype(np.float32), np.zeros(len(v) // 4, bool), np.zeros(len(v) // 4, bool)))
+        if LM_TABLE is not None:
+            import lightmap1995; pg_, uv1_ = lightmap1995.lookup(LM_TABLE, v['p'][:, :3].reshape(-1, 4, 3).astype(np.float64)); v['uv1'] = uv1_; globals()['LM_LAST'] = pg_
+            if LM_ROAD_GREY: LM_TABLE.setdefault('grey', set()).update(i_ for i_ in (LM_TABLE['idx'].get(k_.tobytes(), -1) for k_ in lightmap1995.key(v['p'][:, :3].reshape(-1, 4, 3).astype(np.float64))) if i_ >= 0)      # these polygons are ROAD: remembered for the pages
+    if gn_ is not None:                                               # RELIEF TEST: these polygons are lit by the game's sun on their TRUE normal (the normal map bends it), with a tangent along the picture's u
+        import bump1995; m4_ = np.repeat(bm_, 4); tg_ = np.repeat(bump1995.tangents(np.asarray(quads, np.float64), np.asarray(uvs, np.float64)), 4, axis=0)
+        if BUMP_TRUE or LIGHT_K <= 0: v['n'] = np.where(m4_[:, None], gn_, v['n']); v['t'] = np.where(m4_[:, None], tg_.astype(np.float32), v['t'])      # (the first test: true normal, tangent along u)
+        else: v['t'] = np.where(m4_[:, None], relief_tangent(v['n'].astype(np.float64), gn_.astype(np.float64), tg_, LIGHT_ENV[2]), v['t'])               # the rule's brightness stays; see relief_tangent
+        globals()['KEEP_T'] = m4_
+    if len(uvs): v['uv0'] = np.clip(np.round(uvs.reshape(-1, 2) * 32768), -32768, 32767).astype(np.int16).view(np.uint16)
+    return v, len(quads), clamp
+
+def _old_faces_to_mesh_numpy(faces, uv_mode, up_normals=False):
+    """(the original of _faces_to_mesh_numpy, its smooth-normal loop and per-polygon material tests as they were: the reference)"""
+    quads = []; uvl = []; clamp = 0
+    for mat, sec, P, UV in faces:
+        if len(P) == 3: P = P + [P[2]]; UV = UV + [UV[2]]
+        quads.append(P[:4]); uvl.append(UV[:4])
+    uvs = np.array(uvl, float).reshape(-1, 4, 2)                      # (all polygons at once: this was a loop with five numpy calls a polygon, 427 000 polygons a pass at R4)
+    if uv_mode == 'given': pass                                       # already in repeats, 0..2
+    elif uv_mode == 'tile':
+        uvs[:, :, 1] = 1.0 - uvs[:, :, 1]                             # OBJ v up -> texture rows down
+        uvs -= np.floor(uvs.min(1) + 1e-6)[:, None, :]
+        over_ = uvs.reshape(len(uvs), -1).max(1) > 1.999 if len(uvs) else np.zeros(0, bool); clamp += int(over_.sum()); uvs[over_] = np.clip(uvs[over_], 0, 1.999)
+    else: uvs[:] = np.array([(0, 0), (1, 0), (1, 1), (0, 1)], float)
+        # The mesh stores uv as SIGNED 16-bit, -1..+1 (SEGA's own meshes: 95% of the values are 0..0x7FFF, the rest small
+        # negatives). Written as 0..2 unsigned, every face that crossed 1.0 had some corners read as negative: the tile ran
+        # backwards between them (boards mirrored / upside-down, walls smeared - first in-game runs). A face keeps its
+        # corners together: an axis that reaches 1.0 is moved down by one repeat (textures wrap, the picture is the same).
+    for ax in (0, 1):
+        if len(uvs): m_ = uvs[:, :, ax].max(1) > 1.00002; uvs[m_, :, ax] -= 1.0      # exactly 1.0 stays (stored as 0x7FFF)
+    v = meshgen.make_verts_safe(quads)
     globals()['KEEP_T'] = None; bm_ = np.array([bump_of(fc[0]) > 0 for fc in faces], bool) if (BUMP and up_normals) else None; gn_ = v['n'].copy() if (bm_ is not None and bm_.any()) else None
     if up_normals and LIGHT_K > 0:
         # SHADING BY THE SUN (course JSON 'light_contrast' K, 0 = flat .. 1 = strongest). The importer decides how bright every polygon is, by one
@@ -1050,6 +1131,38 @@ def _faces_to_mesh_numpy(faces, uv_mode, up_normals=False):
         globals()['KEEP_T'] = m4_
     if len(uvs): v['uv0'] = np.clip(np.round(uvs.reshape(-1, 2) * 32768), -32768, 32767).astype(np.int16).view(np.uint16)
     return v, len(quads), clamp
+
+_SMOOTH_IX = [None, None, -1]
+def _smooth_into(nv_, P_):
+    """the smooth-normal loop of _faces_to_mesh_numpy for every vertex at once (2026-10-16; _old_faces_to_mesh_numpy has the loop):
+         q_ = SMOOTH_N.get(rounded corner); if q_ is not None: nv_[k_] = q_ if float(q_ @ nv_[k_]) >= 0.0 else -q_
+    The keys: SMOOTH_N's corners and the vertices' are np.round(., 2) numbers, equal exactly when rint(x * 100) is (one integer
+    triple, 21 bits each, in one int64; outside that range the loop as it was). q_ @ nv_[k_] is OpenBLAS's ddot of two 3-vectors,
+    whose order depends on where the second one lies (npexact.ddot): row k of the fresh (n, 3) array nv_ is 16-byte aligned for even k,
+    (q0 n0 + q2 n2) + q1 n1, and 8 bytes off for odd k, (q0 n0 + q1 n1) + q2 n2; the test >= 0 does not see the sign of a zero.
+    Every vertex reads and writes only its own row, so all of them at once is the loop."""
+    if _SMOOTH_IX[0] is not SMOOTH_N or _SMOOTH_IX[2] != len(SMOOTH_N):
+        ks = list(SMOOTH_N.keys()); K = np.rint(np.array(ks, np.float64).reshape(-1, 3) * 100.0)
+        ok = len(ks) and bool(np.isfinite(K).all()) and float(np.abs(K).max()) < (1 << 20)
+        if ok:
+            Ki = K.astype(np.int64); code = ((Ki[:, 0] + (1 << 20)) << 42) | ((Ki[:, 1] + (1 << 20)) << 21) | (Ki[:, 2] + (1 << 20)); o = np.argsort(code, kind='stable')
+            ok = not (len(code) > 1 and (np.diff(code[o]) == 0).any())   # (two keys on one code: the dict, not this)
+            Q = np.array([SMOOTH_N[k] for k in ks], np.float64).reshape(-1, 3)
+            _SMOOTH_IX[1] = (code[o], Q[o]) if ok else None
+        else: _SMOOTH_IX[1] = None
+        _SMOOTH_IX[0] = SMOOTH_N; _SMOOTH_IX[2] = len(SMOOTH_N)
+    ix = _SMOOTH_IX[1]; V = np.rint(P_ * 100.0)
+    if ix is None or not len(P_) or not bool(np.isfinite(V).all()) or float(np.abs(V).max()) >= (1 << 20):
+        for k_ in range(len(P_)):                                      # (the loop as it was)
+            q_ = SMOOTH_N.get((P_[k_, 0], P_[k_, 1], P_[k_, 2]))
+            if q_ is not None: nv_[k_] = q_ if float(q_ @ nv_[k_]) >= 0.0 else -q_
+        return
+    Vi = V.astype(np.int64); code = ((Vi[:, 0] + (1 << 20)) << 42) | ((Vi[:, 1] + (1 << 20)) << 21) | (Vi[:, 2] + (1 << 20)); cs, Qs = ix
+    j = np.minimum(np.searchsorted(cs, code), len(cs) - 1); hit = cs[j] == code
+    if not hit.any(): return
+    r = np.nonzero(hit)[0]; q = Qs[j[r]]; n_ = nv_[r]; odd = (r & 1) == 1
+    d = np.where(odd, (q[:, 0] * n_[:, 0] + q[:, 1] * n_[:, 1]) + q[:, 2] * n_[:, 2], (q[:, 0] * n_[:, 0] + q[:, 2] * n_[:, 2]) + q[:, 1] * n_[:, 1])
+    nv_[r] = np.where((d >= 0.0)[:, None], q, -q)
 
 def _faces_to_mesh_fast(up_normals):
     """Shared dispatch guard for array and buffer callers."""
@@ -1212,9 +1325,27 @@ def make_texture_dxt5(tpl5, new_id, rgb, hole):
 
 def make_texture(tpl, new_id, grey, hole=None):
     """kind 4 chunk from a grey image, full mip chain, header cloned from a DXT1 template. hole: transparent texels
-    (written as DXT1 punch-through on the top level only)."""
+    (written as DXT1 punch-through on the top level only).
+    (2026-10-16, kb 31: the mip chain and its blocks in C, fastdxt.c dxt1_mips, which quotes the numpy lines; a picture whose sides are
+    not powers of two, or that is not uint8 RGB after vivid, keeps the numpy loop; _old_make_texture is the numpy original)"""
+    import fastdxt
     if grey.ndim == 2: grey = np.dstack([grey] * 3)
-    grey = vivid(grey); h, w = grey.shape[:2]; d = bytearray(tpl.data[:48 + 124]); mips = []; g = grey.astype(np.float32)
+    grey = vivid(grey); h, w = grey.shape[:2]
+    p2 = lambda n: n > 0 and n & (n - 1) == 0
+    if not (fastdxt.ON and not fastdxt.CHECK and grey.dtype == np.uint8 and grey.ndim == 3 and grey.shape[2] == 3 and p2(h) and p2(w)): return _make_texture_levels(tpl, new_id, grey, hole)
+    hb = None
+    if hole is not None and hole.shape == (max(4, h), max(4, w)): hb = np.ascontiguousarray(hole, np.uint8).tobytes()      # (the top level's mask, as dxt1_rgb takes it)
+    blocks, n, first = fastdxt.dxt1_mips(np.ascontiguousarray(grey).tobytes(), h, w, hb); d = bytearray(tpl.data[:48 + 124])
+    struct.pack_into('<II', d, 8, w, h)
+    struct.pack_into('<III', d, 48 + 8, h, w, first); struct.pack_into('<I', d, 48 + 24, n)
+    return sbfw.Ch(4, new_id, bytes(d) + blocks, [], [])
+def _old_make_texture(tpl, new_id, grey, hole=None):
+    """(the numpy original of make_texture: the reference)"""
+    if grey.ndim == 2: grey = np.dstack([grey] * 3)
+    return _make_texture_levels(tpl, new_id, vivid(grey), hole)
+def _make_texture_levels(tpl, new_id, grey, hole):
+    """(make_texture's numpy loop from the picture after vivid on)"""
+    h, w = grey.shape[:2]; d = bytearray(tpl.data[:48 + 124]); mips = []; g = grey.astype(np.float32)
     while True:
         hh, ww = g.shape[:2]; pad = np.zeros((max(4, hh), max(4, ww), 3), np.float32); pad[:hh, :ww] = g
         if hh < 4: pad[hh:, :] = pad[hh - 1:hh, :]

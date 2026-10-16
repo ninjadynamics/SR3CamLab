@@ -62,4 +62,36 @@ EXPORT void dxt1_rgb(const uint8_t *img, int h, int w, const uint8_t *hole, uint
     }
 }
 
+/* build_classic.make_texture's mip chain and its DXT1 blocks (2026-10-16; was a numpy loop per level). rgb = the picture after vivid,
+   h x w (both powers of two: the caller checks), hole = h x w bytes for the top level or NULL. The numpy lines it replaces:
+     g = rgb.astype(np.float32)
+     loop: pad = np.zeros((max(4, hh), max(4, ww), 3), np.float32); pad[:hh, :ww] = g; rows / columns below 4 repeat the last one
+           blocks += dxt1_rgb(np.clip(pad, 0, 255).astype(np.uint8), hole on the first level)
+           until 1 x 1: g = (g[0::2] + g[1::2]) / 2 (rows, when more than one), then g = (g[:, 0::2] + g[:, 1::2]) / 2 (columns)
+   in float: a float32 sum, / 2 (no extra precision on x86-64); the clip as np.clip (min of max), the byte by truncation as astype.
+   -> the levels' blocks one after the other in out, the number of levels; *first = the top level's length */
+EXPORT int dxt1_mips(const uint8_t *rgb, int h, int w, const uint8_t *hole, uint8_t *out, int *first)
+{
+    int hh = h, ww = w, n = 0, H0 = h < 4 ? 4 : h, W0 = w < 4 ? 4 : w; size_t o = 0;
+    float *g = (float *)malloc(sizeof(float) * (size_t)h * w * 3), *t = (float *)malloc(sizeof(float) * (size_t)h * w * 3); uint8_t *pad = (uint8_t *)malloc((size_t)H0 * W0 * 3);
+    for (size_t i = 0; i < (size_t)h * w * 3; i++) g[i] = (float)rgb[i];
+    for (;;) {
+        int H = hh < 4 ? 4 : hh, W = ww < 4 ? 4 : ww;
+        for (int y = 0; y < H; y++)
+            for (int x = 0; x < W; x++) {
+                const float *s = g + ((size_t)(y < hh ? y : hh - 1) * ww + (x < ww ? x : ww - 1)) * 3; uint8_t *d = pad + ((size_t)y * W + x) * 3;
+                for (int c = 0; c < 3; c++) { float v = s[c]; v = v > 0.0f ? v : 0.0f; v = v < 255.0f ? v : 255.0f; d[c] = (uint8_t)v; }
+            }
+        dxt1_rgb(pad, H, W, n == 0 ? hole : NULL, out + o);
+        size_t len = (size_t)(H / 4) * (W / 4) * 8; if (n == 0) *first = (int)len; o += len; n++;
+        if (hh == 1 && ww == 1) break;
+        int nh = hh > 1 ? hh / 2 : 1, nw = ww > 1 ? ww / 2 : 1;
+        if (hh > 1) { for (int y = 0; y < nh; y++) for (int x = 0; x < ww * 3; x++) t[(size_t)y * ww * 3 + x] = (g[(size_t)(2 * y) * ww * 3 + x] + g[(size_t)(2 * y + 1) * ww * 3 + x]) / 2.0f; }
+        else memcpy(t, g, sizeof(float) * (size_t)ww * 3);
+        if (ww > 1) { for (int y = 0; y < nh; y++) for (int x = 0; x < nw; x++) for (int c = 0; c < 3; c++) g[((size_t)y * nw + x) * 3 + c] = (t[((size_t)y * ww + 2 * x) * 3 + c] + t[((size_t)y * ww + 2 * x + 1) * 3 + c]) / 2.0f; }
+        else memcpy(g, t, sizeof(float) * (size_t)nh * 3);
+        hh = nh; ww = nw;
+    }
+    free(g); free(t); free(pad); return n;
+}
 EXPORT int fd_threads(void) { return omp_get_max_threads(); }

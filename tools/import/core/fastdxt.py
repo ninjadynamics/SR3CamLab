@@ -15,12 +15,24 @@ def lib():
     global _lib
     if _lib is None:
         dll = _cb.dll('fastdxt')                                  # built on first use (cbuild.py: sources, flags, compiler)
-        _runtime(); L = ctypes.CDLL(dll); L.dxt1_rgb.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p]; _lib = L
+        _runtime(); L = ctypes.CDLL(dll); L.dxt1_rgb.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p]
+        L.dxt1_mips.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]; L.dxt1_mips.restype = ctypes.c_int; _lib = L
     return _lib
 def dxt1_bytes(rgb, h, w, hole=None):
     """h x w RGB bytes (h, w multiples of 4) -> DXT1 blocks (bytes); hole: h * w bytes, 1 = transparent texel"""
     a = ctypes.create_string_buffer(bytes(rgb), len(rgb)); m = None if hole is None else ctypes.create_string_buffer(bytes(hole), len(hole)); out = ctypes.create_string_buffer((h // 4) * (w // 4) * 8)
     lib().dxt1_rgb(a, h, w, m, out); return out.raw
+def dxt1_mips(rgb, h, w, hole=None):
+    """build_classic.make_texture's levels: rgb h x w x 3 bytes after vivid (h, w powers of two), hole h * w bytes for the top level or
+    None -> (all levels' DXT1 blocks, number of levels, the top level's length) ; see fastdxt.c"""
+    H, W, tot = h, w, 0
+    while True:
+        tot += (max(4, H) // 4) * (max(4, W) // 4) * 8
+        if H == 1 and W == 1: break
+        H = max(1, H // 2); W = max(1, W // 2)
+    a = ctypes.create_string_buffer(bytes(rgb), len(rgb)); m = None if hole is None else ctypes.create_string_buffer(bytes(hole), len(hole)); out = ctypes.create_string_buffer(tot); first = ctypes.c_int(0)
+    n = lib().dxt1_mips(a, h, w, m, out, ctypes.byref(first)); STAT['calls'] += 1; STAT['texels'] += h * w
+    return out.raw, n, first.value
 def dxt1_rgb(img, hole, old):
     if not ON: return old(img, hole)
     mv = memoryview(img)
