@@ -66,9 +66,10 @@ table (sources, per-unit flags, the files that name each DLL); `python core\cbui
 - Licences (the owner left it to me, "lean and legal friendly"): tools\mingw\licenses carries SOURCES.txt (each component,
   version, licence and source archive: GCC 13.2.0, binutils 2.42, GMP 6.3.0, MPFR 4.2.1, MPC 1.3.1, libiconv 1.17, gettext
   0.22.4, MinGW-w64 11.0.1, isl 0.26, zlib 1.3.1, zstd 1.5.5, dlfcn-win32), the GPL v3 and the GCC Runtime Library
-  Exception (from numpy's licence file, which carries both), and with `--sources` every component's own licence files. The
-  complete corresponding source, the unchanged upstream archives, is `<name>-toolchain-source.zip` (release.py --sources),
-  published beside the toolchain zip (GPL v3 section 6d). Python, numpy and Pillow carry their own licences.
+  Exception (from numpy's licence file, which carries both). The owner's later choice (`665c4fd`) superseded the proposed
+  `--sources` archive: current `release.py` provides exact upstream source archive links and WinLibs build-recipe links
+  in SOURCES.txt, checks those links before staging, and requires them to remain available while the toolchain is offered.
+  Python, numpy and Pillow carry their own licences. This records the implemented packaging, not a new legal assessment.
 - The target: x86-64-v3 by default (`SR3_MARCH` / settings `march`; 'native' still possible, with its own DLL names), so every
   AVX2 + FMA PC compiles the same code. On the author's PC it gives the native build's bytes (the release check rebuilt v15).
   The compiler matters through the fused multiply-adds: every helper built with `-ffp-contract=off` changes 4 939 bytes in 16
@@ -87,6 +88,12 @@ byte for byte, as 32 threads do: the results do not depend on the thread count. 
 a number) now sets OMP_NUM_THREADS and OPENBLAS_NUM_THREADS for every step of the stack, not only the bake. (27's "one run
 that differed" was not seen again; it was made on the efficiency cores alone, beside other work.)
 
-## 7. Not done yet
+## 7. Final October 15-16 batch status
 
-The C ports / speed pass.
+The current C ports / speed batch is integrated through `fd8707c`. Final reported light + RT + build time is 252 s
+(40 + 180 + 32); ROM separately 11 s. Codex independently compared all ten saved final game files with v15: equal.
+See [27](27_build_speed.md) for timing boundaries and rejected experiments, [31](31_numpy_free.md) for the completed
+process/helper migrations and compatibility fallbacks, and [32](32_session_2026_10_15.md) for final session evidence.
+The importer as a whole still uses NumPy; the toolchain cannot yet remove it. The later compiler-closure work also
+covers standalone x86 builds (`3f0fd27`, `f61d10d`), with dependency hashes; the earlier 314-file importer-only snapshot
+above should not be read as the final combined closure size.

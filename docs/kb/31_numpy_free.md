@@ -1,12 +1,13 @@
 # 31. The stack without numpy
 
-Started 2026-10-15. Goal (the owner): the toolchain no bigger than the tiniest Linux distros. numpy is 13 of its 48 zipped
+Started 2026-10-15. Goal (the owner): the toolchain no bigger than the tiniest Linux distros. Initially numpy was 13 of its 48 zipped
 MB; the user's path is moved off it, process by process, to our own C (OpenMP) and plain Python. Speed and parallelism
 come first: nothing may get slower, and every step gives the same bytes as v15.
 
 ## What a user runs, measured
 
-A full chain on an empty data folder, every Python process logging the modules it loads (a sitecustomize hook):
+Initial audit, before migration: a full chain on an empty data folder, every Python process logging the modules it loads
+(a sitecustomize hook). These counts are a baseline, not a current dependency census:
 
 - the processes: `rom_import.py`, `import_classic.py` (collect and build passes), `rtbake\rt_bake_game5.py`,
   `rtbake\rt_compose_game.py`; plus the audio tools (`src_audio.py`, `src_music.py`) and `hd_textures.py`
@@ -38,7 +39,7 @@ A full chain on an empty data folder, every Python process logging the modules i
   `(p0 + p1) + p2` (checked on real data: the composed pages are byte for byte).
 - `np.round` rounds half to even (`rint` / `rintf`); `np.maximum` and `np.min` pass a NaN on.
 - numpy's matrix products go through OpenBLAS. Measured on a million random rows (numpy 1.24.3, this PC), each 100%:
-  `(A * s).sum(1)` and `A @ M` (matrix x matrix, any thread count) are `(p0 + p1) + p2`; `np.dot(a, b)` of two 3-vectors
+  `(A * s).sum(1)` and `A @ M` (matrix x matrix, any thread count) are `(p0 + p1) + p2`; `np.dot(a, b)` of two 3-vectors with b 16-byte aligned
   and `A @ s` (matrix x vector) with OpenBLAS on 1 to 16 threads are `(p0 + p2) + p1`, the middle term last, no fused
   multiply-add. **At 32 threads `A @ s` changes**: from 20,000 rows up some thread chunks run another kernel and give other
   last bits, so numpy's own answer depends on the PC's core count. A C port uses the fixed formula and gives the same bits
@@ -121,7 +122,7 @@ data roots, old against new (scratchpad tools lightrun.py / buildrun.py): every 
 | Module | Now | Check |
 |---|---|---|
 | roadsight.orient | geobuf.pack + fastlm.c lm_rs_prep, plain Python decisions | 335,604 items and the log identical, 3.37 -> 3.22 s |
-| seenside.orient | geobuf.pack + lm_ss_prep / lm_open_sides; lm.sides.npz through npyio ('<U' text, 0-d scalars). 2026-10-16: the road-sight rays through fastlm_rays.c rx_nearer_h (the leaf that hid the last ray tried first, then the subtree round it, then the rest: rx_nearer's answer does not depend on the order it looks at the leaves in, point 5 there), the six sample points in one call (lm_roadsight_n: the sums the three calls of two gave) | lists, logs, sides file identical; ~24 -> 22.7 s; the rays (1,886 million on Mountain) 25.6 -> 11.9 s, the light step 70 -> 55 s, the counts the same in a bench of the recorded calls and fastlm.selftest's 24.7 million rays against cast_one (0 different) |
+| seenside.orient | geobuf.pack + lm_ss_prep / lm_open_sides; lm.sides.npz through npyio ('<U' text, 0-d scalars). 2026-10-16: road-sight occlusion uses fastlm_rays.c rx_nearer_h, trying the previously hiding leaf and nearby subtree first; six sample points in one lm_roadsight_n call preserve the sums of three two-sample calls | lists, logs, sides file identical; recorded-call counts identical and fastlm.selftest's 24.7 million rays against cast_one: 0 different. Clean alternating light runs after road-sight, save_scene and GC changes: 62/63 -> 45/44 s. The old 70 -> 55 claim used a recording-probe baseline and is withdrawn; see [27](27_build_speed.md) for timing boundaries. |
 | lightmap1995.save_collect / key_buf / lookup_buf / load_table_buf | buffer protocol in, fastlm.c lm_key12 / lm_gather / lm_lookup | lm.lm.npz identical; lookup 0.27 -> 0.12 s (not called yet) |
 | bake1995.save_scene, scenefile.save_arrays | lm_albedo (UCRT pow, numpy's pairwise / row-by-row means) | lm.scene identical |
 | sky1995 | its own operations in fastlm.c sky_dirs / sky_tile / sky_fill; build_classic.vivid / dxt1_rgb through a numpy bridge | all 10 game files identical |
@@ -146,9 +147,88 @@ ROM stages: `course.use_tex()` sets only the export's folders (course.use() load
 just for those). A stage's time includes about 3 s whenever it is the first process to read a freshly written region
 image (the system scans the file); that hits the numpy and the numpy-free version alike.
 
-The bake reads the material classes straight from `retex`'s CSV and takes `PAGE = 2048` by value: `retex.py` and
-`lightmap1995.py` still import numpy. The two `.npz` files are byte for byte numpy's as whole files too: numpy's
+The bake reads the material classes straight from `retex`'s CSV and takes `PAGE = 2048` by value, avoiding the build's
+dependency chain. `retex.py` is now NumPy-free; `lightmap1995.py` still has NumPy-dependent paths. The two `.npz`
+files are byte for byte numpy's as whole files too: numpy's
 `savez` opens each member with `ZipFile.open(name, 'w')`, whose ZipInfo carries 1980-01-01 and mode 0600, as npyio's.
 
 The logged "mean light over the pages" is now summed in double (numpy summed in float32); it can differ in its last
 digit, and nothing reads it.
+
+## Audio and HD tools (Codex, October 15)
+
+`83db675` moves audio DSP to C/OpenMP and plain Python. PCM is interleaved doubles, with explicit view/copy ownership.
+The standalone pocketfft kernel is derived from NumPy 1.24.3 with the Python bindings removed; using this C kernel
+does not load the NumPy package. Its BSD license and the i0 attribution are in
+[AUDIO-LICENSE.txt](../../tools/audio/AUDIO-LICENSE.txt). Pairwise sums (128-element split) and FIR reduction order
+are retained because a last-bit change near a half-rounding boundary can change PCM bytes.
+
+All 221 real output files match: 151 co-driver WAVs plus mapping, 63 voice files, four music WAVs plus tunes.json
+and mapping. NumPy-blocked tests include 14 synthetic goldens and edge cases. Warm observed times: co-driver
+4.27 -> 0.49 s, voice 0.10 -> 0.086 s, music 57.16 -> 35.37 s, excluding about 5 s of initial compilation. The existing
+MAME recording was reused; this was not a new emulator run or an installation. Full evidence and commands are in
+[AUDIO-NUMPY-FREE.md](../../tools/audio/AUDIO-NUMPY-FREE.md).
+
+`74b17ad` removes NumPy from `hd_textures.py` using course JSON and RGBA bytes directly. Four-course comparisons
+cover alpha-only differences, hidden RGB, size changes, new textures and missing textures. Exactness here concerns
+HD selection/comparison behavior, not a claim that arbitrary image upscaling gives the original pixels.
+
+## Geometry and build buffer boundaries (Codex, integrated through fd8707c)
+
+The helpers below live in `tools/import/core/`. They use `npyio.Arr` (dtype, shape and raw buffer) and typed views.
+Contiguous inputs can be borrowed; kernels that require writable/aligned storage copy readonly or unaligned input.
+An owned result is explicit. The old `fg_init`, `fg_far`, `fg_pairs` and `fg_pairs_get` native interfaces were left intact.
+The detailed ownership/shape/error contracts are in the linked investigation notes; these are bounded helpers,
+not general replacements for all NumPy operations.
+
+| Area | Implemented boundary and evidence |
+|---|---|
+| `geobuf`, `fastround` | Packed float64 xyz and int64 offsets/lengths; preparation, subdivision, gap/order limits and canonical/corner keys coexist with legacy array APIs. See [subdivision notes](../../../SR3-investigation/import-numpy-audit/SUBDIVISION-KEYS-BOUNDARY.md) and [rounding notes](../../../SR3-investigation/import-numpy-audit/ROUNDING-BOUNDARY.md). |
+| `meshbuf`, `meshgen` | Safe 48-byte vertex records, borrowed readonly vertex/index parsing, cloning and winding. `meshgen.VTX` is lazy through `__getattr__`; a failed NumPy import can recover later. Remaining array functions import NumPy locally. See [mesh boundary](../../../SR3-investigation/import-numpy-audit/MESH-BUFFER-BOUNDARY.md). |
+| `sidebuf`, `sideorient` | float32 (n,4) scores: 320,914 real records exact. Full orientation replay: 335,604 faces plus info/log/UV reversal exact. The older optional `lit_sides` path was not replaced; default builds do not cover it. See [side boundary](../../../SR3-investigation/import-numpy-audit/SIDE-BUFFER-BOUNDARY.md). |
+| Fill helpers and adapters | 37 helper/test files integrated in `dcd5390`; production wrappers cover hanging boards, unsmear up to eight corners, island caps, sea clipping, coplanar reporting, trunk extension and verge retiling. Larger unsmear inputs use the legacy path. Ground-skirt helper remains additive. Image adapters preserve owned arrays, cache identity and negative caching. See [fill boundary](../../../SR3-investigation/import-numpy-audit/FILL-BUFFER-BOUNDARY.md). |
+| Road / pieces / mesh / normals | `buildroad.RoadHeight`; `buildpieces` grouping/splitting/draping; `buildmesh` UV packing; `buildnormals` tables. Saved replays include 2,047 -> 2,449 pieces with 12 callbacks, 335,604 faces for mesh packing, and 202,518 normal keys. See [build boundary](../../../SR3-investigation/import-numpy-audit/BUILD-BUFFER-BOUNDARY.md). |
+| `buildfaces` and public adapter | 58 scenes x five policies x three UV modes, smoothing, eight fallback guards, global-state effects, ownership and empty inputs. Real replay: 335,604 faces -> 1,342,416 vertices, 3,153 clamps, three policies. Shared fast dispatch serves both APIs. `faces_to_mesh_buf` returns owned writable Arr('|V48', (nq*4,)), nq, clamp; public `faces_to_mesh` keeps its owned writable ndarray. Unsupported bake/bump/other cases use `_faces_to_mesh_numpy`; the buffer fallback copies records while preserving KEEP_T, LM_LAST and other effects. `build_classic` itself still imports NumPy. |
+| `buildpixels` | `Tiles` / `RomTiles` return RGB uint8 and boolean holes with BAKED > HD > ROM > PNG precedence and a shared cache contract. 130 ROM materials / 3,070,976 pixels exact, plus PNG/HD/ROM fixtures. `build_classic.tile_pixels_buf` is a bridge to the legacy loader, not a standalone NumPy-free loader. |
+| `buildvivid`, `buildtexture` | Native UCRT gamma with explicit float32 operations; vertical then horizontal mip reduction, edge padding, alpha minimum and DXT5. 29 policies, 39 DXT5 fixtures, and all chunks for 117 textures under two policies match. `vivid_buf` and `make_texture_dxt5_buf` use current build state. |
+| `retexuv`, `builduv` | Four public retex UV aliases now return ordinary lists; the two known callers were audited. 950 fixtures and full 335,604-face mappings / 43,799 trees match. UV splitting covers finite coordinates of magnitude <= 1e12, at least three corners, positive max span and a two-million-piece cap; full replay 335,604 -> 362,583 pieces. Values alone do not establish scalar-type compatibility: the add_scenery substitution was rejected, see [27](27_build_speed.md). |
+| `buildmirror` | 66 fixtures; real 335,600 post-import faces: three boards / 176.8 m -> five pieces, preserving outer identity and untouched records. Public importer adapter still belongs to a NumPy-dependent module. See [mirror boundary](../../../SR3-investigation/import-numpy-audit/MIRROR-BUFFER-BOUNDARY.md). |
+
+Fill evidence includes 953 boards; 117 textures / 586,496 pixels; 50 island, 59 sea and 40 overlap fixtures; real
+14/16/14 cap outputs, 1,787 sea faces, 64,700 square metres removed and 41 overlaps. Trunk coverage includes 51
+fixtures and full 335,604-face replays with 120/120/98 additions and UNGROUNDED identity preserved. Verge coverage
+includes 17 fixtures, three storage modes, default-origin/debug paths, and 380 verges with 30/24 replacements.
+These direct branch replays matter because a default full build may not enable the optional feature.
+
+### Smoothing cancellation correction, not just a faster loop
+
+`bfcb280` corrects `buildsmooth.Smooth.apply` and `fastbuild.apply_smooth`: for q=(1,1,1) and n=(1,-1,-2^-54),
+NumPy's per-row dot is zero on aligned rows but -2^-54 on alternate 24-byte rows. The previous sequential helper
+sum flipped both normals. `buildsmooth` now uses `npexact.ddot` with its packed row parity; `fastbuild` takes parity
+from the actual normal-row address. `fd8707c` applies that same address rule to `build_classic._smooth_into`:
+`(nv_.ctypes.data + r * nv_.strides[0]) % 16 != 0`, including an 8-byte-offset base.
+
+One historical golden (`dot_order_False`) had captured the old fastbuild bug. Only that expected result was replaced
+from the original NumPy per-row expression; the other 48 were unchanged. Codex ran 49 scenes x three storage modes
+x two strides with NumPy blocked, the fastbuild cases plus offset cancellation, and the full face-adapter fixtures.
+The saved 202,518-key / 1,342,416-normal scene still matches byte for byte
+([replay](../../../SR3-investigation/import-numpy-audit/build-smooth-replay.json)). Claude's address-parity check
+matched 120/120 cases against NumPy on the same memory. The old index rule passed 60/60 aligned but only 40/60
+offset cases: the 20 cancellation failures demonstrate test sensitivity. Clean chaincheck6 includes both fixes.
+
+## Current limits and final integration
+
+`load_visual` now batches the split-at-road work and screens UV changes cheaply, while keeping original NumPy
+operations for changed/NaN polygons and np.float64 moved corners in split_pairs; its `_old_*` references and
+unsupported-input fallbacks remain. `5368018` accelerates legacy smooth-normal assembly and mip generation without
+discarding bake/lightmap/bump state. Claude's probes covered 499+499 mesh calls, 349+404 texture calls and 240 random
+pictures, including global side effects. Subsequent smoothing fixes are required for the final semantics.
+
+The importer as a whole is **still NumPy-dependent**. Lazy imports, buffer twins and successful blocked helper tests
+do not establish that every entry point runs without NumPy. Legacy paths include larger unsmear inputs, shrink
+rounding, optional lighting and various build/preview adapters. No removal of NumPy from the distributed toolchain
+or final package-size claim is justified yet. Keep the initial audit counts separate from current status.
+
+Final full-chain evidence and remaining runtime checks are in [32](32_session_2026_10_15.md). Component times in the
+earlier tables are historical measurements, with differing process/profiler boundaries; use [27](27_build_speed.md)
+for the final controlled light comparison, stage totals and rejected experiments.

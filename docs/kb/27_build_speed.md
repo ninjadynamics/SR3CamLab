@@ -105,3 +105,90 @@ seen-side file now reports such a build; "not found 0" in the build log remains 
 - The track's seven files written, read back and checked side by side (zlib lets go of the interpreter).
 Every one checked by the whole chain: v15's game files byte for byte. Not taken: the sealing's edge test and similar small loops go
 through numpy's BLAS (matrix x vector), whose summation order C cannot be sure to follow, so a port could change bytes.
+
+## Final October 15-16 batch, through fd8707c
+
+The BLAS caution above describes the earlier state of the investigation. The later ports identified the specific
+OpenBLAS/NumPy arithmetic, including address-dependent dot order, and reproduced it; see [31](31_numpy_free.md).
+This does not imply that algebraically equivalent expressions, arbitrary CPU kernels or blanket compiler flags
+are interchangeable.
+
+Claude's final clean-tree chaincheck6 used ROM plus the selected existing HD input, then light, RT and build.
+Codex independently SHA256-compared all ten saved game files against v15: all equal. `texmap.json` records the
+output folder and is excluded. Execution conditions and times below are Claude-reported, not a Codex rerun.
+The [manifest](../../../SR3-investigation/import-numpy-audit/claude-chaincheck6-v15-comparison.json) records the
+independent saved-output comparison.
+
+| Stage | Earlier October 15 stack | Final fd8707c chaincheck6 |
+|---|---:|---:|
+| ROM | not included in the earlier table | 11 s |
+| Light | 77 s | 40 s |
+| RT (bake + compose) | 206 s | 180 s |
+| Build | 56 s | 32 s |
+| Light + RT + build | 338 s reported whole-chain total | 252 s |
+
+The earlier whole-chain total and rounded stage times differ by one second. These are historical runs, not an
+alternating same-environment experiment. Earlier sections also use different scenes (406,166 polygons / 51.1 M
+texels versus the later Mountain's 385,493 / 73.3 M); do not combine them into one controlled speedup claim.
+The final RT ray work accounts for about 170 s and 12,244 million rays. Bake quality was not reduced.
+
+### Controlled light comparison and corrected baseline
+
+Clean alternating runs against worktree `e1f339c`, after `394018b` road sight, `172b892` save_scene and `faccfcd` GC:
+
+| Run | Old | New |
+|---|---:|---:|
+| 1 | 62 s | 45 s |
+| 2 | 63 s | 44 s |
+
+Codex read the `@@ step light done` lines in `romcheck/t_old1`, `t_old2`, `t_new1`, `t_new2` light.log files.
+Claude reported road-sight portions 28.5/29.4 -> 11.3/10.8 s. A separate recorded-call bench changed three two-sample
+calls (27.2 s) to one six-sample call (10.4-11.0 s). Those are different timing boundaries.
+
+The earlier **70 -> 52** and **70 -> 55** light-step claims are withdrawn: the 70-second `rsCap` run included a probe
+writing roughly 100 MB of pickles. It was not a clean performance baseline. Its captured data remain useful for
+correctness replay. The corrected alternating measurements above include three changes, not road sight alone.
+
+GC thresholds `(20000, 20, 100)` are set at the start of `import_classic.main`, after variant validation; importing
+the module alone does not change GC settings. Separate site-import-to-exit trials: light 43.5/43.9/44.4 s default
+versus 40.8/41.5/41.5 s tuned; build 38.3/38.5 versus 36.2/36.1. Peak working set was approximately 2212 -> 2214 MB
+for light and 2782 -> 2788 MB for build, peak commit +3/+9 MB. The roughly 80,000 cycles observed were a measurement,
+not a memory bound or a guarantee that arbitrary future workloads have the same behavior.
+
+### What changed, and what was measured only inside a component
+
+The adopted road-sight occlusion walk first tries the leaf that hid the previous ray, then its nearby subtree,
+before the remaining tree. Six sample points share one call while preserving the old sums. Its answer can be
+checked against cast_one independently of traversal order; the nearest-hit RT bake has different requirements.
+The 24.7-million-ray selftest had zero differences, and recorded-call counts matched.
+
+| Commit(s) | Change / reported component observation |
+|---|---|
+| `172b892` | Faster scene saving; same scene bytes. |
+| `f9a4a59` | Coursepatch x-index and skipping unnecessary UV splits; all 1,163 observed light/build split calls identical. Later apply probe 5.8 -> 4.75 s. |
+| `5c2f281` | Round texture-stretch counts in C, about 0.3 s saved per process. |
+| `426b26d`, `7fb8663` | Seal records in C, radix sorting and five cluster searches. Three-pass components: unique 0.27 -> 0.10 s, joints 0.92 -> 0.55 s, clusters 0.44 -> 0.32 s. |
+| `3cc57c6` | load_visual batches/preparation, retaining NumPy compatibility branches: 7.97 -> 4.70 s, split_at_road 3.64 -> 1.11, normalise_uv 0.90 -> 0.33, split_pairs 0.61 -> 0.45. |
+| `1777436` | Sky float-to-byte clipping in C; about 0.28 s saved per process. |
+| `5368018` | Legacy face smoothing and texture mips in C: face assembly 4.23 -> 2.26 s, make_texture 3.86 -> 1.73, add_scenery 16.2 -> 10.9. |
+| `bfcb280`, `fd8707c` | Smoothing cancellation/order correction and actual row-address parity; required for NumPy-compatible results on offset normal buffers. |
+
+These are probe/profile component measurements, not additional independent whole-chain speedups. In particular,
+a 48-second cProfile build cannot be compared directly with the earlier unprofiled 39-second build. All changes
+were checked against saved light/build baselines by Claude; final chaincheck6 includes the corrections and was
+independently hash-compared by Codex. Chaincheck4's mixed pre/post-fix source state is not single-revision evidence.
+
+### Tried and rejected in this batch
+
+- RT nearest-hit remembered-leaf walk: same recorded sample hash `1f26f4c6d8e3c2a1` and 1,392,673 handovers, but
+  16-batch time rose from 8.6 to 9.4-10.3 s. Scratch experiment only; it was not adopted in rtbake. Keeping the
+  required rays.c leaf semantics matters for cast_one's answers. This failure is not proof that every possible
+  exact RT optimization has been exhausted.
+- `builduv.uv_split` in add_scenery: values equal in 464/464 calls, but 120 calls changed np.float64 scalars to Python
+  floats; large batches were slower (1.91 versus 1.52 s). Not adopted there. Its audited use in other call sites,
+  including coursepatch and finishgate, remains valid; matching values alone does not establish caller compatibility.
+
+Scratch evidence tools: `rsbench/bench.py`, `rsdata`, `rtdump`, `lvprobe`, `f2mprobe`, `texprobe`, `sarprobe`,
+`splitprobe`, `memprobe`, `gcprobe`, under Claude's session scratchpad. Durable comparison manifests and the
+investigation ledger live in `SR3-investigation/import-numpy-audit`. [32](32_session_2026_10_15.md) records the
+session's final scope and remaining runtime checks.

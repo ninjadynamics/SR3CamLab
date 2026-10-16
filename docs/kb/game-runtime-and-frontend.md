@@ -147,3 +147,9 @@ loop); `tools\switch_mocktest.ps1` runs that loop against a scripted fake game.
   21_track_install_and_switching.md.
 - Boot test 2 of the menu pictures file (the smaller file with 8 names): its result is not recorded in the sources
   (UNKNOWN). The alternatives' banners and backgrounds stay off by default.
+
+## October 15-16 standalone runtime follow-up
+
+See [32_session_2026_10_15.md](32_session_2026_10_15.md) for the launcher/settings/controller and watchdog work,
+the reproduced texture-alias shutdown crash fixed in 9aee814, source-build provenance, and the physical-controller
+and full-race checks still outstanding. Importer byte comparisons do not establish gameplay stability.
