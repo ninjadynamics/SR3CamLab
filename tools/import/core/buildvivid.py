@@ -46,14 +46,13 @@ def vivid(rgb,config=None,scene_gain=None,no_gain=False):
         except TypeError:values=[scene_gain]*3
         if len(values)!=3:raise ValueError('buildvivid: scene gain requires scalar or three values')
         gains=[_parameter(v,'scene gain') for v in values]
-    out=Arr('|u1',a.shape);dst=out.view();src=a.view()
-    for i in range(0,a.size,3):
-        x=[curve[src[i+k]] for k in range(3)]
-        lum=_f(_f(_f(x[0]+x[1])+x[2])/3.)
-        y=[max(_f(_f(lum+_f(_f(v-lum)*sat))*gain),0.) for v in x]
-        top=max(y);scale=_f(255./max(top,1.)) if top>255. else 1.
-        for k in range(3):
-            v=_f(y[k]*scale)
-            if gains is not None:v=_f(v*gains[k])
-            dst[i+k]=int(max(0.,min(255.,v)))
+    out=Arr('|u1',a.shape)
+    if a.size:
+        from geobuf import _native
+        lib=_native();P=ctypes.c_void_p
+        lib.fg_vivid.argtypes=[P,ctypes.c_longlong,P,ctypes.c_float,ctypes.c_float,P,P]
+        lib.fg_vivid.restype=None
+        table=(ctypes.c_float*256)(*curve)
+        scene=None if gains is None else (ctypes.c_float*3)(*gains)
+        lib.fg_vivid(a.ptr(),a.size//3,table,gain,sat,scene,out.ptr())
     return out

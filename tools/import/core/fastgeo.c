@@ -19,6 +19,68 @@ typedef long long i64;
 
 EXPORT int fg_threads(void) { return omp_get_max_threads(); }
 
+/* Explicit float32 color policy; gamma table is supplied by UCRT powf in
+   Python. Each assignment is a NumPy float32 operation; no fused products. */
+EXPORT void fg_vivid(const unsigned char *rgb, i64 count, const float *curve,
+                     float gain, float saturation, const float *scene,
+                     unsigned char *out)
+{
+    #pragma omp parallel for schedule(static) if(count > 4096)
+    for(i64 i=0;i<count;++i) {
+        float x[3]={curve[rgb[3*i]],curve[rgb[3*i+1]],curve[rgb[3*i+2]]};
+        float lum=x[0]+x[1];lum=lum+x[2];lum=lum/3.0f;
+        float y[3];
+        for(int k=0;k<3;++k) {
+            float t=x[k]-lum;t=t*saturation;t=lum+t;t=t*gain;
+            y[k]=t>0.0f?t:0.0f;
+        }
+        float top=fmaxf(y[0],fmaxf(y[1],y[2]));
+        float scale=top>255.0f?255.0f/fmaxf(top,1.0f):1.0f;
+        for(int k=0;k<3;++k) {
+            float t=y[k]*scale;if(scene)t=t*scene[k];
+            out[3*i+k]=(unsigned char)(t<0.0f?0.0f:t>255.0f?255.0f:t);
+        }
+    }
+}
+
+EXPORT void fg_texture_pad(const float *rgb, const unsigned char *alpha,
+                           i64 h, i64 w, unsigned char *out, unsigned char *oa)
+{
+    i64 H=h<4?4:h,W=w<4?4:w;
+    #pragma omp parallel for schedule(static) if(H*W > 4096)
+    for(i64 y=0;y<H;++y) for(i64 x=0;x<W;++x) {
+        i64 src=(y<h?y:h-1)*w+(x<w?x:w-1),dst=y*W+x;
+        oa[dst]=alpha[src];
+        for(int k=0;k<3;++k) {float t=rgb[3*src+k];out[3*dst+k]=(unsigned char)(t<0?0:t>255?255:t);}
+    }
+}
+
+EXPORT void fg_texture_half(const float *rgb, const unsigned char *alpha,
+                            i64 h, i64 w, int vertical, float *out, unsigned char *oa)
+{
+    i64 H=vertical?h/2:h,W=vertical?w:w/2;
+    #pragma omp parallel for schedule(static) if(H*W > 4096)
+    for(i64 y=0;y<H;++y) for(i64 x=0;x<W;++x) {
+        i64 a=(vertical?2*y:y)*w+(vertical?x:2*x),b=a+(vertical?w:1),dst=y*W+x;
+        oa[dst]=alpha[a]<alpha[b]?alpha[a]:alpha[b];
+        for(int k=0;k<3;++k) {float t=rgb[3*a+k]+rgb[3*b+k];out[3*dst+k]=t/2.0f;}
+    }
+}
+
+EXPORT void fg_texture_alpha(const unsigned char *alpha, i64 h, i64 w,
+                             const unsigned char *color, unsigned char *out)
+{
+    #pragma omp parallel for schedule(static) if(h*w > 4096)
+    for(i64 b=0;b<(h/4)*(w/4);++b) {
+        i64 by=b/(w/4),bx=b%(w/4);unsigned long long bits=0;
+        for(int y=0;y<4;++y) for(int x=0;x<4;++x)
+            if(alpha[(by*4+y)*w+bx*4+x]<128)bits|=1ULL<<(3*(y*4+x));
+        out[16*b]=255;out[16*b+1]=0;
+        for(int k=0;k<6;++k)out[16*b+2+k]=(unsigned char)(bits>>(8*k));
+        memcpy(out+16*b+8,color+8*b,8);
+    }
+}
+
 /* Packed mesh metadata uses float32 operations, including the addition before
    halving its bounding-box centre. Load through memcpy for arbitrary alignment. */
 EXPORT void fg_mesh_bounds(const unsigned char *v, i64 nv, float *out)

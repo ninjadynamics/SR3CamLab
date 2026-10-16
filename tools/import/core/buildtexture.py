@@ -1,5 +1,6 @@
 """NumPy-free DXT5 texture construction with explicit color adjustment."""
 from array import array
+import ctypes
 import struct
 from npyio import Arr
 from fastround import _buffer
@@ -39,33 +40,28 @@ def make_texture_dxt5(template,new_id,rgb,hole,adjust=None):
     if adjust is not None:
         rgb=_rgb(adjust(rgb))
         if rgb.shape!=shape:raise ValueError('buildtexture: adjustment changed image shape')
-    g=array('f',rgb.view());a=bytearray(0 if v else 255 for v in mask)
+    from geobuf import _native
+    lib=_native();P=ctypes.c_void_p;I=ctypes.c_longlong
+    lib.fg_texture_pad.argtypes=[P,P,I,I,P,P];lib.fg_texture_pad.restype=None
+    lib.fg_texture_half.argtypes=[P,P,I,I,ctypes.c_int,P,P];lib.fg_texture_half.restype=None
+    lib.fg_texture_alpha.argtypes=[P,I,I,P,P];lib.fg_texture_alpha.restype=None
+    g=Arr('<f4',(h*w*3,),bytearray(array('f',rgb.view()).tobytes()))
+    a=Arr('|u1',(h*w,),bytearray(0 if v else 255 for v in mask))
     d=bytearray(template.data[:172]);mips=[];hh,ww=h,w
     while True:
-        H,W=max(4,hh),max(4,ww);pc=bytearray(H*W*3);pa=bytearray(H*W)
-        for y in range(H):
-            for x in range(W):
-                src=min(y,hh-1)*ww+min(x,ww-1);dst=y*W+x
-                pa[dst]=a[src]
-                for k in range(3):pc[3*dst+k]=int(max(0.,min(255.,g[3*src+k])))
-        col=fastdxt.dxt1_bytes(pc,H,W);blk=bytearray(len(col)*2)
-        for by in range(H//4):
-            for bx in range(W//4):
-                block=by*(W//4)+bx;idx=0
-                for iy in range(4):
-                    for ix in range(4):
-                        if pa[(by*4+iy)*W+bx*4+ix]<128:idx|=1<<(3*(iy*4+ix))
-                p=16*block;blk[p]=255;blk[p+2:p+8]=idx.to_bytes(6,'little');blk[p+8:p+16]=col[8*block:8*block+8]
-        mips.append(bytes(blk))
+        H,W=max(4,hh),max(4,ww);pc=Arr('|u1',(H*W*3,));pa=Arr('|u1',(H*W,))
+        lib.fg_texture_pad(g.ptr(),a.ptr(),hh,ww,pc.ptr(),pa.ptr())
+        col=fastdxt.dxt1_bytes(pc.buf,H,W);color=ctypes.create_string_buffer(col,len(col));blk=Arr('|u1',(len(col)*2,))
+        lib.fg_texture_alpha(pa.ptr(),H,W,color,blk.ptr());mips.append(bytes(blk.buf))
         if hh==ww==1:break
         # Vertical averaging precedes horizontal, with float32 rounding after
         # each axis; odd trailing rows/columns are discarded by the original.
         if hh>1:
-            g=array('f',((g[(2*y*ww+x)*3+k]+g[((2*y+1)*ww+x)*3+k])/2 for y in range(hh//2) for x in range(ww) for k in range(3)))
-            a=bytearray(min(a[2*y*ww+x],a[(2*y+1)*ww+x]) for y in range(hh//2) for x in range(ww));hh//=2
+            newg=Arr('<f4',(hh//2*ww*3,));newa=Arr('|u1',(hh//2*ww,))
+            lib.fg_texture_half(g.ptr(),a.ptr(),hh,ww,1,newg.ptr(),newa.ptr());g,a=newg,newa;hh//=2
         if ww>1:
-            g=array('f',((g[(y*ww+2*x)*3+k]+g[(y*ww+2*x+1)*3+k])/2 for y in range(hh) for x in range(ww//2) for k in range(3)))
-            a=bytearray(min(a[y*ww+2*x],a[y*ww+2*x+1]) for y in range(hh) for x in range(ww//2));ww//=2
+            newg=Arr('<f4',(hh*(ww//2)*3,));newa=Arr('|u1',(hh*(ww//2),))
+            lib.fg_texture_half(g.ptr(),a.ptr(),hh,ww,0,newg.ptr(),newa.ptr());g,a=newg,newa;ww//=2
     struct.pack_into('<II',d,8,w,h)
     struct.pack_into('<III',d,56,h,w,len(mips[0]));struct.pack_into('<I',d,72,len(mips))
     return sbfw.Ch(4,new_id,bytes(d)+b''.join(mips),[],[])

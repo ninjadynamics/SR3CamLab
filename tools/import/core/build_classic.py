@@ -367,7 +367,7 @@ def save_baked(name, rgb, hole):
 _TILES = {}
 HD_USED = {}
 TEXMAP = {}; TEXMAP_FINISH = {}                                       # texture id -> how it was made (texfast.py rewrites single textures of a built track from this)
-def hd_tile(name):
+def _hd_tile_numpy(name):
     """RE-AUTHORED TILES (user, 2026-10-08: upscaled / repainted in Photoshop). A PNG <course>/textures_hd/<tile>.png replaces the 1995 tile of
     that name, at whatever size it has, when it DIFFERS from the export in <course>/textures (so the folder may hold untouched copies).
     Transparent texels (alpha < 128) are the cut-out's holes. -> (rgb, hole or None), or None."""
@@ -384,6 +384,30 @@ def hd_tile(name):
             if (w2, h2) != (w, h): im = im.resize((w2, h2), _I.LANCZOS)
             a = np.array(im); hole = a[:, :, 3] < 128; out = (np.ascontiguousarray(a[:, :, :3]), hole if hole.any() else None)
     HD_USED[name] = out; return out
+
+def _texture_arr(a, dtype):
+    """Borrow contiguous legacy pixels as Arr; copy strided pixels in row order."""
+    from npyio import Arr
+    if isinstance(a, Arr):
+        if a.dtype != dtype: raise ValueError('unexpected texture buffer dtype')
+        return a
+    view = memoryview(a)
+    if view.format not in (('B',) if dtype == '|u1' else ('?',)):
+        raise ValueError('unexpected texture pixel dtype')
+    return Arr(dtype, tuple(view.shape), view.cast('B') if view.c_contiguous else bytearray(view.tobytes()))
+
+def _texture_numpy(a):
+    if a is None: return None
+    return np.frombuffer(a.buf, dtype=a.dtype).reshape(a.shape).copy()
+
+def hd_tile(name):
+    """Keep the public ndarray cache while using the verified image loader."""
+    if not EXTRA_TEX: return None
+    if name in HD_USED: return HD_USED[name]
+    import buildpixels
+    out = buildpixels.Tiles(EXTRA_TEX).hd_tile(name)
+    HD_USED[name] = None if out is None else tuple(_texture_numpy(a) for a in out)
+    return HD_USED[name]
 
 def tile_pixels(name):
     """-> (rgb, hole or None) of a material's picture as add_scenery draws it (ROM tile, backdrop PNG, composed tile), or None"""
@@ -402,6 +426,15 @@ def tile_pixels(name):
         im = np.array(_I.open(os.path.join(EXTRA_TEX, name + '.png')).convert('RGBA')); h = im[:, :, 3] < 128
         return np.ascontiguousarray(im[:, :, :3]), (h if (name.endswith('_t') and h.any()) else None)
     return None
+def tile_pixels_buf(name):
+    """Buffer view of the current public texture state (legacy lookup bridge).
+
+    This entry point retains BAKED/HD_USED/_TILES state. For a process without
+    NumPy, use buildpixels.Tiles with explicit stores instead.
+    """
+    out = tile_pixels(name)
+    return None if out is None else (_texture_arr(out[0], '|u1'), None if out[1] is None else _texture_arr(out[1], '|b1'))
+
 EXTRA_TEX = None                                                      # folder of PNG tiles for materials that are not in the course's own tile set
 DROPPED = []                                                          # classic faces inside the road strip (last load_visual)
 UV_FIXED = []; UV_FLAT = []
@@ -792,7 +825,7 @@ def relief_tangent(nf, nt, tt, sv):
     a = tt @ L; b = bt @ L; r = np.hypot(a, b); ok = r > 1e-4; ca = np.where(ok, b / np.maximum(r, 1e-12), 1.0); sa = np.where(ok, -a / np.maximum(r, 1e-12), 0.0)
     T = ca[:, None] * g + sa[:, None] * u2; return (T / np.maximum(np.linalg.norm(T, axis=1), 1e-12)[:, None]).astype(np.float32)
 
-def faces_to_mesh(faces, uv_mode, up_normals=False):
+def _faces_to_mesh_numpy(faces, uv_mode, up_normals=False):
     """-> (verts array, nquads). uv_mode 'tile' = classic uv (shifted into 0..2 per face), 'box' = 0..1 per face"""
     quads = []; uvl = []; clamp = 0
     for mat, sec, P, UV in faces:
@@ -869,6 +902,26 @@ def faces_to_mesh(faces, uv_mode, up_normals=False):
     if len(uvs): v['uv0'] = np.clip(np.round(uvs.reshape(-1, 2) * 32768), -32768, 32767).astype(np.int16).view(np.uint16)
     return v, len(quads), clamp
 
+def faces_to_mesh(faces, uv_mode, up_normals=False):
+    """Packed buffer assembly; retain array/debug/bake/relief compatibility."""
+    import fastgeo
+    if (not fastgeo.ON or fastgeo.CHECK or (BUMP and up_normals) or
+            any(x is not None for x in (BAKE_COLLECT, BAKE_TABLE, LM_COLLECT, LM_TABLE))):
+        return _faces_to_mesh_numpy(faces, uv_mode, up_normals)
+    # The original permits unusual light environments that yield NaN normals;
+    # leave that behavior on its reference path instead of rejecting it here.
+    if up_normals and LIGHT_K > 0:
+        import math
+        amb, sun, sv = LIGHT_ENV
+        if not all(math.isfinite(float(x)) for x in (LIGHT_K, amb, sun, *sv)) or (sv[1] == 0 and sv[2] == 0):
+            return _faces_to_mesh_numpy(faces, uv_mode, up_normals)
+    import buildfaces, buildsmooth
+    smooth = buildsmooth.Smooth(SMOOTH_N) if SMOOTH_N and up_normals and LIGHT_K > 0 else None
+    vertices, count, clamp = buildfaces.faces_to_mesh(
+        faces, uv_mode, up_normals, LIGHT_K, LIGHT_ENV, smooth, FLAT_LIT, LM_CUTOUTS, LM_TEST)
+    globals()['KEEP_T'] = None
+    return np.frombuffer(vertices.buf, dtype=meshgen.VTX).copy(), count, clamp
+
 def dxt1_grey(img, hole=None):
     """uint8 grey image (h, w multiple of 4) -> DXT1 blocks. hole = bool mask of transparent texels: blocks containing
     holes use the 3-colour + transparent mode (c0 <= c1, index 3 = transparent)."""
@@ -925,7 +978,7 @@ def _dxt1_rgb_np(img, hole=None):
 
 VIVID_CFG = (0.95, 1.0, 1.7)                                                # set from the course JSON by import_classic
 VIVID = None                                                           # (gain, saturation) applied to classic tiles while add_scenery builds them
-def vivid(rgb):
+def _vivid_numpy(rgb):
     """The 1995 game shows its textures unlit and bright; inside SR3's lit, tone-mapped picture the same texels looked
     dull (in-game run 2026-10-07). Classic tiles are written brighter and more saturated: course JSON 'vivid': [gain, saturation]."""
     if not VIVID: return rgb
@@ -937,9 +990,22 @@ def vivid(rgb):
     if SCENE_GAIN is not None and not _NO_GAIN[0]: y = y * np.asarray(SCENE_GAIN, np.float32)      # the slot's lighting changed (course JSON 'lighting_from'): the tiles are scaled so the LIT scenery looks as it did
     return np.clip(y, 0, 255).astype(np.uint8)
 
-def make_texture_dxt5(tpl5, new_id, rgb, hole):
+def vivid_buf(rgb):
+    """RGB Arr output using the current explicit build color policy."""
+    import buildvivid
+    return buildvivid.vivid(_texture_arr(rgb, '|u1'), VIVID, SCENE_GAIN, _NO_GAIN[0])
+
+def vivid(rgb):
+    if not VIVID: return rgb
+    try:
+        if rgb.ndim != 3 or rgb.shape[2] != 3: return _vivid_numpy(rgb)
+        return _texture_numpy(vivid_buf(rgb))
+    except (ValueError, OverflowError):
+        return _vivid_numpy(rgb)
+
+def _make_texture_dxt5_numpy(tpl5, new_id, rgb, hole):
     """kind 4 DXT5 chunk with a 1-bit alpha channel (255 / 0), full mip chain; header cloned from a DXT5 texture"""
-    rgb = vivid(rgb); h, w = rgb.shape[:2]; d = bytearray(tpl5.data[:48 + 124]); mips = []; g = rgb.astype(np.float32); a = np.where(hole, 0.0, 255.0).astype(np.float32)
+    rgb = _vivid_numpy(rgb); h, w = rgb.shape[:2]; d = bytearray(tpl5.data[:48 + 124]); mips = []; g = rgb.astype(np.float32); a = np.where(hole, 0.0, 255.0).astype(np.float32)
     while True:
         hh, ww = g.shape[:2]; pc = np.zeros((max(4, hh), max(4, ww), 3), np.float32); pa = np.zeros((max(4, hh), max(4, ww)), np.float32); pc[:hh, :ww] = g; pa[:hh, :ww] = a
         if hh < 4: pc[hh:] = pc[hh - 1:hh]; pa[hh:] = pa[hh - 1:hh]
@@ -956,6 +1022,20 @@ def make_texture_dxt5(tpl5, new_id, rgb, hole):
     struct.pack_into('<II', d, 8, w, h)
     struct.pack_into('<III', d, 48 + 8, h, w, len(mips[0])); struct.pack_into('<I', d, 48 + 24, len(mips))
     return sbfw.Ch(4, new_id, bytes(d) + b''.join(mips), [], [])
+
+def make_texture_dxt5_buf(tpl5, new_id, rgb, hole):
+    """Build a texture chunk from RGB/hole Arrs under the current color policy."""
+    import buildtexture
+    return buildtexture.make_texture_dxt5(tpl5, new_id, _texture_arr(rgb, '|u1'),
+        None if hole is None else _texture_arr(hole, '|b1'), vivid_buf)
+
+def make_texture_dxt5(tpl5, new_id, rgb, hole):
+    import fastdxt
+    if not fastdxt.ON or fastdxt.CHECK: return _make_texture_dxt5_numpy(tpl5, new_id, rgb, hole)
+    try:
+        return make_texture_dxt5_buf(tpl5, new_id, rgb, hole)
+    except (ValueError, OverflowError):
+        return _make_texture_dxt5_numpy(tpl5, new_id, rgb, hole)
 
 def make_texture(tpl, new_id, grey, hole=None):
     """kind 4 chunk from a grey image, full mip chain, header cloned from a DXT1 template. hole: transparent texels
