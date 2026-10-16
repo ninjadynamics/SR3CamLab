@@ -44,6 +44,6 @@ class Smooth:
             q=self.table.get(rounded[i]) if big else self.keys.get(codes[i])
             if q is None:continue
             v=tuple(nv[i*3:i*3+3])
-            dot=ddot(q,v,i%2) if big else (q[0]*v[0]+q[1]*v[1])+q[2]*v[2]
+            dot=ddot(q,v,i%2)  # Original per-row NumPy dot order, including cancellation.
             for d in range(3):nv[i*3+d]=q[d] if dot>=0. else -q[d]
         return out

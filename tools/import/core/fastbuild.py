@@ -275,7 +275,10 @@ def apply_smooth(nv_, p, SMOOTH_N):
             if q_ is not None: nv_[k_] = q_ if float(q_ @ nv_[k_]) >= 0.0 else -q_
         return nv_
     code = ((N[:, 0] + (1 << 20)) << 42) | ((N[:, 1] + (1 << 20)) << 21) | (N[:, 2] + (1 << 20)); i = np.searchsorted(t[2], code); i[i >= len(t[2])] = len(t[2]) - 1; hit = t[2][i] == code
-    q = t[3][i[hit]]; s = (q * nv_[hit]).sum(1); nv_[hit] = np.where((s >= 0.0)[:, None], q, -q)
+    q = t[3][i[hit]]; prod = q * nv_[hit]
+    odd = ((nv_.ctypes.data + np.nonzero(hit)[0] * nv_.strides[0]) % 16) != 0
+    s = np.where(odd, (prod[:, 0] + prod[:, 1]) + prod[:, 2], (prod[:, 0] + prod[:, 2]) + prod[:, 1])
+    nv_[hit] = np.where((s >= 0.0)[:, None], q, -q)
     return nv_
 
 # ---------------------------------------------------------------- world_area

@@ -33,5 +33,12 @@ for table in ({(float('nan'),0,0):(1,0,0)},{(0,0,0):(float('inf'),0,0)},{(0,0):(
     try:Smooth(table)
     except ValueError:pass
     else:raise AssertionError('invalid table accepted')
+# Frozen directly from the original NumPy loop: even/odd rows have different
+# three-term addition orders. Cancellation must not flip the even-row normal.
+for mode in ('owned','readonly','unaligned'):
+    n=arr([[1.,-1.,-2.**-54]]*2,'<f8',mode)
+    p=arr([[0.,0.,0.]]*2,'<f4',mode)
+    out=Smooth({(0.,0.,0.):(1.,1.,1.)}).apply(n,p)
+    assert out.tolist()==[1.,1.,1.,-1.,-1.,-1.],('dot cancellation',mode)
 assert 'numpy' not in sys.modules
 print('PASS',len(cases),'smooth scenes x three storage modes / two strides; exact bytes/snapshots; NumPy blocked')
