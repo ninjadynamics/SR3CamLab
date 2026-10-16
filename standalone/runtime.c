@@ -261,6 +261,11 @@ static HANDLE WINAPI createFile(LPCSTR name,DWORD access,DWORD sharing,LPSECURIT
     return CreateFileA(name,access,sharing,sa,how,flags,templ);
 }
 static LRESULT CALLBACK windowProc(HWND w,UINT msg,WPARAM wp,LPARAM lp) {
+    /* Hide only over the active game client. Let Windows choose the cursor
+       for borders, other windows and the desktop; never alter ShowCursor's
+       thread counter. */
+    if(msg==WM_SETCURSOR && LOWORD(lp)==HTCLIENT && GetForegroundWindow()==w){SetCursor(NULL);return TRUE;}
+    if(msg==WM_ACTIVATE)SetCursor(LOWORD(wp)==WA_INACTIVE?LoadCursorA(NULL,IDC_ARROW):NULL);
     if(msg==WM_KEYDOWN && wp==VK_ESCAPE){PostMessageA(w,WM_CLOSE,0,0);return 0;}
     return CallWindowProcA(oldWindowProc,w,msg,wp,lp);
 }
@@ -274,6 +279,7 @@ static HWND WINAPI createWindow(DWORD ex,LPCSTR cls,LPCSTR title,DWORD style,int
     result=CreateWindowExA(ex,cls,title,style,x,y,w,h,parent,menu,instance,arg);
     if(ours && result){
         gameWindow=result;oldWindowProc=(WNDPROC)SetWindowLongPtrA(result,GWLP_WNDPROC,(LONG_PTR)windowProc);
+        if(GetForegroundWindow()==result)SetCursor(NULL);
         /* Game startup calls CreateWindowExA after CRT/process initialization.
            ready() has returned (including HUD writes), and the original window
            call has returned: neither loader lock nor our INIT_ONCE is held.
@@ -290,7 +296,7 @@ static HWND WINAPI createWindow(DWORD ex,LPCSTR cls,LPCSTR title,DWORD style,int
 }
 static BOOL WINAPI clipCursor(const RECT *rect) {(void)rect;return TRUE;}
 static BOOL WINAPI cursorPosition(int x,int y) {(void)x;(void)y;return TRUE;}
-static HCURSOR WINAPI setCursor(HCURSOR cursor) {return SetCursor(cursor?cursor:LoadCursorA(NULL,IDC_ARROW));}
+static HCURSOR WINAPI setCursor(HCURSOR cursor) {return SetCursor(cursor);}
 static void presentation(D3DPRESENT_PARAMETERS *p) {
     p->BackBufferWidth=width;p->BackBufferHeight=height;
     p->Windowed=windowed?TRUE:FALSE;

@@ -1478,7 +1478,8 @@ function Open-CarCards($h, [long]$base) {
             [Sr3Mem]::Write($h, $base + 0x2500, (Str $path 256), $true)
             [Sr3Mem]::Write($h, $base + 0x2274, ([BitConverter]::GetBytes([int]($base + 0x2500))), $true)
             [Sr3Mem]::Write($h, $base + 0x2270, ([BitConverter]::GetBytes([int]($obj + 1))), $true)
-            for ($t = 0; $t -lt 300 -and (Read-GameInt $h ($base + 0x2270)) -ne 0; $t++) { Start-Sleep -Milliseconds 10 }
+            for ($t = 0; $t -lt 3000 -and -not $proc.HasExited -and (Read-GameInt $h ($base + 0x2270)) -ne 0; $t++) { Start-Sleep -Milliseconds 10 }
+            if ((Read-GameInt $h ($base + 0x2270)) -ne 0) { Log "Car cards: video request still pending; retrying when menus open."; return $false }
             if (-not (Read-GameInt $h (0xAD2F90 + 0x16C * $obj + 4))) { Log "Car cards: the game didn't open $path; the card keeps its stand-in."; continue }
             $have = $obj; $obj--
         }

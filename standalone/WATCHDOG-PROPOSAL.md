@@ -44,6 +44,22 @@ the helper leaves the target alive (the existing recorder disables debugger
 kill-on-exit). Launch mode's optional ReadyFile publishes identity atomically
 for play.ps1 before resuming. Logs and minidumps remain in the crash directory.
 
+Launch mode passes a private Unicode environment block with `_NO_DEBUG_HEAP=1`.
+Attaching before the loader runs otherwise enables Windows' debug heap (flags
+`0x70`), even though CreateProcess itself uses only CREATE_SUSPENDED. A hidden
+x86 allocation probe on 2026-10-16 took 47 ms normally, 6516 ms under the original
+early watchdog, and 47 ms with the debugger attached and debug heap disabled.
+The helper now preserves the normal heap behavior without losing early crash
+recording or changing the host environment. This fixes the reproduced heap
+overhead; Bruno's reported menu/audio glitches and splash freeze still require
+an in-game retest and must not be considered resolved by this stand-in result.
+
+`test_watch_launch.ps1 -WorkDirectory <fresh-directory>` checks the actual child
+heap flags, debugger attachment, Unicode environment inheritance, parent
+environment preservation on success/failure, normal exit and an immediate
+unhandled exception with a minidump. It builds a hidden x86 stand-in with the
+installed .NET Framework compiler; it never launches Rally or captures the desktop.
+
 Validation (owned stand-ins, no Rally):
 
 - Host lifecycle: identity refusal, duplicate refusal, helper termination leaves

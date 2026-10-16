@@ -34,10 +34,17 @@ def main(argv):
     run(link + ['-Wl,-e,_entry@0', o['sr3mods_exe.o']] + shared + ['-L', imp] + libs + ['-o', exe])
     run(link + ['-Wl,-e,_entry@0', o['livetest.o']] + shared + ['-L', imp] + libs + ['-o', os.path.join(out, 'livetest.exe')])
     print('sr3mods.dll: %d bytes, sr3mods.exe: %d bytes -> %s' % (os.path.getsize(dll), os.path.getsize(exe), out))
+    gate_obj = os.path.join(out, 'test_startup_gate.o'); gate_exe = os.path.join(out, 'test_startup_gate.exe')
+    run([GCC] + X86 + ['-I', HERE, '-c', os.path.join(HERE, 'test_startup_gate.c'), '-o', gate_obj])
+    run(link + ['-mwindows', '-Wl,-e,_gate_entry', gate_obj, '-L', imp, '-lkernel32', '-o', gate_exe])
+    run([os.path.abspath(gate_exe)])
+    print('Startup readiness: all 16 checks passed.')
     if '--no-lockstep' not in argv:                                     # the DLL must do exactly what sr3mods.ps1 does, or the build fails
         import lockstep, live_lockstep
         if lockstep.main(['--dll', dll]): raise SystemExit('lockstep: sr3mods.dll and sr3mods.ps1 differ; nothing is to be installed')
         if live_lockstep.main(['--exe', os.path.join(out, 'livetest.exe')]): raise SystemExit('live lockstep: pc_live.c and sr3mods.ps1 differ; nothing is to be installed')
+        run([sys.executable, os.path.join(HERE, 'test_delayed_card.py'), '--out', os.path.abspath(out)])
+        print('Delayed Hornet: five-second acknowledgment binds video; C/PS traces match.')
     return dll
 if __name__ == '__main__':
     main(sys.argv[1:])

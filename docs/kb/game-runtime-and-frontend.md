@@ -7,6 +7,49 @@ everything below is done by patching the running process (`SR3CamLab\sr3mods.ps1
 Status tags: CONFIRMED = seen working in the game by the user; STATIC = read from disassembly,
 not yet exercised; OFFLINE = only run against the emulator / fake-game tests.
 
+## Standalone startup and video fixes (2026-10-16)
+
+CONFIRMED: Bruno reported the combined standalone candidate fixed the long startup,
+corrupted menu video, stutter and intermittent input symptoms after testing the normal
+watchdog-stage launcher with watchdog enabled. Earlier isolated successes were not enough
+to establish a fix; this confirmation follows the native boot-completion gate below.
+
+- OFFLINE: early debugger attachment to the suspended child activated Windows debug heap
+  flags 0x70. A hidden x86 heap probe took 6516 ms watched versus 47 ms normally.
+  `standalone/watch_process.cs` supplies `_NO_DEBUG_HEAP=1` only in the child's environment,
+  retaining early crash capture without changing the host environment. Ten launch checks
+  cover ordinary heap flags, debugger presence at entry, Unicode, normal exit, early exception
+  capture/minidump and host-environment preservation on success and failure.
+- STATIC + OFFLINE: the system-data pointer at 0x9EB81C does not mean boot has finished.
+  Native function 0x64D5E0 sets busy flag 0x9D6F7C at 0x64D602, calls video loading at
+  0x64D618 and clears the flag at 0x64D718 after further initialization. Video handles
+  are published before Pause and initial texture work. `tools/sr3mods/startup_gate.h`
+  requires the busy flag clear before and after checking all 18 distinct valid video
+  handles and their graph/control pointers. Failed reads or active boot delay camera
+  installation (which suspends other threads); a 180-second timeout leaves the game
+  unpatched. No COM calls or extra hook run on the waiting worker. Sixteen readiness
+  checks include graphs available while boot remains busy and busy changing mid-scan.
+- OFFLINE + CONFIRMED combined run: Hornet video loading exceeded the old three-second
+  wait. A still-pending request was mistaken for permanent failure, leaving a static card.
+  C and PowerShell now wait up to 30 seconds while the game is alive, then keep pending
+  requests retryable. `test_delayed_card.py` delays acknowledgment five seconds in fake
+  memory and requires video binding and identical C/PowerShell traces. It runs with the
+  normal plugin build alongside 17 camera and 11 live parity scenarios.
+- CONFIRMED in-game: the standalone runtime honors `SetCursor(NULL)` and hides the cursor
+  over the active game client; deactivation restores the arrow. Explicit Alt-Tab testing
+  remains outstanding.
+
+Successful run PID24080 released the gate after 4813 ms, bound Hornet video and reached
+Desert4 races with Hornet and ST205. One controller disconnect/reopen remains in that log;
+do not infer that all disconnects were eliminated or their hardware cause established.
+The SRC handling-profile steering issue is a separate outstanding report.
+
+Tested plugin SHA256: `0935A6E2934138D1CD81B5CEC054C3DCDDA08971209A6188427A81FACB100A20`.
+Tested runtime SHA256: `FC737EB57F33D541899A8631FF9A4E6819E29864CB118E86265D3348C30C0E23`.
+Local evidence: `SR3-investigation/startup-stutter-20261016/FINDINGS.md` and
+`boot-completion-user-run/` (outside the repository). Installed tested binaries stay
+unchanged during source integration; these hashes describe the tested candidate.
+
 ## Tracks: how the game names and finds them
 
 - Six track folder names are hard-coded in the exe (15+ compare sites): Tropical4, Canyon4,

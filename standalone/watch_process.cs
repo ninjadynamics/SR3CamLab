@@ -1,6 +1,8 @@
 // Launch-only support for watch.ps1. The recorder itself remains watchdog.cs.
 using System;
 using System.ComponentModel;
+using System.Collections;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 public sealed class Sr3WatchProcess : IDisposable {
@@ -28,8 +30,22 @@ public sealed class Sr3WatchProcess : IDisposable {
     }
     public Sr3WatchProcess(string exe) {
         Startup startup = new Startup(); startup.cb = Marshal.SizeOf(typeof(Startup));
-        if (!CreateProcess(exe,new StringBuilder("\""+exe+"\""),IntPtr.Zero,IntPtr.Zero,false,4,IntPtr.Zero,
-                           System.IO.Path.GetDirectoryName(exe),ref startup,out info)) throw new Win32Exception();
+        // Attaching while the initial thread is suspended makes the Windows
+        // loader enable the debug heap. Its allocation checks severely slow
+        // allocation-heavy startup. Keep the debugger, but use the ordinary heap.
+        // Build a child-only environment; never change the host's environment.
+        var variables = new SortedDictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+        foreach (DictionaryEntry item in Environment.GetEnvironmentVariables())
+            variables[(string)item.Key] = (string)item.Value;
+        variables["_NO_DEBUG_HEAP"] = "1";
+        var block = new StringBuilder();
+        foreach (var item in variables) block.Append(item.Key).Append('=').Append(item.Value).Append('\0');
+        block.Append('\0');
+        IntPtr environment = Marshal.StringToHGlobalUni(block.ToString());
+        try {
+            if (!CreateProcess(exe,new StringBuilder("\""+exe+"\""),IntPtr.Zero,IntPtr.Zero,false,4 | 0x400,environment,
+                               System.IO.Path.GetDirectoryName(exe),ref startup,out info)) throw new Win32Exception();
+        } finally { Marshal.FreeHGlobal(environment); }
         long created,exited,kernel,user;
         if (!GetProcessTimes(info.process,out created,out exited,out kernel,out user)) { Dispose(); throw new Win32Exception(); }
         CreationTime=created;

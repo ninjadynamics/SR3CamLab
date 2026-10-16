@@ -206,7 +206,8 @@ static int open_car_cards(ll base) {                    /* 0 = $false (the game'
             while (obj >= 18 && gi(0xAD2F90 + 0x16C * (ll)obj + 4)) obj--;
             if (obj < 18) { pc_logf("Car cards: no spare video object for %s; the card keeps its stand-in.", EXTRA_CARDS[i].file); return 1; }
             wstr(base + 0x2500, path, 256); wi(base + 0x2274, base + 0x2500); wi(base + 0x2270, obj + 1);
-            for (t = 0; t < 300 && gi(base + 0x2270) != 0; t++) G->sleep(G, 10);
+            for (t = 0; t < 3000 && G->alive(G) && gi(base + 0x2270) != 0; t++) G->sleep(G, 10);
+            if (gi(base + 0x2270) != 0) { pc_logf("Car cards: video request still pending; retrying when menus open."); return 0; }
             if (!gi(0xAD2F90 + 0x16C * (ll)obj + 4)) { pc_logf("Car cards: the game didn't open %s; the card keeps its stand-in.", path); continue; }
             have = obj; obj--;
         }

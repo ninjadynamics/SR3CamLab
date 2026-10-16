@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "patchcore.h"
+#include "startup_gate.h"
 #include "watch_launcher.h"
 
 #define EXPORT __declspec(dllexport)
@@ -78,6 +79,15 @@ static DWORD WINAPI worker(LPVOID p) {
         Sleep(50);
     }
     pc_logf("Game data loaded after %u s.", (unsigned)((GetTickCount() - t0) / 1000));
+    pc_logf("Waiting for native startup completion before enabling mods.");
+    while (!startup_videos_ready(&inside)) {
+        if (GetTickCount() - t0 > 180000) {
+            pc_logf("Native startup not complete after 180 s; nothing patched.");
+            return 0;
+        }
+        Sleep(50);
+    }
+    pc_logf("Native startup complete after %u ms; enabling mods.", (unsigned)(GetTickCount() - t0));
     if (!pc_install_cameras(&inside, &cfg)) return 0;
     {   /* the watchdog with the game (patches.watchdog, on by default); the launcher's word wins: SR3LAB_WATCHDOG=0 (launch.exe
            --no-watchdog, play.ps1 -NoWatchdog) leaves it off, =1 (a watched launch) on, its host refusing a second one.
