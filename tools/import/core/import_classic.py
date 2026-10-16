@@ -818,6 +818,10 @@ SAFARI_T = (0xe56e4a5c, 0x0558e395); SAFARI_G = (0x9cbfa41a, 0x6ec69183)
 
 def main(game, crs, variant):
     assert variant in ('classic', 'mixed', 'allsr3')
+    # Face records stay live through the build; avoid repeatedly scanning them.
+    # Keep cyclic collection enabled, with thresholds measured on Mountain R4.
+    import gc
+    gc.set_threshold(20000, 20, 100)
     for d_ in (OUT, TMP, os.path.join(WORK, 'previews'), os.path.join(WORK, 'retex'), os.path.join(WORK, 'classic_tex')): os.makedirs(d_, exist_ok=True)      # a new data folder has none of them
     cfg = course.use(game, crs); name = 'step%02d_%s_%s_desert4' % (cfg['steps'][variant], cfg['name'], variant)
     # several builds side by side (one process each): --name <output folder under out\> and --set key=<json> (repeatable) give a build its own
