@@ -244,7 +244,18 @@ def sc_alt():                                                                   
     g.reinstall = dict(profiles_file=tmp, profile='Chase Far'); return g
 DECISIONS = ('L Camera patch was already applied', 'L An older build of the camera patch', 'L Unexpected bytes at ')   # the install's log lines both word alike
 
-SCENARIOS = [sc_switch, sc_start, sc_handling, sc_late, sc_odd, sc_retune, sc_reblend, sc_newer, sc_older, sc_foreign, sc_alt]
+def sc_srcport_old():
+    g = sc_handling(); g.name = 'srcport_old'; g.frames = g.frames[:2]
+    g.put(0x678878, i32(0x39000000)); g.put(0x390023E0, i32(0x50435253))
+    return g
+
+def sc_srcport_foreign():
+    g = sc_handling(); g.name = 'srcport_foreign'; g.frames = g.frames[:2]
+    g.put(0x678878, i32(0x39000000)); g.put(0x390023E0, i32(0x12345678))
+    return g
+
+SCENARIOS = [sc_switch, sc_start, sc_handling, sc_late, sc_odd, sc_retune, sc_reblend, sc_newer, sc_older, sc_foreign, sc_alt,
+             sc_srcport_old, sc_srcport_foreign]
 
 def lay_out(g, root):
     game, mod = os.path.join(root, 'game'), os.path.join(root, 'mod')
@@ -278,6 +289,12 @@ def main(argv):
         if not A: A = ['(no trace from sr3mods.ps1: %s)' % (pa.stdout + pa.stderr).strip()[-800:]]
         if not B: B = ['(no trace from livetest.exe, exit %d: %s)' % (pb.returncode, (pb.stdout + pb.stderr).strip()[-400:])]
         diff = []
+        for label, trace in (('ps1', A), ('c', B)):
+            writes = [s for s in trace if s.startswith('W 678878 ')]
+            expected = ['W 678878 0 20c84500'] if g.name == 'srcport_old' else []
+            if writes != expected: diff.append('%s: unexpected SRC vehicle-step writes %r' % (label, writes))
+            if any('SRC turning: in (' in s or 'SRC turning: already in' in s for s in trace):
+                diff.append('%s: disabled SRC port was installed or retained' % label)
         if A != B:
             k = next((i for i in range(min(len(A), len(B))) if A[i] != B[i]), min(len(A), len(B)))
             fr = next((A[i] for i in range(k, -1, -1) if i < len(A) and A[i].startswith('F ')), 'F 0')

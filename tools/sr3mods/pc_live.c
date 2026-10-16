@@ -393,7 +393,10 @@ static void set_handling(void) {
     CARPATH_CAVE = 0; RACE_FLAVOR[0] = 0;
     if (!have) have = new_handling_live();             /* nothing asked for, but a flavor is built: every car on SEGA's, ready for the keys */
     remove_steer_hook();
-    if (have && flv("src")) install_src_port(); else remove_src_port();
+    /* SRC turning port (option B, a669d4d) disabled after Bruno reported no
+       steering in-game (2026-10-16). SRC files use SR3's own turning chain.
+       Remove an earlier session's hook too; game retest remains necessary. */
+    remove_src_port();
     site_ok = rd(CARPATH_SITE, site, 5);
     hooked = site_ok && site[0] == 0xE8;                /* ours already (PLAY.bat run again on a running game) */
     if (!have) {                                        /* nothing asked for: SEGA's paths (also undoes an earlier run) */

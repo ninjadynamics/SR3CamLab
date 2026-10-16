@@ -20,7 +20,7 @@
                       "dirt": ["DryMud", "DampMud", "GrassySwamp"],
                       "sand": ["Sand"]},
            "keep_sr3_ratio": ["Cobbles", "WoodenBridge", "WetTarmac", "WetMud", "Ice", "SnowTarmac", "SnowVolcanicAsh", "10mmSnow", "20mmSnow", "ShallowSnow", "SuperSlush"]},
-    "steering": "SEGA Rally 3's own steering chain for the wheels; the TURNING (yaw rate, side velocity) of a car on these files is SEGA Rally Championship's own, set after every vehicle step by the launcher's SRC port (tools/srcport.c, kb 29 section 12), which recognises these files by their Tyre_Road tyre. Force model back to SR3's PowerslideSteer (2): the port replaces the model's turning, and model 1 (SegaRally) left the cars without turning (owner, 2026-10-15)",
+    "steering": "SEGA Rally 3's own steering and turning chain with SRC engine/gears/grip files, force model 2 (PowerslideSteer). Automatic installation of the experimental SRC turning port (option B, a669d4d) is disabled after the owner's no-steering report on 2026-10-16; the removal candidate awaits game retest. Historical port details: kb 28 option B and kb 29 section 12. Model 1 (SegaRally) previously left the cars without turning (owner, 2026-10-15)",
   "calibration_targets": {"0_100_s": 1.2, "0_200_s_mountain": 5.2, "sustained_lat_g_tarmac": 2.70, "sustained_lat_g_gravel": 2.35,
                           "slip_deg_at_1g": 5.3, "slip_deg_above_1.6g": 9.6}
 }

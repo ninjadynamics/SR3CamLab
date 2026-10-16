@@ -232,7 +232,7 @@ The names (Standard, SegaRally, PowerslideSteer, AlwaysSteer) are SR3's own clas
 | added cars (Hornet) | the 's' at 0x6C6371, one flavor for all of them |
 | grip file | the 's' of "Effects" at 0x6C6176, when a flavor in use has one (one per race) |
 | steering | SEGA's own for every handling. The STEER hook of 2026-10-14 / 15 (0x5CFF32 `call 0x448C00` -> a routine of ours: steering return, then 1:1, then a steering rate) is gone; Remove-SteerHook writes SEGA's call back when a game still holds it (PLAY.bat run again on a game an earlier launcher had hooked) |
-| turning of the SRC handling | CVehicle vtable 0x678864 slot 5, the entry 0x678878 (= 0x45C820, the vehicle step) -> SRCPORT (tools\build_srcport.py from tools\srcport.c, about 9.5 KB plus a zero-filled log, relocated by Install-SrcPort): after each step, a car whose tyres stand on Tyre_Road records (the SRC files) gets SRC's yaw rate and side velocity (29_src_steering_code.md section 12). Installed by Set-Handling when the SRC flavor is built, taken out when it is not and by -Off. Log: "SRC turning: in (0x...)" |
+| turning of the SRC handling | SR3's original vehicle step 0x45C820 at vtable entry 0x678878. Experimental SRCPORT installation is disabled after the 2026-10-16 no-steering report; Set-Handling removes an earlier recognized port while preserving unknown hooks. Historical port: tools/srcport.c, kb 29 section 12; removal candidate awaits game retest. |
 All but the turning take effect when the next race loads. A missing folder or car file: that car keeps SEGA's file (Log line).
 The turning acts at once on any car that loaded the SRC files.
 
@@ -308,6 +308,15 @@ the SRC option (key 2)". C = kb 29's cheap experiment: SR3's own tyre force mode
 - Not yet driven in game.
 
 ### SRC's turning from SRC's code, in SR3 (2026-10-15, "option B")
+**2026-10-16 update:** automatic installation of this port is disabled in both C and
+PowerShell. Bruno reported that profile 2 SRC could not turn the wheels; the session log
+confirmed the port was active. Claude checked the installed SRC car files against a fresh
+build: all ten retained force model 2 and the grip file matched. The next candidate removes
+the port (including an earlier launcher's hook), preserving the SRC files and SR3's own
+turning chain. This isolates the unvalidated port; a successful game retest is still needed
+to establish that it caused the failure. The implementation and historical offline evidence
+below remain for investigation, but no longer describe the default launcher behavior.
+
 The owner: "I still feel this guessing numbers game isn't the way to go". So after every SR3 vehicle step, the player's car
 on the SRC files gets its yaw rate and side velocity from SRC's own chain (29_src_steering_code.md sections 2-8). That chain
 runs on SR3's speed, surfaces and suspension. SR3 keeps the speed along the car (the SRC files' engine and gears, SR3's

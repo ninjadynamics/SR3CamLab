@@ -1570,7 +1570,9 @@ function Set-Handling($game) {
     $h = [Sr3Mem]::Open($game.Id)
     try {
         Remove-SteerHook $h
-        if ($cfg -and $cfg.Flavors.ContainsKey('src')) { Install-SrcPort $h } else { Remove-SrcPort $h }     # SRC's turning goes with the SRC files
+        # SRC turning port (option B, a669d4d) disabled after Bruno reported no steering in-game (2026-10-16).
+        # SRC files use SR3's own turning chain; remove an earlier session's hook too. Game retest remains necessary.
+        Remove-SrcPort $h
         $site = [Sr3Mem]::Read($h, $CarPathSite, 5)
         $hooked = $site -and $site[0] -eq 0xE8                       # ours already (PLAY.bat run again on a running game)
         if (-not $cfg) {                                              # nothing asked for: SEGA's paths (also undoes an earlier run)
