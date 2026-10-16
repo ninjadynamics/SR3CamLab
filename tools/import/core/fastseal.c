@@ -68,7 +68,47 @@ static void msort(i64 *a, i64 n, cmp_t cmp, const void *ctx)
     }
     free(t);
 }
-static int cmp12(i64 a, i64 b, const void *ctx) { const unsigned char *P = (const unsigned char *)ctx; return memcmp(P + 12 * a, P + 12 * b, 12); }
+/* LSD radix sort of n unsigned keys, 11 bits a pass, as many passes as the largest key needs (2026-10-16: the edges as one key each
+   instead of msort with a comparator over index pairs; the sorted keys are the same either way) */
+static void rsort_u64(unsigned long long *k, i64 n)
+{
+    unsigned long long mx = 0, *t = (unsigned long long *)malloc(sizeof(unsigned long long) * (n > 0 ? n : 1)), *a = k, *b = t;
+    for (i64 i = 0; i < n; i++) if (k[i] > mx) mx = k[i];
+    for (int sh = 0; sh < 64 && (mx >> sh); sh += 11) {
+        i64 c[2049]; memset(c, 0, sizeof c);
+        for (i64 i = 0; i < n; i++) c[((a[i] >> sh) & 2047) + 1]++;
+        for (int d = 0; d < 2048; d++) c[d + 1] += c[d];
+        for (i64 i = 0; i < n; i++) b[c[(a[i] >> sh) & 2047]++] = a[i];
+        unsigned long long *w = a; a = b; b = w;
+    }
+    if (a != k) memcpy(k, a, sizeof(unsigned long long) * n);
+    free(t);
+}
+/* the n 12-byte rows at B in memcmp order, equal rows in their input order -> o (2026-10-16: was msort with memcmp; numpy's stable sort
+   of void rows): each row as two numbers, its bytes 0..7 and 8..11 read most significant first, so that comparing them compares the
+   bytes as memcmp does; then a stable LSD radix sort, 16 bits a pass, the low number first */
+typedef struct { unsigned long long hi; unsigned int lo, pad; i64 i; } rk_t;
+static void rsort_rows12(const unsigned char *B, i64 n, i64 *o)
+{
+    rk_t *a = (rk_t *)malloc(sizeof(rk_t) * (n > 0 ? n : 1)), *b = (rk_t *)malloc(sizeof(rk_t) * (n > 0 ? n : 1)); i64 *c = (i64 *)malloc(sizeof(i64) * 65537);
+    for (i64 i = 0; i < n; i++) {
+        const unsigned char *r = B + 12 * i; unsigned long long h = 0; unsigned int l = 0;
+        for (int q = 0; q < 8; q++) h = h << 8 | r[q];
+        for (int q = 8; q < 12; q++) l = l << 8 | r[q];
+        a[i].hi = h; a[i].lo = l; a[i].pad = 0; a[i].i = i;
+    }
+    for (int pass = 0; pass < 6; pass++) {
+        #define RDIG(x) (pass < 2 ? ((x).lo >> (16 * pass)) & 0xffff : (unsigned int)(((x).hi >> (16 * (pass - 2))) & 0xffff))
+        memset(c, 0, sizeof(i64) * 65537);
+        for (i64 i = 0; i < n; i++) c[RDIG(a[i]) + 1]++;
+        for (int d = 0; d < 65536; d++) c[d + 1] += c[d];
+        for (i64 i = 0; i < n; i++) b[c[RDIG(a[i])]++] = a[i];
+        rk_t *w = a; a = b; b = w;
+        #undef RDIG
+    }
+    for (i64 k = 0; k < n; k++) o[k] = a[k].i;
+    free(a); free(b); free(c);
+}
 /* allp = <the corners' float32 x, y, z> + np.float32(0.0) (a -0.0 becomes 0.0, here in place);
    np.unique(<its 12-byte rows as void>, return_index, return_inverse, return_counts): numpy sorts void rows by their bytes (memcmp),
    stable, so `first` is the first row of each place in the input order. -> the number of places */
@@ -76,8 +116,7 @@ EXPORT i64 seal_unique(i64 n, float *P, i64 *inv, i64 *first, i64 *cnt)
 {
     for (i64 i = 0; i < 3 * n; i++) P[i] = P[i] + 0.0f;
     i64 *o = (i64 *)malloc(sizeof(i64) * (n > 0 ? n : 1)), nu = 0;
-    for (i64 i = 0; i < n; i++) o[i] = i;
-    msort(o, n, cmp12, P);
+    rsort_rows12((const unsigned char *)P, n, o);
     for (i64 k = 0; k < n; k++) {
         if (k == 0 || memcmp(P + 3 * o[k], P + 3 * o[k - 1], 12)) { first[nu] = o[k]; cnt[nu] = 0; nu++; }
         inv[o[k]] = nu - 1; cnt[nu - 1]++;
@@ -101,14 +140,17 @@ EXPORT void seal_clusters(i64 nu, const double *U, double tol, i64 *lab)
     for (i64 i = 0; i < 3 * nu; i++) K[i] = (i64)floor(U[i] / tol);
     for (i64 i = 0; i < nu; i++) { o[i] = i; lab[i] = i; }
     kctx cx = { K }; msort(o, nu, cmpk, &cx);
-    static const int OFF[14][3] = { {0,0,0}, {0,0,1}, {0,1,-1}, {0,1,0}, {0,1,1}, {1,-1,-1}, {1,-1,0}, {1,-1,1}, {1,0,-1}, {1,0,0}, {1,0,1}, {1,1,-1}, {1,1,0}, {1,1,1} };
+    /* the 14 cells {0,0,0} {0,0,1} | {0,1,-1..1} | {1,-1,-1..1} | {1,0,-1..1} | {1,1,-1..1} in five runs of o: cells that differ only in
+       their last number by one follow each other in the sorted order, so each group is one search and one run, the cells in the order the
+       14 searches took them (2026-10-16) */
+    static const int G5[5][3] = { {0,0,0}, {0,1,-1}, {1,-1,-1}, {1,0,-1}, {1,1,-1} };
     for (i64 i = 0; i < nu; i++) {
-        for (int q = 0; q < 14; q++) {
-            i64 tg[3] = { K[3 * i] + OFF[q][0], K[3 * i + 1] + OFF[q][1], K[3 * i + 2] + OFF[q][2] }, lo = 0, hi = nu;
+        for (int q = 0; q < 5; q++) {
+            i64 tg[3] = { K[3 * i] + G5[q][0], K[3 * i + 1] + G5[q][1], K[3 * i + 2] + G5[q][2] }, zmax = K[3 * i + 2] + 1, lo = 0, hi = nu;
             while (lo < hi) { i64 m = (lo + hi) / 2, *k = K + 3 * o[m]; int c = (k[0] != tg[0]) ? (k[0] < tg[0] ? -1 : 1) : (k[1] != tg[1]) ? (k[1] < tg[1] ? -1 : 1) : (k[2] != tg[2]) ? (k[2] < tg[2] ? -1 : 1) : 0; if (c < 0) lo = m + 1; else hi = m; }
             for (i64 s = lo; s < nu; s++) {
                 i64 j = o[s], *k = K + 3 * j;
-                if (k[0] != tg[0] || k[1] != tg[1] || k[2] != tg[2]) break;
+                if (k[0] != tg[0] || k[1] != tg[1] || k[2] > zmax) break;
                 if (j == i) continue;
                 double dx = U[3 * i] - U[3 * j], dy = U[3 * i + 1] - U[3 * j + 1], dz = U[3 * i + 2] - U[3 * j + 2];
                 if ((dx * dx + dy * dy) + dz * dz < t2) { i64 a = findp(lab, i), b = findp(lab, j); if (a != b) { if (a < b) lab[b] = a; else lab[a] = b; } }
@@ -129,7 +171,6 @@ EXPORT i64 seal_reps(i64 nu, const i64 *lab, const i64 *cnt, i64 *rep, i64 nv, c
     for (i64 v = 0; v < nv; v++) { cid[v] = rep[inv[v]]; moved += cid[v] != inv[v]; }
     free(best); return moved;
 }
-static int cmpe(i64 a, i64 b, const void *ctx) { const i64 *E = (const i64 *)ctx; return E[2 * a] != E[2 * b] ? (E[2 * a] < E[2 * b] ? -1 : 1) : E[2 * a + 1] != E[2 * b + 1] ? (E[2 * a + 1] < E[2 * b + 1] ? -1 : 1) : 0; }
 static int cmpx(i64 a, i64 b, const void *ctx) { const double *U = (const double *)ctx; return U[3 * a] < U[3 * b] ? -1 : (U[3 * a] > U[3 * b] ? 1 : 0); }
 /* The meshes' triangles in place numbers: per mesh the quads of its strip, s = np.concatenate([idx, [0, 0]]).reshape(-1, 6)[:, :4],
    triangles c[s[:, [0, 1, 2]]] and c[s[:, [2, 1, 3]]] (c = the mesh's cid), those with two equal corners dropped. Edges: each side
@@ -156,13 +197,13 @@ EXPORT i64 seal_joints(i64 nu, const double *U, double tol, i64 nm, const unsign
             }
     }
     nt = k;
-    i64 *E0 = (i64 *)malloc(sizeof(i64) * 6 * (nt > 0 ? nt : 1)), *eo = (i64 *)malloc(sizeof(i64) * 3 * (nt > 0 ? nt : 1));
+    unsigned long long *EK = (unsigned long long *)malloc(sizeof(unsigned long long) * 3 * (nt > 0 ? nt : 1));      /* each side as lo * nu + hi: sorted, the (lo, hi) order */
     for (i64 t = 0; t < nt; t++)
-        for (int s = 0; s < 3; s++) { i64 a = T[3 * t + s], b = T[3 * t + (s + 1) % 3]; E0[2 * (3 * t + s)] = a < b ? a : b; E0[2 * (3 * t + s) + 1] = a < b ? b : a; eo[3 * t + s] = 3 * t + s; }
-    msort(eo, 3 * nt, cmpe, E0);
+        for (int s = 0; s < 3; s++) { i64 a = T[3 * t + s], b = T[3 * t + (s + 1) % 3]; EK[3 * t + s] = (unsigned long long)(a < b ? a : b) * (unsigned long long)nu + (unsigned long long)(a < b ? b : a); }
+    rsort_u64(EK, 3 * nt);
     i64 ne = 0; g_E = (i64 *)malloc(sizeof(i64) * 6 * (nt > 0 ? nt : 1));
-    for (i64 q = 0; q < 3 * nt; q++) { i64 *e = E0 + 2 * eo[q]; if (!ne || e[0] != g_E[2 * ne - 2] || e[1] != g_E[2 * ne - 1]) { g_E[2 * ne] = e[0]; g_E[2 * ne + 1] = e[1]; ne++; } }
-    free(E0); free(eo);
+    for (i64 q = 0; q < 3 * nt; q++) if (!q || EK[q] != EK[q - 1]) { g_E[2 * ne] = (i64)(EK[q] / (unsigned long long)nu); g_E[2 * ne + 1] = (i64)(EK[q] % (unsigned long long)nu); ne++; }
+    free(EK);
     unsigned char *isu = (unsigned char *)calloc(nu > 0 ? nu : 1, 1); i64 nx = 0;
     for (i64 q = 0; q < 3 * nt; q++) isu[T[q]] = 1;
     i64 *xo = (i64 *)malloc(sizeof(i64) * (nu > 0 ? nu : 1));
