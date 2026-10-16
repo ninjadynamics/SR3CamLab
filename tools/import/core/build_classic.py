@@ -1138,8 +1138,9 @@ def _smooth_into(nv_, P_):
          q_ = SMOOTH_N.get(rounded corner); if q_ is not None: nv_[k_] = q_ if float(q_ @ nv_[k_]) >= 0.0 else -q_
     The keys: SMOOTH_N's corners and the vertices' are np.round(., 2) numbers, equal exactly when rint(x * 100) is (one integer
     triple, 21 bits each, in one int64; outside that range the loop as it was). q_ @ nv_[k_] is OpenBLAS's ddot of two 3-vectors,
-    whose order depends on where the second one lies (npexact.ddot): row k of the fresh (n, 3) array nv_ is 16-byte aligned for even k,
-    (q0 n0 + q2 n2) + q1 n1, and 8 bytes off for odd k, (q0 n0 + q1 n1) + q2 n2; the test >= 0 does not see the sign of a zero.
+    whose order depends on where the second one lies (npexact.ddot): a row 16-byte aligned, (q0 n0 + q2 n2) + q1 n1, a row 8 bytes off,
+    (q0 n0 + q1 n1) + q2 n2 (taken from each row's address, as fastbuild.apply_smooth does: for a fresh (n, 3) array the odd rows);
+    the test >= 0 does not see the sign of a zero.
     Every vertex reads and writes only its own row, so all of them at once is the loop."""
     if _SMOOTH_IX[0] is not SMOOTH_N or _SMOOTH_IX[2] != len(SMOOTH_N):
         ks = list(SMOOTH_N.keys()); K = np.rint(np.array(ks, np.float64).reshape(-1, 3) * 100.0)
@@ -1160,7 +1161,7 @@ def _smooth_into(nv_, P_):
     Vi = V.astype(np.int64); code = ((Vi[:, 0] + (1 << 20)) << 42) | ((Vi[:, 1] + (1 << 20)) << 21) | (Vi[:, 2] + (1 << 20)); cs, Qs = ix
     j = np.minimum(np.searchsorted(cs, code), len(cs) - 1); hit = cs[j] == code
     if not hit.any(): return
-    r = np.nonzero(hit)[0]; q = Qs[j[r]]; n_ = nv_[r]; odd = (r & 1) == 1
+    r = np.nonzero(hit)[0]; q = Qs[j[r]]; n_ = nv_[r]; odd = ((nv_.ctypes.data + r * nv_.strides[0]) % 16) != 0      # (where each row lies: 8 bytes off 16 or not)
     d = np.where(odd, (q[:, 0] * n_[:, 0] + q[:, 1] * n_[:, 1]) + q[:, 2] * n_[:, 2], (q[:, 0] * n_[:, 0] + q[:, 2] * n_[:, 2]) + q[:, 1] * n_[:, 1])
     nv_[r] = np.where((d >= 0.0)[:, None], q, -q)
 
