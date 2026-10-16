@@ -448,7 +448,58 @@ def normalise_uv(faces, factor=8.0):
     """1995 polygons whose tile repeats absurdly often (Mountain: two tree-line boards with u 1..27 over 9 and 14 m = the wall
     of green streaks in the forest, and the road polygon beside them with 28 repeats over 5 m = the bands across the road;
     all in object 1291) get the usual density of their tile: per tile the median of repeats per metre is taken over all its
-    faces, and a face more than `factor` times denser on an axis is scaled back to that median about its lowest uv."""
+    faces, and a face more than `factor` times denser on an axis is scaled back to that median about its lowest uv.
+    (2026-10-16, kb 31: every polygon looked at on plain floats in numpy's orders - the box's np.linalg.norm as OpenBLAS's ddot adds,
+    np.sum as numpy's pairwise sum, the same world_area; a polygon that is changed, or holds a NaN or an odd shape, goes through the
+    numpy lines as before (_nuv_face); _old_normalise_uv is the numpy original)"""
+    import npexact
+    dens = collections.defaultdict(list); rec = []; odd = []
+    for fc in faces:
+        P = fc[2]; U = fc[3]
+        try:
+            xs = [float(q[0]) for q in P]; ys = [float(q[1]) for q in P]; zs = [float(q[2]) for q in P]; us = [float(u[0]) for u in U]; vs = [float(u[1]) for u in U]
+            ok = len(P) > 0 and all(len(q) == 3 for q in P) and all(len(u) == 2 for u in U) and not any(v != v for v in xs + ys + zs + us + vs)
+        except (TypeError, IndexError, ValueError): ok = False
+        if not ok: d = _nuv_rec(fc)
+        else:
+            dx = max(xs) - min(xs); dy = max(ys) - min(ys); dz = max(zs) - min(zs); size = math.sqrt((dx * dx + dz * dz) + dy * dy)      # np.linalg.norm(P.max(0) - P.min(0))
+            d = None if size < 0.5 or len(U) != len(P) else ((max(us) - min(us)) / size, (max(vs) - min(vs)) / size)                    # np.ptp(U, axis=0) / size
+        rec.append(d); odd.append(not ok)
+        if d is not None: dens[fc[0]].append(d)
+    med = {m: np.median(np.array(v), axis=0) for m, v in dens.items() if len(v) >= 5}; out = []; UV_FIXED[:] = []; UV_FLAT[:] = []; mm = {}
+    for fc, d, o_ in zip(faces, rec, odd):
+        m = med.get(fc[0])
+        if d is None or m is None: out.append(fc); continue
+        if o_: _nuv_face(fc, d, m, factor, out); continue
+        if fc[0] not in mm: mm[fc[0]] = max(float(np.mean(m)), 1e-3) ** 2
+        U = fc[3]; k = len(U); us = [float(u[0]) for u in U]; vs = [float(u[1]) for u in U]
+        ua = 0.5 * abs(npexact.pwsum([us[i] * vs[(i + 1) % k] - us[(i + 1) % k] * vs[i] for i in range(k)]))      # uv_area(U)
+        wa = world_area(fc[2]); change = ua < 1e-4 * mm[fc[0]] * wa and wa > 0.25
+        for ax, w_ in ((0, us), (1, vs)):
+            if change: break
+            change = m[ax] > 1e-6 and d[ax] > factor * m[ax] and max(w_) - min(w_) > 2.0
+        if change: _nuv_face(fc, d, m, factor, out)
+        else: out.append(fc)
+    if UV_FIXED: log('       1995 uv repeats far beyond the usual for the tile / uv on a line: %d polygons given the usual density of their tile (%d of them had their uv on a line): %s' % (len(UV_FIXED), len(UV_FLAT), UV_FIXED[:6]))
+    return out
+def _nuv_rec(fc):
+    """(normalise_uv's density of one polygon, the numpy lines)"""
+    P = np.asarray(fc[2], float); U = np.asarray(fc[3], float); size = float(np.linalg.norm(P.max(0) - P.min(0)))
+    return None if size < 0.5 or len(U) != len(P) else np.ptp(U, axis=0) / size
+def _nuv_face(fc, d, m, factor, out):
+    """(normalise_uv for one polygon with a density and its tile's median: the numpy lines)"""
+    U = np.asarray(fc[3], float).copy(); ch = False; Pw = np.asarray(fc[2], float)
+    if uv_area(U) < 1e-4 * max(float(np.mean(m)), 1e-3) ** 2 * world_area(Pw) and world_area(Pw) > 0.25:      # the uv of a real polygon lie on a line (a smear of one texel row): mapped flat in its plane at the tile's usual density
+        nrm = np.zeros(3)
+        for i_ in range(len(Pw)): nrm += np.cross(Pw[i_], Pw[(i_ + 1) % len(Pw)])
+        nrm /= max(np.linalg.norm(nrm), 1e-9); up = np.array([0.0, 1.0, 0.0]) if abs(nrm[1]) < 0.9 else np.array([0.0, 0.0, 1.0]); e1 = np.cross(up, nrm); e1 /= np.linalg.norm(e1); e2 = np.cross(nrm, e1); dn = float(np.mean(m)) * 1.4
+        U = np.stack([U[:, 0].min() + ((Pw - Pw[0]) @ e1 - ((Pw - Pw[0]) @ e1).min()) * dn, U[:, 1].min() + ((Pw - Pw[0]) @ e2 - ((Pw - Pw[0]) @ e2).min()) * dn], 1); ch = True; UV_FLAT.append(fc[0])
+    for ax in (0, 1):
+        if m[ax] > 1e-6 and d[ax] > factor * m[ax] and np.ptp(U[:, ax]) > 2.0: lo = U[:, ax].min(); U[:, ax] = lo + (U[:, ax] - lo) * (m[ax] / d[ax]); ch = True
+    if ch: UV_FIXED.append((fc[0], fc[1], tuple(np.round(np.mean(fc[2], axis=0), 1)))); out.append((fc[0], fc[1], fc[2], [tuple(map(float, u)) for u in U]))
+    else: out.append(fc)
+def _old_normalise_uv(faces, factor=8.0):
+    """(the numpy original of normalise_uv: the reference)"""
     dens = collections.defaultdict(list); rec = []
     for fc in faces:
         P = np.asarray(fc[2], float); U = np.asarray(fc[3], float); size = float(np.linalg.norm(P.max(0) - P.min(0)))
@@ -536,6 +587,61 @@ def load_visual(rd, extra=None):
 PAIRS = set()                                                          # id() of the front/back pair faces of the last load_visual
 SINGLE = '~s'                                                          # end of the section name of a cut-out face that is drawn single-sided (split_pairs)
 def split_pairs(faces):
+    """The 1995 model lists 2819 polygons twice on the same corners with OPPOSITE winding and the same tile: a front and
+    a back (the hardware culls back faces, so a board or wall meant to be seen from both sides is two polygons, each with
+    its own uv so text reads right from its side). These stay single-sided, each 5 mm off the shared plane on its own
+    side, and are kept out of the overlap handling (which used to treat the back as a layer on the front).
+    -> (pairs, the other faces)
+    (2026-10-16, kb 31: the normals, their products and the uv differences on plain floats in numpy's orders - np.linalg.norm and np.dot of
+    fresh 3-vectors as OpenBLAS's ddot adds; the moved corners numpy float64 numbers as before; the corner keys as before (round of the
+    corners' own numbers); _old_split_pairs is the numpy original, used for a polygon of other shapes)"""
+    if any(len(fc[2]) < 3 or any(len(q) != 3 for q in fc[2]) or any(len(u) != 2 for u in fc[3]) for fc in faces): return _old_split_pairs(faces)
+    import npexact
+    def key(P): return frozenset((round(p[0], 2), round(p[1], 2), round(p[2], 2)) for p in P)
+    def normal(P):
+        a = P[0]; b = P[1]; c = P[2]; ux = float(b[0]) - float(a[0]); uy = float(b[1]) - float(a[1]); uz = float(b[2]) - float(a[2]); vx = float(c[0]) - float(a[0]); vy = float(c[1]) - float(a[1]); vz = float(c[2]) - float(a[2])
+        n = (uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx); l = math.sqrt(npexact.ddot(n, n, 0)); return (n[0] / l, n[1] / l, n[2] / l) if l > 1e-9 else None
+    by = collections.defaultdict(list)
+    for i, fc in enumerate(faces):
+        if not str(fc[0]).endswith('_t'): by[key(fc[2])].append(i)
+    paired = {}
+    for k, ii in by.items():
+        if len(ii) < 2: continue
+        n0 = normal(faces[ii[0]][2])
+        if n0 is None: continue
+        for j in ii[1:]:
+            n1 = normal(faces[j][2])
+            if n1 is not None and npexact.ddot(n0, n1, 0) < -0.9: paired[ii[0]] = n0; paired[j] = n1; break
+    f8 = np.float64
+    pairs = [(faces[i][0], faces[i][1], [(f8(float(p[0]) + 0.005 * n[0]), f8(float(p[1]) + 0.005 * n[1]), f8(float(p[2]) + 0.005 * n[2])) for p in faces[i][2]], faces[i][3]) for i, n in paired.items()]      # tuple(np.array(p) + 0.005 * n)
+    # CUT-OUT boards listed once per side with a DIFFERENT picture on each side: every 1995 tree is built of blades that run
+    # from the tree's axis outwards, the front face showing the left half of the trunk / crown tile (u 0.5 .. 0), the back face
+    # the right half (u 0.5 .. 1). Until 2026-10-07 the second face was dropped as "the same board again" and the first drawn
+    # two-sided: fat trunks showed only the sliver of their left half ("floating trees"), thin trees one stem instead of
+    # three, crowns one half mirrored. Both faces stay, each SINGLE-sided (section name + SINGLE: no offset is needed, the
+    # hardware culls the one facing away), and both go through the overlap handling on their own side.
+    byc = collections.defaultdict(list); single = set()
+    for i, fc in enumerate(faces):
+        if str(fc[0]).endswith('_t'): byc[(fc[0], key(fc[2]))].append(i)
+    def cornermap(fc): return {(round(p[0], 2), round(p[1], 2), round(p[2], 2)): (float(u[0]), float(u[1])) for p, u in zip(fc[2], fc[3])}
+    def far_uv(a, b):                                                  # np.abs(a - b).max() > 0.02 (a NaN difference: the max is NaN, not > 0.02)
+        d0 = abs(a[0] - b[0]); d1 = abs(a[1] - b[1]); return d0 == d0 and d1 == d1 and max(d0, d1) > 0.02
+    for k, ii in byc.items():
+        for a_ in range(len(ii) - 1):
+            for b_ in range(a_ + 1, len(ii)):
+                i, j = ii[a_], ii[b_]
+                if i in single and j in single: continue
+                n0, n1 = normal(faces[i][2]), normal(faces[j][2])
+                if n0 is None or n1 is None or npexact.ddot(n0, n1, 0) > -0.9: continue
+                ma, mb = cornermap(faces[i]), cornermap(faces[j])
+                if any(q in mb and far_uv(ma[q], mb[q]) for q in ma): single.add(i); single.add(j)
+    rest = [((fc[0], str(fc[1]) + SINGLE, fc[2], fc[3]) if i in single else fc) for i, fc in enumerate(faces) if i not in paired]
+    log('       1995 cut-out boards with a different picture on each side: %d faces kept single-sided (tree blades)' % len(single))
+    log('       1995 front/back pairs: %d polygons (kept single-sided, 5 mm apart); the other %d go on' % (len(pairs), len(rest)))
+    return pairs, rest
+
+def _old_split_pairs(faces):
+    """(the numpy original of split_pairs: the reference)"""
     """The 1995 model lists 2819 polygons twice on the same corners with OPPOSITE winding and the same tile: a front and
     a back (the hardware culls back faces, so a board or wall meant to be seen from both sides is two polygons, each with
     its own uv so text reads right from its side). These stay single-sided, each 5 mm off the shared plane on its own
@@ -639,7 +745,50 @@ def stack_layers(faces):
 def split_at_road(rd, faces):
     """variable-width road: every LYING classic face that reaches into the SR3 road and lies at road height is cut into
     pieces of at most 1 m; pieces whose centre is on the road go to DROPPED (they come back as decals draped on the SR3
-    road, classic_road), the others stay scenery. Upright faces are never touched."""
+    road, classic_road), the others stay scenery. Upright faces are never touched.
+    (2026-10-16, kb 31: the polygon tests on plain floats in numpy's orders, and the polygons' centres, the road faces'
+    pieces, their heights and their sides each asked in one call instead of one per face: every point and every face is
+    computed on its own there, so the answers are the same. _old_split_at_road is the numpy original; it is used when a
+    face does not have 3-number corners or a uv per corner, which split_faces would hand to its own old code.)"""
+    ok_ = (float, np.float64, int)
+    if any(len(fc[2]) < 3 or len(fc[3]) != len(fc[2]) or any(len(q) != 3 or type(q[0]) not in ok_ or type(q[1]) not in ok_ or type(q[2]) not in ok_ for q in fc[2]) or any(len(u) != 2 for u in fc[3]) for fc in faces): return _old_split_at_road(rd, faces)      # (numpy would compute such a face in float32, or split_faces hand it to its old code)
+    side = road_side(rd); hf = road_height(rd); keep = []; DROPPED.clear()
+    allv = np.array([p for fc in faces for p in fc[2]]); idx, c, lo, hi = side(allv); dh = (allv[:, 1] - hf(allv)).tolist(); c = c.tolist(); lo = lo.tolist(); hi = hi.tolist(); k = 0
+    what = []; cen = []                                                # per face: 0 kept, 1 a road face, 2 its centre decides
+    for fc in faces:
+        P = fc[2]; m = len(P); k0 = k; k += m
+        a = P[0]; b = P[1]; d = P[2]; ux = float(b[0]) - float(a[0]); uy = float(b[1]) - float(a[1]); uz = float(b[2]) - float(a[2]); vx = float(d[0]) - float(a[0]); vy = float(d[1]) - float(a[1]); vz = float(d[2]) - float(a[2])
+        nx = uy * vz - uz * vy; ny = uz * vx - ux * vz; nz = ux * vy - uy * vx; ln = math.sqrt((nx * nx + nz * nz) + ny * ny)      # np.cross(P[1] - P[0], P[2] - P[0]); np.linalg.norm of a fresh 3-vector (OpenBLAS ddot's order)
+        if not (ln > 0 and abs(ny / ln) > 0.5) or not all(abs(dh[j]) < 1.2 for j in range(k0, k)): what.append(0); continue
+        if any(c[j] > lo[j] and c[j] < hi[j] for j in range(k0, k)): what.append(1); continue
+        sx = float(P[0][0]); sy = float(P[0][1]); sz = float(P[0][2])
+        for q in P[1:]: sx += float(q[0]); sy += float(q[1]); sz += float(q[2])
+        what.append(2); cen.append((sx / m, sy / m, sz / m))          # P.mean(0): the rows added one after another, / m
+    if cen: _, c2, l2, h2 = side(np.array(cen)); oncen = iter([bool(l_ < c_ < h_) for c_, l_, h_ in zip(c2.tolist(), l2.tolist(), h2.tolist())])
+    cand = []
+    for fc, w in zip(faces, what):
+        if w == 1 or (w == 2 and next(oncen)): cand.append(fc)
+        else: keep.append(fc)
+    import layers
+    lay, nup, nst = layers.layer_of(cand, 'plan') if cand else ([], 0, 0)
+    fcs = [(fc[0], '%s#L%d' % (fc[1], L), fc[2], fc[3]) for fc, L in zip(cand, lay)]; ncut = len(fcs)      # (the layer travels with the pieces: classic_road lifts by it)
+    pcs = split_faces(fcs, 1.0) if fcs else []
+    if pcs:
+        ce = []
+        for q in pcs:                                                  # np.mean(q[2], axis=0): the four corners added one after another, / 4
+            Q = q[2]; ce.append(tuple((((Q[0][a_] + Q[1][a_]) + Q[2][a_]) + Q[3][a_]) / 4 for a_ in range(3)))
+        ce_ = np.array(ce, float); d2 = np.abs(ce_[:, 1] - hf(ce_)).tolist(); nq = len(pcs)
+        co = np.array([p_ for q in pcs for p_ in q[2]], float); _, c3, l3, h3 = side(np.vstack([co, ce_])); on = ((c3 > l3) & (c3 < h3)).tolist()
+        for i, q in enumerate(pcs):
+            t_ = on[4 * i] or on[4 * i + 1] or on[4 * i + 2] or on[4 * i + 3] or on[4 * nq + i]      # a piece that touches the road becomes a decal (no sliver of the SR3 texture at the edge)
+            (DROPPED if (t_ and d2[i] < 0.6) else keep).append(q)
+    log('       layers on the road (seen from above): %d of the %d road faces lie on another one (highest layer %d); decal lift 3 cm + 2 cm per layer' % (nup, len(cand), int(max(lay)) if len(lay) else 0))
+    log('       classic visual model: %d faces; %d lying faces reach into the road and were cut to 1 m pieces: %d pieces on the road (replaced by the SR3 road, returned as decals), %d faces and pieces kept, %d materials' %
+        (len(faces), ncut, len(DROPPED), len(keep), len({f[0] for f in keep})))
+    return keep
+
+def _old_split_at_road(rd, faces):
+    """(the numpy original of split_at_road: the reference)"""
     side = road_side(rd); hf = road_height(rd); keep = []; DROPPED.clear(); ncut = 0
     allv = np.array([p for fc in faces for p in fc[2]]); idx, c, lo, hi = side(allv); dh = allv[:, 1] - hf(allv); k = 0
     cand = []
