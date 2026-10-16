@@ -55,7 +55,9 @@ def save_scene(path, faces, rd, tile_pixels, sun, log=print):
     buffer protocol, their albedo is fastlm.c's lm_albedo (numpy's (rgb[keep] / 255.0) ** 2.2, .mean() and .mean(0), in its order), the
     triangles become float32 as np.array(T, np.float32) made them, the file is scenefile.save_arrays': the numpy version's file."""
     import fastlm, npyio, scenefile, roadsight; from lightmap1995 import _raw
-    T = array('f'); UV = array('f'); M = array('i'); mats = {}; alb = []; albc = []; holes = []; L = fastlm.lib(); out4 = array('d', [0.0] * 4)
+    TL = []; UL = []; ML = []; mats = {}; alb = []; albc = []; holes = []; L = fastlm.lib(); out4 = array('d', [0.0] * 4)
+    # (2026-10-16) the corners go into flat lists and become float32 in one array('f', ...) at the end: array('f') takes a number as
+    # float(number) rounded to float32, which is what the per-corner tuple(float(v) ...) + T.extend did
     for mat, sec, P, U in faces:
         if str(sec) == 'sea' or len(P) < 3: continue
         m0 = str(mat).split('|')[0]
@@ -77,18 +79,20 @@ def save_scene(path, faces, rd, tile_pixels, sun, log=print):
                 L.lm_albedo(npx, rbuf[0], kind, 3 if len(sh) == 3 else 1, kb[0], out4.buffer_info()[0]); a_ = out4[0]; c_ = (out4[1], out4[2], out4[3])
                 h_ = (hw_[0], hw_[1], hb) if hb is not None and 1 in hb else None
             mats[m0] = len(alb); alb.append(a_); albc.append(c_); holes.append(h_)
-        A = [tuple(float(v) for v in q) for q in P]; B = [tuple(float(v) for v in q) for q in U]
-        for tri in (((0, 1, 3), (1, 2, 3)) if len(P) == 4 else ((0, 1, 2),)):      # (four corners: split along 1 - 3 as the game draws them)
-            for i in tri: T.extend(A[i]); UV.extend(B[i])
-            M.append(mats[m0])
+        k = mats[m0]
+        if len(P) == 4:                                                # (four corners: split along 1 - 3 as the game draws them, (0, 1, 3) and (1, 2, 3))
+            a, b, c, d = P; ua, ub, uc, ud = U[0], U[1], U[2], U[3]; TL += (*a, *b, *d, *b, *c, *d); UL += (*ua, *ub, *ud, *ub, *uc, *ud); ML += (k, k)
+        else: TL += (*P[0], *P[1], *P[2]); UL += (*U[0], *U[1], *U[2]); ML.append(k)
     if rd is not None:                                                 # the road: two triangles per cell of its grid (np.stack([a, b, c], 2), then [a, c, d])
         R = roadsight.rows(rd['V']); ns = len(R); nc = len(R[0]); k = len(alb); alb.append(0.22); albc.append((0.2, 0.22, 0.24)); holes.append(None)
         for which in (0, 1):
             for i in range(ns):
+                Ri = R[i]; Rn = R[(i + 1) % ns]
                 for j in range(nc - 1):
-                    a_, b_, c_, d_ = R[i][j], R[i][j + 1], R[(i + 1) % ns][j + 1], R[(i + 1) % ns][j]
-                    for q in ((a_, b_, c_) if which == 0 else (a_, c_, d_)): T.extend(float(v) for v in q)
-        nr = 2 * ns * (nc - 1); UV.extend(array('f', bytes(24 * nr))); M.extend(array('i', [k]) * nr)
+                    if which == 0: TL += (*Ri[j], *Ri[j + 1], *Rn[j + 1])
+                    else: TL += (*Ri[j], *Rn[j + 1], *Rn[j])
+        nr = 2 * ns * (nc - 1); UL += [0.0] * (6 * nr); ML += [k] * nr
+    T = array('f', TL); UV = array('f', UL); M = array('i', ML); TL = UL = ML = None
     nt = len(M); arr = lambda dt, sh, a: npyio.Arr(dt, sh, memoryview(a).cast('B'))
     cen = array('d', [float(R[i][rd['hw']][c]) for i in range(len(R)) for c in (0, 2)]) if rd is not None else array('d', [0.0, 0.0])
     scenefile.save_arrays(path + '.scene', holes, tris=arr('<f4', (nt, 3, 3), T), uv=arr('<f4', (nt, 3, 2), UV), mat=arr('<i4', (nt,), M), albedo=arr('<f4', (len(alb),), array('f', alb)),
