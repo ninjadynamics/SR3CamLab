@@ -6,7 +6,6 @@ Mapping per classic tile comes from ../retex/tile_labels.csv (column class):
     sign : SR3 sponsor boards            tree_wall : SR3 tree row
     crown / tree / bare / ivy / trunk / lamp / fence : SR3 cut-out laid out like the classic tile, classic UVs kept"""
 import os, sys, struct, collections
-import numpy as np
 from common import *
 import sbfw, meshgen, retex, classic_tex, allsr3 as A3
 import build_testtrack as BT, build_more as BM, build_classic as BC
@@ -17,16 +16,19 @@ CUT = ('crown', 'tree', 'bare', 'ivy', 'trunk', 'lamp', 'fence', 'foliage', 'bus
 REPEAT = {'rock': 7.0, 'grass': 4.0, 'dirt': 4.0, 'roof': 2.2, 'flat': 3.0}
 
 def quad(P):
+    import numpy as np
     P = [np.array(p, float) for p in P]
     return P if len(P) == 4 else P + [P[2]]
 
 def wall_frame(P):
     """corners rotated (winding kept) so that q0 -> q1 is the bottom edge; None if the face is not an upright wall quad"""
+    import numpy as np
     if len(P) != 4: return None
     q = np.array(P, float); n = np.cross(q[1] - q[0], q[2] - q[0]); ln = np.linalg.norm(n)
     if ln < 1e-9 or abs(n[1] / ln) > 0.35: return None
     k = int(np.argmin([q[i][1] + q[(i + 1) % 4][1] for i in range(4)])); q = np.roll(q, -k, 0)
     def vert(a, b):
+        import numpy as np
         d = b - a; l = np.linalg.norm(d); return l > 1e-6 and abs(d[1]) / l > 0.85
     if not (vert(q[0], q[3]) and vert(q[1], q[2])): return None
     W = (np.linalg.norm((q[1] - q[0])[[0, 2]]) + np.linalg.norm((q[2] - q[3])[[0, 2]])) / 2; H = (np.linalg.norm(q[3] - q[0]) + np.linalg.norm(q[2] - q[1])) / 2
@@ -58,6 +60,7 @@ def smooth_axes(faces, lab):
     """projection axis per rock face from a normal smoothed over the faces that share its corners (two passes):
     1 = from above (x, z), 0 = along x (u = z), 2 = along z (u = x). Neighbouring faces of one rock surface then share
     an axis, so the texture no longer turns from triangle to triangle."""
+    import numpy as np
     idx = [i for i, fc in enumerate(faces) if lab.get(fc[0], ('',))[0] == 'rock' and len(fc[2]) >= 3]; key = lambda p: (round(p[0] * 4), round(p[1] * 4), round(p[2] * 4))
     N = {}
     for i in idx:
@@ -77,11 +80,13 @@ def smooth_axes(faces, lab):
     return out
 
 def axis_uv(q, ax, repeat):
+    import numpy as np
     q = np.array(q, float); uv = q[:, [0, 2]] if ax == 1 else (np.stack([q[:, 2], -q[:, 1]], 1) if ax == 0 else np.stack([q[:, 0], -q[:, 1]], 1))
     uv = uv / repeat; uv -= np.floor(uv.min(0) + 1e-6); return np.clip(uv, 0, 1.999)
 
 def class_colour(faces, lab, tiles, pages, cls):
     """area-weighted mean colour of the classic tiles of one class (target for the rock tint)"""
+    import numpy as np
     import course
     st = course.tile_stats(faces); tot = np.zeros(3); w = 0.0
     for name, s in st.items():
@@ -92,6 +97,7 @@ def class_colour(faces, lab, tiles, pages, cls):
     return tot / w if w else np.array([150.0, 130.0, 105.0])
 
 def add_scenery_all(f, sta_gfx, faces, lv, rd):
+    import numpy as np
     BM.import_closure(f, sta_gfx, [BM.TPL_MAT]); sby = sta_gfx.byid(); tpl_mesh = sby[BM.TPL_MESH]; tpl_tex = sby[BM.TPL_TEX]; tpl_mat = f.get(BM.TPL_MAT)
     tpl_tex5 = next(c for c in sta_gfx.kinds(4) if c.data[48 + 80:48 + 84] == b'DXT5' and struct.unpack_from('<I', c.data, 40)[0] == 1)
     ccw = meshgen.winding_sign(tpl_mesh)[0] > 0

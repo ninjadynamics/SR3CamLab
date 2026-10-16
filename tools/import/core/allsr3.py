@@ -6,12 +6,12 @@ facade pictures. This module COMPOSES facade bays, cut-outs and paint from SR3 t
 Sources are the PNGs written by sr3_art.py from the user's own track files (../retex/art/<Track>/<id>.png).
     python allsr3.py      -> ../retex/allsr3_proof_*.png (every composed texture, to be LOOKED at)"""
 import os, json, zlib
-import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 from common import *
 ART = os.path.join(WORK, 'retex', 'art'); SIZE = 512
 _A = {}
 def A(trk, tid):
+    import numpy as np
     k = (trk, tid)
     if k not in _A:
         p = os.path.join(ART, trk, tid + '.png')
@@ -22,15 +22,20 @@ def A(trk, tid):
 def crop(spec):
     trk, tid, r = spec; a = A(trk, tid)
     return a if r is None else a[r[1]:r[3], r[0]:r[2]]
-def rs(img, w, h): return np.array(Image.fromarray(img).resize((w, h), Image.LANCZOS))
+def rs(img, w, h):
+    import numpy as np
+    return np.array(Image.fromarray(img).resize((w, h), Image.LANCZOS))
 def seamless(patch, size=SIZE):
     """2 x 2 mirrored copies: wraps without a seam in both directions"""
+    import numpy as np
     p = rs(patch[:, :, :3], size // 2, size // 2); top = np.hstack([p, p[:, ::-1]]); return np.vstack([top, top[::-1]])
 def tinted(rgb, col, k=1.0):
+    import numpy as np
     c = 1.0 + (np.array(col, np.float32) - 1.0) * k; g = rgb.astype(np.float32); m = g.mean()
     return np.clip(g * c[None, None, :], 0, 255).astype(np.uint8)
 def paste(base, piece, box, bottom=False, frame=0):
     """piece (RGBA) fitted inside box (fractions x0, y0, x1, y1 of base) keeping its aspect; centred, or standing on the box bottom"""
+    import numpy as np
     H, W = base.shape[:2]; bx0, by0, bx1, by1 = [int(round(v * s)) for v, s in zip(box, (W, H, W, H))]
     ph, pw = piece.shape[:2]; sc = min((bx1 - bx0) / pw, (by1 - by0) / ph); w, h = max(2, int(pw * sc)), max(2, int(ph * sc))
     p = rs(piece, w, h); x = bx0 + (bx1 - bx0 - w) // 2; y = (by1 - h) if bottom else by0 + (by1 - by0 - h) // 2
@@ -78,23 +83,27 @@ def facade_tex(style, kind, tint='plain'):
 
 # ---- cut-outs laid out like the classic tile (classic UVs are kept) -> (rgb, hole)
 def _rgba(spec, w, h, box=(0, 0, 1, 1), bottom=True):
+    import numpy as np
     base = np.zeros((h, w, 4), np.uint8); p = crop(spec); ph, pw = p.shape[:2]
     bx0, by0, bx1, by1 = [int(round(v * s)) for v, s in zip(box, (w, h, w, h))]; sc = min((bx1 - bx0) / pw, (by1 - by0) / ph)
     ww, hh = max(2, int(pw * sc)), max(2, int(ph * sc)); q = rs(p, ww, hh); x = bx0 + (bx1 - bx0 - ww) // 2; y = (by1 - hh) if bottom else by0 + (by1 - by0 - hh) // 2
     base[y:y + hh, x:x + ww] = q; return base
 def _split(img):
+    import numpy as np
     hole = img[:, :, 3] < 128; rgb = img[:, :, :3].copy()
     if hole.any() and (~hole).any(): rgb[hole] = rgb[~hole].mean(0).astype(np.uint8)       # no dark fringe from the transparent texels
     return rgb, hole
 def _stretch(spec, w, h): return rs(crop(spec), w, h)
 def masked(mask, fillspec, w, h, shade=None):
     """SR3 texels (seamless fill) shown through a mask (True = opaque) resized smoothly to w x h"""
+    import numpy as np
     m = np.array(Image.fromarray((mask * 255).astype(np.uint8)).resize((w, h), Image.BICUBIC).filter(ImageFilter.GaussianBlur(1.2))) > 110
     f = seamless(crop(fillspec), max(w, h))[:h, :w]
     if shade is not None: f = np.clip(f.astype(np.float32) * shade[:, :, None], 0, 255).astype(np.uint8)
     return f, ~m
 
 def cutout(cls, tile_shape=None, classic_mask=None):
+    import numpy as np
     h0, w0 = tile_shape if tile_shape else (256, 256); w = 512 if w0 >= h0 else 256; h = max(64, int(round(w * h0 / w0 / 4.0)) * 4); h = min(h, 1024)
     if cls == 'crown' or cls == 'foliage': return _split(_stretch(PIECES['crown'], w, h))      # the dense SR3 leaf mass reads best as a round crown
     if cls == 'tree': return _split(_stretch(PIECES['tree'], w, h))
@@ -134,6 +143,7 @@ def wall_tex(tint):
     return _T[k]
 def opening_tex(cls, name, tile_shape, mask):
     """a classic window / door tile -> an SR3 window / door stretched over the classic opening (the box of its opaque texels)"""
+    import numpy as np
     h0, w0 = tile_shape; sc = max(1, 256 // max(w0, h0)); w, h = w0 * sc, h0 * sc; ys, xs = np.nonzero(mask) if mask is not None and mask.any() else (np.array([0, h0 - 1]), np.array([0, w0 - 1]))
     x0, x1, y0, y1 = xs.min() * sc, (xs.max() + 1) * sc, ys.min() * sc, (ys.max() + 1) * sc
     lst = PIECES['doors' if cls == 'door' else 'windows']; p = crop(lst[hsh(name) % len(lst)]); q = rs(np.ascontiguousarray(p[:, :, :3]), max(2, x1 - x0), max(2, y1 - y0))
@@ -162,12 +172,14 @@ def configure(art):
 
 def tinted_texture(trk, tid, target, k):
     """SR3 texture with its mean colour pulled a fraction k towards target (RGB): keeps the SR3 detail, shifts the hue"""
+    import numpy as np
     a = A(trk, '%08x' % tid)[:, :, :3].astype(np.float32); m = a.reshape(-1, 3).mean(0); gain = 1.0 + (np.array(target, np.float32) / np.maximum(m, 1.0) - 1.0) * k
     return np.clip(a * gain[None, None, :], 0, 255).astype(np.uint8)
 
 def hsh(*a): return zlib.crc32(repr(a).encode())
 
 if __name__ == '__main__':
+    import numpy as np
     out = os.path.join(WORK, 'retex'); items = []
     for st in STYLES:
         for kd in ('up', 'gw', 'gd', 'pl'): items.append(('%s %s' % (st, kd), facade_tex(st, kd, 'pink' if st == 'plaster_white' else 'yellow' if st == 'plaster_beige' else 'plain'), None))

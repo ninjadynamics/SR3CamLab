@@ -5,7 +5,6 @@ Road: TrackDeform cells, textured with the TOP layer texture of each cell (DXT5 
 arbitrary 6 m tiling (the game's own road mapping is not known). Walls are not written (invisible in game).
 Axes: the classic OBJ's (x - ox, y, -(z - oz)) so the same camera path (centre line CSV) can be used."""
 import os, sys, json, struct
-import numpy as np
 from PIL import Image
 from common import *
 import sbfw, trackdeform as TDm, scene11, meshgen
@@ -13,6 +12,7 @@ import sbfw, trackdeform as TDm, scene11, meshgen
 XFORM = os.path.join(TMP, 'classic_xform.json')                      # set per course by course.use()
 def dxt_colour(blocks, bw, bh, punch=True):
     """DXT1 colour blocks -> RGBA uint8 (h, w, 4)"""
+    import numpy as np
     b = np.frombuffer(blocks, np.dtype([('c0', '<u2'), ('c1', '<u2'), ('ix', '<u4')]), bw * bh)
     def rgb(c): return np.stack([((c >> 11) & 31) * 255 // 31, ((c >> 5) & 63) * 255 // 63, (c & 31) * 255 // 31], 1).astype(np.int32)
     c0 = rgb(b['c0'].astype(np.int32)); c1 = rgb(b['c1'].astype(np.int32)); four = (b['c0'] > b['c1'])[:, None]
@@ -25,6 +25,7 @@ def dxt_colour(blocks, bw, bh, punch=True):
     return img.astype(np.uint8)
 
 def texture_png(c, path):
+    import numpy as np
     d = c.data; w, h = struct.unpack_from('<II', d, 8); four = d[48 + 80:48 + 84]; base = 48 + 124
     bw, bh = max(1, w // 4), max(1, h // 4)
     if four == b'DXT1': img = dxt_colour(d[base:base + 8 * bw * bh], bw, bh)
@@ -44,6 +45,7 @@ def texture_png(c, path):
     has_alpha = bool((img[:, :, 3] == 0).any()); im.save(path); return has_alpha
 
 def main(step='step17_classic_scenery_textured_desert4', slot='Desert4'):
+    import numpy as np
     xf = json.load(open(XFORM)); ox, oz = xf['ox'], xf['oz']
     out = os.path.join(WORK, 'previews', 'sr3_decoded'); os.makedirs(os.path.join(out, 'textures'), exist_ok=True)
     tf = track_files(os.path.join(OUT, step, slot)); f = sbfw.read_sbf(tf['master_gfx_xdata']); by = f.byid(); r = f.chunks[-1]
