@@ -218,7 +218,7 @@ def unsmear(faces, origin=None, skip=(), ratio=10.0, min_area=10.0, classes=('ro
 
 # ---------------------------------------------------------------- 1. trunks
 UNGROUNDED = []                                                        # extend_trunks: indices (into its face list) of stem boards with no ground within reach
-def extend_trunks(faces, depth=8.0, gap=1.0, floor=None, rd=None, max_depth=40.0, limit=None, classes=None):
+def _extend_trunks_numpy(faces, depth=8.0, gap=1.0, floor=None, rd=None, max_depth=40.0, limit=None, classes=None):
     """-> extra faces: one quad under every hanging board (see hanging_boards): down to 0.3 m under the first lying face
     below its foot when there is one within max_depth (rd given: the road grid counts as ground too), else `depth` m
     straight down; never below `floor` if given; same cut-out material, mapped on the tile rows 0.5 .. 1.5 texels inside the board's lowest edge:
@@ -247,6 +247,33 @@ def extend_trunks(faces, depth=8.0, gap=1.0, floor=None, rd=None, max_depth=40.0
         s = np.sign((uv[(j + 1) % 4] - uv[j])[1]); va = uv[i, 1] + s * 1.5 / th; vb = uv[i, 1] + s * 0.5 / th; dn = np.array([0.0, d, 0.0])
         out.append((mat, sec, [tuple(P[j]), tuple(P[i]), tuple(P[i] - dn), tuple(P[j] - dn)], [(uv[j, 0], va), (uv[i, 0], va), (uv[i, 0], vb), (uv[j, 0], vb)]))
     INFO['trunks'] = dict(added=len(out), shortened=cut_short, foot=dict(ends), tiles=INFO.get('hanging_tiles'))
+    return out
+
+def extend_trunks(faces, depth=8.0, gap=1.0, floor=None, rd=None, max_depth=40.0, limit=None, classes=None):
+    """Continue hanging stems through the checked helper, preserving INFO and removal-list identity."""
+    import fastgeo
+    if not fastgeo.ON or fastgeo.CHECK:
+        return _extend_trunks_numpy(faces, depth, gap, floor, rd, max_depth, limit, classes)
+    import filltrunks
+    from npyio import Arr
+    road = None
+    if rd is not None:
+        road = dict(hw=rd['hw'])
+        for key in ('V', 'code', 'wl', 'wr'):
+            if key not in rd: continue
+            a = rd[key]
+            if isinstance(a, Arr): road[key] = a
+            else:
+                a = np.ascontiguousarray(a)
+                road[key] = Arr(a.dtype.str, a.shape, memoryview(a).cast('B'))
+    labels = None
+    if classes:
+        import retex
+        labels = {k: v[0] for k, v in retex.labels().items()}
+    UNGROUNDED[:] = []
+    out, info, removed = filltrunks.extend_trunks(faces, tile_alpha, tile_rgb, depth, gap, floor,
+                                                road, max_depth, limit, classes, labels)
+    INFO['hanging_tiles'] = info['tiles']; INFO['trunks'] = info; UNGROUNDED[:] = removed
     return out
 
 # ---------------------------------------------------------------- 2. island
@@ -655,7 +682,7 @@ if __name__ == '__main__':
     selftest(sys.argv[1] if len(sys.argv) > 1 else '1')
 
 
-def retile_verge(verge, faces, rd, origin=None, log=print, reach=60.0):
+def _retile_verge_numpy(verge, faces, rd, origin=None, log=print, reach=60.0):
     """Verge cells (the never-drawn 1995 collision ground, all in the course's grass tile) along the FOREST stretch take the
     tile of the nearest lying 1995 rock ground instead: beside the brown cracked ground of the forest road a green patch
     stood out (user's mock-up, 2026-10-07). The forest stretch = road slices that have forest-wall boards (class tree_wall)."""
@@ -682,6 +709,24 @@ def retile_verge(verge, faces, rd, origin=None, log=print, reach=60.0):
         out.append((mat, sec, P, UV))
     log('       verge: %d cells of the forest stretch (slices %d..%d) take the nearest 1995 rock ground tile' % (n_, k0, k1))
     return out
+
+
+def retile_verge(verge, faces, rd, origin=None, log=print, reach=60.0):
+    """Select forest-verge materials through the checked helper; preserve geometry identity."""
+    import fastgeo
+    if not fastgeo.ON or fastgeo.CHECK:
+        return _retile_verge_numpy(verge, faces, rd, origin, log, reach)
+    import retex, fillverge
+    from npyio import Arr
+    if origin is None:
+        import overlay_bake as OB
+        origin = OB.ORIGIN
+    labels = {k: v[0] for k, v in retex.labels().items()}
+    v = rd['V']
+    if not isinstance(v, Arr):
+        v = np.ascontiguousarray(v, dtype=np.float64)
+        v = Arr(v.dtype.str, v.shape, memoryview(v).cast('B'))
+    return fillverge.retile_verge(verge, faces, dict(V=v, hw=rd['hw']), labels, origin, log, reach)
 
 
 def handmodel(cfg, rd, faces, log=print):

@@ -2,17 +2,37 @@
 Template = a one-LOD, one-group world-space mesh such as Stadium4's 79d17eed and its material 7e9488ff.
 See docs/kb/07_glue_and_other_files.md (mesh section)."""
 import struct
-import numpy as np
 import sbfw
 
-VTX = np.dtype([('p', '<f4', 4), ('n', '<f4', 3), ('t', '<f4', 3), ('uv0', '<u2', 2), ('uv1', '<u2', 2)])
-assert VTX.itemsize == 48
+def _vertex_dtype():
+    """Load the legacy ndarray layout only when an ndarray consumer needs it.
+
+    Material cloning, quad topology and module import do not need NumPy.
+    Packed-buffer consumers use meshbuf; legacy VTX callers retain the same
+    cached dtype object and all existing ndarray return contracts.
+    """
+    if 'VTX' not in globals():
+        import numpy as np
+        dtype = np.dtype([('p', '<f4', 4), ('n', '<f4', 3), ('t', '<f4', 3), ('uv0', '<u2', 2), ('uv1', '<u2', 2)])
+        assert dtype.itemsize == 48
+        globals()['VTX'] = dtype
+    return globals()['VTX']
+
+
+def __getattr__(name):
+    if name == 'VTX': return _vertex_dtype()
+    raise AttributeError("module %r has no attribute %r" % (__name__, name))
+
+
+def __dir__():
+    return sorted(set(globals()) | {'VTX'})
 
 def parse_mesh(c):
+    import numpy as np
     d = c.data; h = struct.unpack_from('<18I', d, 0)
     m = dict(stride=h[0], fmt=h[2], nv=h[5], ni=h[7], ng=h[8], pg=h[11], pv=h[12], pi=h[13], hdr=h)
     m['groups'] = [struct.unpack_from('<5I', d, m['pg'] + 20 * k) for k in range(m['ng'])]
-    if m['stride'] == 48: m['verts'] = np.frombuffer(d, VTX, m['nv'], m['pv'])
+    if m['stride'] == 48: m['verts'] = np.frombuffer(d, _vertex_dtype(), m['nv'], m['pv'])
     m['idx'] = np.frombuffer(d, '<u2', m['ni'], m['pi'])
     e = m['pi'] + 2 * m['ni']; m['rest'] = e + (-e % 4)
     m['tail'] = max(c.fix)                                           # {->model, 2, 0, 0, min xyz, max xyz, centre xyz, ...}
@@ -20,6 +40,7 @@ def parse_mesh(c):
 
 def winding_sign(c):
     """+1 if the strip triangles at even positions are counter-clockwise seen from the normal side"""
+    import numpy as np
     m = parse_mesh(c); V = m['verts']; I = m['idx']; s = 0
     for k in range(len(I) - 2):
         a, b, cc = int(I[k]), int(I[k + 1]), int(I[k + 2])
@@ -42,6 +63,7 @@ def quads_to_strip(nquads, ccw):
 
 def clone_mesh(tpl, new_id, verts, strip, material_id, name=None):
     """tpl: template chunk (1 LOD, 1 group, stride 48). verts: np.array(VTX). Returns a new Ch."""
+    import numpy as np
     m = parse_mesh(tpl); d = tpl.data
     assert m['ng'] == 1 and m['stride'] == 48 and m['pg'] == 0x48 and m['pv'] == 0x5c and m['hdr'][11] % 0x48 == 0
     nv = len(verts); ni = len(strip); assert nv < 65536 and ni < 65536, 'u16 limits: %d verts %d indices' % (nv, ni)
@@ -73,7 +95,8 @@ def clone_mesh(tpl, new_id, verts, strip, material_id, name=None):
 
 def make_verts(quads, uv_tile=None):
     """quads: list of 4 corner positions (a,b,c,d counter-clockwise seen from the visible side). uv0 0..1 per quad."""
-    v = np.zeros(4 * len(quads), VTX); uv = [(0, 0), (32767, 0), (32767, 32767), (0, 32767)]
+    import numpy as np
+    v = np.zeros(4 * len(quads), _vertex_dtype()); uv = [(0, 0), (32767, 0), (32767, 32767), (0, 32767)]
     for k, q in enumerate(quads):
         q = np.array(q, float); n = np.cross(q[1] - q[0], q[3] - q[0]); n /= np.linalg.norm(n)
         t = q[1] - q[0]; t /= np.linalg.norm(t)
@@ -84,7 +107,8 @@ def make_verts(quads, uv_tile=None):
 def make_verts_safe(quads):
     """like make_verts but tolerates triangles given as quads with a repeated corner and degenerate faces.
     (On arrays: the first version set every field of every vertex in a Python loop, a million and more times a build.)"""
-    v = np.zeros(4 * len(quads), VTX)
+    import numpy as np
+    v = np.zeros(4 * len(quads), _vertex_dtype())
     if not len(quads): return v
     Q = np.asarray(quads, np.float64).reshape(-1, 4, 3); n = np.cross(Q[:, 1] - Q[:, 0], Q[:, 2] - Q[:, 0]); ln = np.linalg.norm(n, axis=1)
     n = np.where((ln > 1e-9)[:, None], n / np.maximum(ln, 1e-300)[:, None], [0.0, 1.0, 0.0]); t = Q[:, 1] - Q[:, 0]; lt = np.linalg.norm(t, axis=1)

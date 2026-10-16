@@ -42,7 +42,7 @@ def stage_labels(cfg, faces):
         if ch: csv.writer(open(retex.CSVP, 'w', newline='')).writerows(rows); lab = retex.labels()
     retex_contact.main(); return lab
 
-def mirror_screen(faces, sky, tiles, log):
+def _mirror_screen_numpy(faces, sky, tiles, log):
     """Several upright boards that stand end to end and make ONE painted picture (Mountain: the castle = keep, round tower, wall, a folded
     screen 164 m long) shown MIRRORED AS A WHOLE, without moving anything: the screen keeps its footprint and its fold lines, and the
     picture is laid on it from the other end (what was at distance t from one end is now at t from the other, left and right swapped).
@@ -83,6 +83,13 @@ def mirror_screen(faces, sky, tiles, log):
     faces = [fc for i, fc in enumerate(faces) if (0, i) not in gone] + new[0]; sky = [fc for i, fc in enumerate(sky) if (1, i) not in gone] + new[1]
     log('       boards mirrored as one picture, in place (mirror_groups): %d boards, screen %.1f m, now %d polygons' % (len(B), Lt, len(new[0]) + len(new[1])))
     return faces, sky
+
+def mirror_screen(faces, sky, tiles, log):
+    """Mirror the folded picture through the plain-number geometry helper."""
+    from buildmirror import mirror_screen as mirror
+    return mirror(faces, sky, tiles, log)
+
+
 
 def progress_start(cfg, name):
     """Percentage of a running build. A build of given settings takes the same time every run, so the percentage is the time
