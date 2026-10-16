@@ -40,6 +40,17 @@ def _uv_fits(UV, maxspan):
     if not len(UV): return False
     us = [float(u[0]) for u in UV]; vs = [1.0 - float(u[1]) for u in UV]; a0, b0, a1, b1 = min(us), max(us), min(vs), max(vs)
     return max((a0 - math.floor(a0 + 1e-6)) + (b0 - a0), (a1 - math.floor(a1 + 1e-6)) + (b1 - a1)) <= maxspan
+def _far(cb, nc, P, tol):
+    """cp_cut's second test for some candidate: at least tol from every corner of P, no distance NaN (its mindist, the same sums). cp_cut
+    says yes only for such a candidate, so without one the polygon is kept whatever its pieces are (2026-10-16: uv_split skipped then)"""
+    for k in range(nc):
+        c0 = cb[3 * k]; c1 = cb[3 * k + 1]; c2 = cb[3 * k + 2]; m = math.inf; nan = False
+        for q in P:
+            dx = q[0] - c0; dy = q[1] - c1; dz = q[2] - c2; d = math.sqrt((dx * dx + dy * dy) + dz * dz)
+            if d != d: nan = True
+            elif d < m: m = d
+        if not nan and m >= tol: return True
+    return False
 def _median(v):
     s = sorted(v); n = len(s); return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2      # np.median: the middle one, or the mean of the two
 def continue_uv(add, faces, log):
@@ -64,11 +75,22 @@ def continue_uv(add, faces, log):
             if not any(abs(q[0] - p[0]) < w and abs(q[1] - p[1]) < w and abs(q[2] - p[2]) < w for q in Q for p in P3): continue
             if sum(1 for p in P3 if min(_nrow(q, p) for q in Q) < TOL) >= 2: out.append(c)
         return out
+    xidx = {}
+    def touching_tile(t, Pk):
+        """touching(by_tile[t], Pk) through the tile's corners sorted by x (2026-10-16): a face passes touching's box test only when one of
+        its corners lies within the box's margin of a corner of Pk in x, so the faces with such a corner, in their order, are all the box
+        test can pass; touching then tests those as before"""
+        if t not in xidx:
+            xs = sorted((q[0], i) for i, (Q, _) in enumerate(by_tile[t]) for q in Q if q[0] == q[0])      # (a NaN corner passes no box test)
+            xidx[t] = ([x for x, _ in xs], [i for _, i in xs])
+        xs, fi = xidx[t]; w = 4 * TOL; cl = by_tile[t]; near = set()      # (twice the box test's margin: no rounding of the bounds can drop a face)
+        for p in Pk[:3]: near.update(fi[bisect.bisect_left(xs, p[0] - w):bisect.bisect_right(xs, p[0] + w)])
+        return touching([cl[i] for i in sorted(near)], Pk)
     def edge_uv(k):
         """-> uv of the three corners of add[k] from a mapped face of its tile that shares an edge, or None"""
         P = [_f3(q) for q in add[k][2]]; t = str(add[k][0]); best = None
         cands = [([_f3(q) for q in add[j][2]], [(float(q[0]), float(q[1])) for q in add[j][3]]) for j in range(len(add)) if j != k and j not in left and str(add[j][0]) == t]
-        cands = touching(cands, P) + (touching(by_tile[t], P) if t in by_tile else [])
+        cands = touching(cands, P) + (touching_tile(t, P) if t in by_tile else [])
         for Q, UQ in cands:
             hit = {}                                                  # corner of ours -> corner of the neighbour at the same place
             for i in range(3):
@@ -191,6 +213,11 @@ def remove(faces, rem, sr3, path, log, split=None, keep=()):
         import fastlm
         FL = fastlm.lib(); Bs = array.array('d', [v for i in kx for v in B_[i]]); cb = array.array('d', bytes(24 * 400)); ad = lambda a: a.buffer_info()[0]      # (the corners by x, as numpy took B_[kx])
         own_test = getattr(split, '__defaults__', None) == (1.999,)        # (the build's uv_split: polygons its own test passes are not cut at all)
+        if own_test:                                                    # (2026-10-16) the build's uv_split through builduv.uv_split, its numpy-free twin (the same pieces in
+            import builduv                                              # the same order, as plain floats; 0.8 ms -> a few us a polygon); the build's own when builduv refuses one
+            def split(fl, _bc=split):
+                try: return builduv.uv_split(fl)
+                except ValueError: return _bc(fl)
         for fc in faces:
             if id(fc) in keep or len(fc[2]) < 3: out_.append(fc); continue
             if own_test and _uv_fits(fc[3], 1.999): out_.append(fc); continue
@@ -198,6 +225,7 @@ def remove(faces, rem, sr3, path, log, split=None, keep=()):
             mna = array.array('d', mn); mxa = array.array('d', mx)       # (named: the C reads them by address)
             nc = FL.cp_cand(ad(Bs), bisect.bisect_left(bx, mn[0] - TOL), bisect.bisect_left(bx, mx[0] + TOL), ad(mna), ad(mxa), TOL, ad(cb), 400)      # numpy: cand = B_[kx[lo:hi]], then inside the box +- TOL
             if not nc: out_.append(fc); continue                        # (kept whatever the cut: so uv_split is asked only here, the same result)
+            if not _far(cb, min(nc, 400), P, TOL): out_.append(fc); continue      # (cp_cut would say no: kept)
             pcs, n = split([tuple(fc[:4])])
             if not n: out_.append(fc); continue
             Qa = array.array('d', [float(v) for pc in pcs for q in pc[2] for v in q]); Pa = array.array('d', [v for q in P for v in q])
