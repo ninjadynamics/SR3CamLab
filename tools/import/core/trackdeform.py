@@ -1,15 +1,44 @@
-"""TrackDeform chunk (master_gfx root +0x0C) parser. See docs/kb/04_trackdeform.md"""
+"""TrackDeform chunk (master_gfx root +0x0C) parser. See docs/kb/04_trackdeform.md
+Imports without numpy since 2026-10-16 (kb 31): parse_td(c) still gives numpy arrays (the road code computes with them); parse_td(c,
+numpy=False) gives Python numbers and every slice's vertex records as bytes (48 a vertex, VDT's layout; positions(t, i) reads them);
+VDT (numpy's dtype of a vertex) is made when first asked for; td_to_model / build_td take either."""
 import struct, zlib, collections
-import numpy as np
 from common import *
 import sbfw
 
-VDT = np.dtype([('pos', '<f4', 3), ('w0c', '<u4'), ('w10', '<u4'), ('b14', 'u1', 4), ('surf', 'u1', 4), ('w1c', '<u4'),
-                ('w20', '<u4'), ('w24', '<u4'), ('w28', '<u4'), ('w2c', '<u4')])
-assert VDT.itemsize == 0x30
+VREC = struct.Struct('<3f36x')                                        # a vertex record's position (the first 12 of its 48 bytes)
+def __getattr__(name):
+    if name == 'VDT':                                                 # numpy's dtype of a vertex record, for the numpy callers (made on first use)
+        import numpy as np
+        v = np.dtype([('pos', '<f4', 3), ('w0c', '<u4'), ('w10', '<u4'), ('b14', 'u1', 4), ('surf', 'u1', 4), ('w1c', '<u4'),
+                      ('w20', '<u4'), ('w24', '<u4'), ('w28', '<u4'), ('w2c', '<u4')]); assert v.itemsize == 0x30
+        globals()['VDT'] = v; return v
+    raise AttributeError(name)
 
 class TD: pass
-def parse_td(c, byid=None):
+def positions(t, i):
+    """slice i's vertex positions as (x, y, z) Python numbers (the float32 values exactly), for either parse_td"""
+    v = t.verts[i]
+    return [tuple(q) for q in v['pos'].tolist()] if hasattr(v, 'dtype') else list(VREC.iter_unpack(v))
+def parse_td(c, byid=None, numpy=True):
+    if numpy: return _parse_td_numpy(c, byid)
+    d = c.data; t = TD(); t.c = c
+    (t.ver, t.w04, t.n, t.nsurf, t.w10, t.zsize, t.blob_id, t.p_slices, t.p_tex, t.p_rec11, t.p_hash, t.p_pages) = struct.unpack_from('<12I', d, 0)
+    n = t.n; S = t.p_slices
+    t.A = [d[S + 0x88 * i + 0x6c] for i in range(n + 2)]; t.off = [struct.unpack_from('b', d, S + 0x88 * i + 0x6d)[0] for i in range(n + 2)]
+    t.b6e = [struct.unpack_from('b', d, S + 0x88 * i + 0x6e)[0] for i in range(n + 2)]; t.b6f = [d[S + 0x88 * i + 0x6f] for i in range(n + 2)]
+    t.B = [d[S + 0x88 * i + 0x75] for i in range(n + 2)]; t.ptr = [c.u32(S + 0x88 * i + 0x78) for i in range(n + 2)]
+    t.tail = [struct.unpack_from('<fII', d, S + 0x88 * i + 0x7c) for i in range(n + 2)]
+    t.slice_raw = [d[S + 0x88 * i:S + 0x88 * (i + 1)] for i in range(n + 2)]
+    t.hdr = [d[p:p + 0x30] for p in t.ptr]; t.verts = [d[p + 0x30:p + 0x30 + 0x30 * B] for p, B in zip(t.ptr, t.B)]
+    t.rec11 = [d[t.p_rec11 + 11 * i:t.p_rec11 + 11 * i + 11] for i in range((n + 3) // 4)]
+    t.hashes = list(struct.unpack_from('<%dI' % t.nsurf, d, t.p_hash)); t.texids = list(struct.unpack_from('<%dI' % t.nsurf, d, t.p_tex))
+    npages = max(r[10] for r in t.rec11) + 1
+    t.pages = [struct.unpack_from('<II4f', d, t.p_pages + 0x18 * i) for i in range(npages)]
+    return t
+def _parse_td_numpy(c, byid=None):
+    import numpy as np
+    VDT = __getattr__('VDT')
     d = c.data; t = TD(); t.c = c
     (t.ver, t.w04, t.n, t.nsurf, t.w10, t.zsize, t.blob_id, t.p_slices, t.p_tex, t.p_rec11, t.p_hash, t.p_pages) = struct.unpack_from('<12I', d, 0)
     n = t.n; S = t.p_slices
@@ -34,10 +63,11 @@ def parse_td(c, byid=None):
 
 def columns(t, i):
     """lateral column number of every vertex record of slice i (1..n): records start at min(off, previous slice's off)"""
-    return int(t.off[i]) - max(int(t.b6e[i]), 0) + np.arange(int(t.B[i]))
+    a = int(t.off[i]) - max(int(t.b6e[i]), 0); return list(range(a, a + int(t.B[i])))      # (was a numpy array: its callers iterate it)
 
 def road_frame(t):
-    """-> (centre points n x 3 (column 0), lateral unit vectors n x 3, left edge (negative), right edge) read from a parsed TD"""
+    """-> (centre points n x 3 (column 0), lateral unit vectors n x 3, left edge (negative), right edge) read from a parsed TD (numpy arrays)"""
+    import numpy as np
     n = t.n; cen = np.zeros((n, 3)); lat = np.zeros((n, 3)); lo = np.zeros(n); hi = np.zeros(n)
     for i in range(1, n + 1):
         v = t.verts[i]['pos'].astype(float); c = columns(t, i); cen[i - 1] = v[list(c).index(0)]
@@ -50,7 +80,7 @@ def load_td(track):
     return parse_td(by[r.u32(0xc)]), f, by
 
 if __name__ == '__main__':
-    import sys
+    import sys, numpy as np
     for tr in sys.argv[1:] or ['Stadium4']:
         t, f, by = load_td(tr)
         n = t.n
@@ -96,9 +126,9 @@ def build_td(m, blob_id, blob_zsize):
     hsh = pad16(struct.pack('<%dI' % nsurf, *m['hashes']) + bytes(4)); p_blocks = p_hash + len(hsh)
     blocks = bytearray(); ptr = {}
     def block(s):
-        A, B = s['A'], s['B']; v = s['verts']; assert len(v) == B and B >= A + 1
+        A, B = s['A'], s['B']; v = s['verts']; vb = bytes(v) if isinstance(v, (bytes, bytearray, memoryview)) else v.tobytes(); assert len(vb) == 0x30 * B and B >= A + 1      # (numpy records or their bytes)
         h = bytearray(0x30); struct.pack_into('<H', h, 0, A); struct.pack_into('bBbB', h, 0x10, s['off'], 0xff, s.get('b6e', 0), 1 if s.get('b6e', 0) else 0)
-        return bytes(h) + v.tobytes() + b'\0' * ((A + 1) * 0x100)
+        return bytes(h) + vb + b'\0' * ((A + 1) * 0x100)
     for i in range(1, n + 1):
         ptr[i] = p_blocks + len(blocks); blocks += block(sl[i])
     ptr_dup = p_blocks + len(blocks); blocks += block(sl[1])
@@ -127,7 +157,7 @@ def td_to_model(t):
     for i in range(1, n + 1):
         raw = t.slice_raw[i]
         sl.append(dict(A=int(t.A[i]), off=int(t.off[i]), b6e=int(t.b6e[i]), b6f=int(t.b6f[i]), B=int(t.B[i]), raw70=raw[0x70:0x78],
-                       water=t.tail[i][0], w80=t.tail[i][1], w84=t.tail[i][2], verts=t.verts[i].copy()))
+                       water=t.tail[i][0], w80=t.tail[i][1], w84=t.tail[i][2], verts=t.verts[i].copy() if hasattr(t.verts[i], 'copy') else t.verts[i]))
     nrec = (n + 3) // 4 + 1
     rec = [d[t.p_rec11 + 11 * i:t.p_rec11 + 11 * i + 11] for i in range(nrec)]
     return dict(slices=sl, rec11=rec, texids=t.texids, hashes=t.hashes, pages=t.pages, w10=t.w10)

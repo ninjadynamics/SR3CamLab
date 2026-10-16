@@ -7,7 +7,6 @@ Nothing is read from or written to the game folder except READING the original S
 (the user's own copy) as the source of the borrowed chunks.
 """
 import os, sys, struct, zlib, math, shutil, collections
-import numpy as np
 from common import *
 import sbfw, grid as G, trackdeform as TDm, scene11
 
@@ -106,10 +105,12 @@ def oval(n=1000, radius=60.0, centre=(0.0, 0.0, 450.0)):
         else:
             t = (s - 2 * L - math.pi * radius) / radius; x, z, a = -L / 2 - radius * math.sin(t), -radius * math.cos(t), math.pi - t
         P.append((centre[0] + x, centre[1], centre[2] + z)); D.append((math.cos(a), 0.0, math.sin(a)))
+    import numpy as np
     return np.array(P), np.array(D)
 
 def lateral(D):
-    """unit vector of increasing column number: (d x lat).y > 0 on all 6 SEGA tracks, i.e. lat = (d.z, 0, -d.x)"""
+    """unit vector of increasing column number: (d x lat).y > 0 on all 6 SEGA tracks, i.e. lat = (d.z, 0, -d.x) (numpy in, numpy out)"""
+    import numpy as np
     return np.stack([D[:, 2], np.zeros(len(D)), -D[:, 0]], 1)
 
 def uniform_pattern(t):
@@ -128,6 +129,7 @@ def uniform_pattern(t):
 def td_model_flat(P, D, half_width, pat, hashes, texids, page, water=-99999.0, lat=None):
     """uniform road: every slice has A = 2*half_width quads, columns -half_width..+half_width, 1 m apart.
     lat: optional per-slice lateral unit vectors (banking); default = horizontal normal of D."""
+    import numpy as np
     n = len(P); A = 2 * half_width; B = A + 1; sl = [None]
     if lat is None: lat = lateral(D)
     for i in range(n):
@@ -143,24 +145,32 @@ def td_model_flat(P, D, half_width, pat, hashes, texids, page, water=-99999.0, l
 
 def page_for(P, margin=40.0, texa=0, texb=0):
     """one overlay page covering the whole loop: u = x*su+u0, v = z*sv+v0 inside 0..1"""
-    x0, x1 = P[:, 0].min() - margin, P[:, 0].max() + margin; z0, z1 = P[:, 2].min() - margin, P[:, 2].max() + margin
+    R = P.tolist() if hasattr(P, 'tolist') else P                    # (numpy rows or Python ones)
+    x0, x1 = min(r[0] for r in R) - margin, max(r[0] for r in R) + margin; z0, z1 = min(r[2] for r in R) - margin, max(r[2] for r in R) + margin
     su, sv = 1.0 / (x1 - x0), 1.0 / (z1 - z0)
     return (texa, texb, -x0 * su, -z0 * sv, su, sv)
 
 def td_rows(m):
-    """per slice: (array of vertex positions, column offset)"""
+    """per slice: (array of vertex positions, column offset) - numpy arrays, for the numpy callers (build_more.add_walls); td_rows_plain: lists"""
+    import numpy as np
     return [(s['verts']['pos'].astype(np.float64), s['off'], s['A']) for s in m['slices'][1:]]
+def _pos_rows(v):
+    """a slice's vertex positions as (x, y, z) Python numbers: numpy records or their bytes"""
+    return [tuple(q) for q in v['pos'].tolist()] if hasattr(v, 'dtype') else list(TDm.VREC.iter_unpack(v))
+def td_rows_plain(m):
+    """td_rows with Python numbers: (positions as (x, y, z) tuples, column offset, quads across)"""
+    return [(_pos_rows(s['verts']), s['off'], s['A']) for s in m['slices'][1:]]
 
 def aimap_cells(rows, band=0.4):
     """AI map for a road: 8 lanes spread over the central `band` of the width; lane k marks bit k of all three mask bytes
     in the 2 m cell under it (SEGA: bit 0 = highest column side, verified on Desert4/Lakeside4)."""
     cells = {}
     for pos, off, A in rows:
-        w = band * A
+        w = band * A; R = pos.tolist() if hasattr(pos, 'tolist') else pos      # (numpy rows or Python ones: the same numbers)
         for k in range(8):
             c = w / 2 - k * w / 7.0                                   # lateral column (0 = centre line)
-            f = min(max(c - off, 0.0), len(pos) - 1.0); j = min(int(f), len(pos) - 2); t = f - j
-            p = pos[j] * (1 - t) + pos[j + 1] * t
+            f = min(max(c - off, 0.0), len(R) - 1.0); j = min(int(f), len(R) - 2); t = f - j
+            p = (R[j][0] * (1 - t) + R[j + 1][0] * t, R[j][1] * (1 - t) + R[j + 1][1] * t, R[j][2] * (1 - t) + R[j + 1][2] * t)      # pos[j] * (1 - t) + pos[j + 1] * t
             key = (math.floor(p[0] / 2.0) * 2.0 + 1.0, math.floor(p[2] / 2.0) * 2.0 + 1.0)
             cells[key] = cells.get(key, 0) | (0x010101 << k)
     return [(x, z, fl) for (x, z), fl in cells.items()]
@@ -170,11 +180,12 @@ def build_spline(P, splits=(1 / 3.0, 2 / 3.0), notes=()):
     """'DesignRouteSpline' chunk: centre points 2 m apart (slices 1,3,5..), closed (first point repeated), one type (0,5)
     marker per sector split and one type (3,2) marker with the property Direction per pace note, sorted by position."""
     splits = SPLINE_EXTRA.get('splits', splits); notes = SPLINE_EXTRA.get('notes', notes)
-    pts = np.concatenate([P[0::2], P[:1]]).astype('<f4'); name = b'DesignRouteSpline\0\0\0'
+    R = P.tolist() if hasattr(P, 'tolist') else list(P); R = R[0::2] + R[:1]      # np.concatenate([P[0::2], P[:1]]).astype('<f4')
+    pts = b''.join(struct.pack('<3f', *r) for r in R); npts = len(R); name = b'DesignRouteSpline\0\0\0'
     marks = sorted([(float(t), None) for t in splits] + [(float(t), int(c)) for t, c in notes], key=lambda m: (m[0], m[1] is not None)); nm = len(marks)
-    p_name = 0x20; p_pts = p_name + len(name); p_mark = p_pts + pts.nbytes; p_props = p_mark + 0x1c * nm; nn = sum(1 for m in marks if m[1] is not None)
+    p_name = 0x20; p_pts = p_name + len(name); p_mark = p_pts + len(pts); p_props = p_mark + 0x1c * nm; nn = sum(1 for m in marks if m[1] is not None)
     p_str = p_props + 8 * max(nn, 1)                                   # per note: 'Direction\0' padded to 12, then the i32 value
-    d = bytearray(struct.pack('<5I', 1, 1, nm, 0x14, p_mark) + struct.pack('<3I', p_name, len(pts), p_pts) + name + pts.tobytes())
+    d = bytearray(struct.pack('<5I', 1, 1, nm, 0x14, p_mark) + struct.pack('<3I', p_name, npts, p_pts) + name + pts)
     fix = [0x0c, 0x10, 0x14, 0x1c]; k = 0; props = bytearray(); strs = bytearray()
     for t, code in marks:
         o = len(d)
@@ -227,9 +238,9 @@ def two_pages(model, limit=110.0, margin=5.0, least=60.0):
     texa, texb = model['pages'][0][0], model['pages'][0][1]
     sl = model['slices'][1:]; nrec = len(model['rec11']); pages = []; recpage = []
     def box(k):
-        pts = [s['verts']['pos'] for s in sl[4 * k:4 * k + 4]]
-        if not pts: return None
-        q = np.concatenate(pts).astype(np.float64); return q[:, 0].min(), q[:, 0].max(), q[:, 2].min(), q[:, 2].max()
+        q = [r for s in sl[4 * k:4 * k + 4] for r in _pos_rows(s['verts'])]
+        if not q: return None
+        return min(r[0] for r in q), max(r[0] for r in q), min(r[2] for r in q), max(r[2] for r in q)
     cur = None
     def close(c):
         x0, x1, z0, z1 = c; cx, cz = (x0 + x1) / 2, (z0 + z1) / 2
@@ -297,7 +308,33 @@ def add_spline(fx, P):
 LAKESIDE_GRID = (2, 2, 2, -2, 14, 2, 14, -2, 26, 2, 26, -2, 38, 2, 38, -2)
 
 # ---------------------------------------------------------------- self checks on authored data
+def _nrow(a, b):                                                      # np.linalg.norm(a - b, axis=1) of one row: sqrt((dx dx + dy dy) + dz dz)
+    dx = a[0] - b[0]; dy = a[1] - b[1]; dz = a[2] - b[2]; return math.sqrt((dx * dx + dy * dy) + dz * dz)
 def check_authored(name, trk):
+    """the built road read back, its figures logged (Python numbers in numpy's orders; _old_check_authored: the numpy original)"""
+    import npexact
+    f = trk.files['master_gfx_xdata']; fx = trk.files['master_xdata']; by = f.byid(); r = gfx_root(f)
+    t = TDm.parse_td(by[r.u32(0xc)], numpy=False); n = t.n
+    raw = zlib.decompress(by[t.blob_id].data); rows = [TDm.positions(t, i) for i in range(1, n + 1)]
+    cen = [rows[i - 1][-t.off[i]] for i in range(1, n + 1)]
+    step = [_nrow(cen[(i + 1) % n], cen[i]) for i in range(n)]       # np.linalg.norm(np.roll(cen, -1, 0) - cen, axis=1)
+    msg = ['TD n=%d centre step %.3f..%.3f m, lap %.1f m' % (n, min(step), max(step), npexact.pwsum(step)),      # (step.sum(): numpy's pairwise sum)
+           'blob %d bytes (expected %d), zsize field ok %s' % (len(raw), TDm.blob_size(TDm.td_to_model(t)), t.zsize == len(by[t.blob_id].data))]
+    m2 = TDm.td_to_model(t); d2, fx2, rf2 = TDm.build_td(m2, t.blob_id, t.zsize); msg.append('TD parse->rebuild identical %s' % (d2 == t.c.data))
+    root = fx.chunks[-1]; g = G.parse_grid(fx.get(root.u32(8))); cells = G.grid_cells(g)
+    V = [(q[0], q[2]) for rr in rows for q in rr]
+    idx, dist = nearest2d_plain(V, [(x, z) for x, z, fl in cells])
+    msg.append('AIMap %d cells, max distance to a road vertex %.2f m, lanes present %s' % (len(cells), max(dist), sorted({k for x, z, fl in cells for k in range(8) if fl >> k & 1})))
+    start, dirn = struct.unpack_from('<ii', root.data, 0x2c); msg.append('start slice %d dir %d grid %s' % (start, dirn, struct.unpack_from('<16i', root.data, 0x34)))
+    if root.u32(0x18):
+        sp = fx.get(root.u32(0x18)); rec = sp.u32(0xc); npts = sp.u32(rec + 4); S = list(struct.iter_unpack('<3f', sp.data[sp.u32(rec + 8):sp.u32(rec + 8) + 12 * npts]))
+        dev = max(min(_nrow(c, p) for c in cen) for p in S); seg = [_nrow(S[i + 1], S[i]) for i in range(npts - 1)]
+        msg.append('spline %d pts, step %.2f..%.2f, closed %s, max distance to centre line %.3f' % (npts, min(seg), max(seg), S[0] == S[-1], dev))
+    s = scene11.parse11(by[r.u32(4)]); msg.append('scene tree %d nodes %d leaves, root meshes %d' % (s.nnode, s.nleaf, len(s.nodes[0].meshes)))
+    for q in msg: log('      ', q)
+def _old_check_authored(name, trk):
+    """(the numpy original of check_authored: the reference)"""
+    import numpy as np
     f = trk.files['master_gfx_xdata']; fx = trk.files['master_xdata']; by = f.byid(); r = gfx_root(f)
     t = TDm.parse_td(by[r.u32(0xc)]); n = t.n
     raw = zlib.decompress(by[t.blob_id].data)
@@ -316,7 +353,7 @@ def check_authored(name, trk):
         dev = max(np.linalg.norm(cen - p, axis=1).min() for p in S); seg = np.linalg.norm(np.diff(S, axis=0), axis=1)
         msg.append('spline %d pts, step %.2f..%.2f, closed %s, max distance to centre line %.3f' % (npts, seg.min(), seg.max(), bool((S[0] == S[-1]).all()), dev))
     s = scene11.parse11(by[r.u32(4)]); msg.append('scene tree %d nodes %d leaves, root meshes %d' % (s.nnode, s.nleaf, len(s.nodes[0].meshes)))
-    for q in msg: log('      ', q)
+    return msg
 
 # ---------------------------------------------------------------- the ladder
 def authored_loop(src, centre, with_spline, half_width=7, keep_objects=True, checker=True, road=None, info=None):
@@ -357,6 +394,7 @@ def authored_loop(src, centre, with_spline, half_width=7, keep_objects=True, che
     return trk, dropped, pat
 
 def main(only=''):
+    import numpy as np                                                # (the test-track ladder: numpy)
     os.makedirs(OUT, exist_ok=True)
     sta = Track('Stadium4'); steps = []
     def want(n): return n.startswith(only)

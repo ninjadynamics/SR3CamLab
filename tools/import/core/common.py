@@ -90,6 +90,31 @@ def nearest2d(P, Q, cell=4.0):
             if r > 200: break
     return idx, dist
 
+_HYPOT = []
+def hypot(x, y):
+    """the C runtime's hypot (ucrtbase), as np.hypot is: Python's math.hypot gives other last bits in 17% of cases (kb 31)"""
+    if not _HYPOT:
+        import ctypes
+        f = ctypes.CDLL('ucrtbase').hypot; f.argtypes = [ctypes.c_double, ctypes.c_double]; f.restype = ctypes.c_double; _HYPOT.append(f)
+    return _HYPOT[0](x, y)
+def nearest2d_plain(P, Q, cell=4.0):
+    """nearest2d on Python numbers: P, Q rows of (x, z); -> (indices, distances) as lists, the same as nearest2d's"""
+    import collections, math
+    P = [(float(p[0]), float(p[1])) for p in P]; b = collections.defaultdict(list)
+    for i, (x, z) in enumerate(P): b[(math.floor(x / cell), math.floor(z / cell))].append(i)
+    idx = []; dist = []
+    for q in Q:
+        qx, qz = float(q[0]), float(q[1]); cx, cz = math.floor(qx / cell), math.floor(qz / cell); r = 1; got = (0, math.inf)
+        while True:
+            cand = [i for dx in range(-r, r + 1) for dz in range(-r, r + 1) for i in b.get((cx + dx, cz + dz), ())]
+            if cand:
+                d = [hypot(P[i][0] - qx, P[i][1] - qz) for i in cand]; k = d.index(min(d))      # np.argmin: the first of equals
+                if d[k] <= r * cell or r > 64: got = (cand[k], d[k]); break
+            r += 1
+            if r > 200: break
+        idx.append(got[0]); dist.append(got[1])
+    return idx, dist
+
 if __name__ == '__main__':      # python common.py --paths tracks out ... : those folders, one per line (for the PowerShell and shell scripts)
     _named = dict(game=GAME, tracks=TRACKS, work=WORK, out=OUT, tmp=TMP, classic=CLASSIC, data=DATA, roms=ROMS, blender=BLENDER, repo=REPO, threads=str(threads()))
     for _k in sys.argv[2:] if sys.argv[1:2] == ['--paths'] else sorted(_named): print(_named[_k] if sys.argv[1:2] == ['--paths'] else '%s = %s' % (_k, _named[_k]))
