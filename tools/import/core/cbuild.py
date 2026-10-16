@@ -19,6 +19,7 @@ FOC = ['-ffp-contract=off']
 HELPERS = {
     'fastgeo':  dict(dir='.', units=[('fastgeo.c', FOC)], hashed=['fastgeo.c']),
     'nplapack': dict(dir='.', units=[('nplapack.c', FOC)], hashed=['nplapack.c']),
+    'round1995': dict(dir='.', units=[('round1995.c', FOC)], hashed=['round1995.c']),
     'fastdxt':  dict(dir='.', units=[('fastdxt.c', [])], hashed=['fastdxt.c']),
     'fastseal': dict(dir='.', units=[('fastseal.c', FOC)], hashed=['fastseal.c']),
     'rays':     dict(dir='.', units=[('rays.c', [])], hashed=['rays.c']),

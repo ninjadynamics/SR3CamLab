@@ -46,14 +46,17 @@ roofs and all sorts of weird things"):
      outlines of the polygons 4. keeps whole are pinned and the stage's smoothing is run again from its start, so 1.'s reach fades the surface into
      them. Put back AFTER the smoothing they stood out of the sunken ground as horns, and a lid kept whole overhung its shrunken walls (R4, owner's
      screenshots 2026-10-14). round_pin false + round_fade 0.5 builds the R4 of 2026-10-13 again.
-Everything is done on arrays (the first version walked Python lists: fine for R2, minutes and gigabytes for R16)."""
-import numpy as np
+Everything is done on arrays (the first version walked Python lists: fine for R2, minutes and gigabytes for R16).
+round_outward (the default) without numpy since 2026-10-16 (kb 31): its arrays in round1995.c and fastround's buffer kernels, every step in
+its numpy code's order (_old_round_outward, the reference); round_natural ('shrink') and the old helpers import numpy when called."""
+import sys, math, array, ctypes
 
 NATURAL = ('rock', 'grass', 'dirt', 'sand', 'gravel')
 CAP = 2.5; FADE = 0.5; KEEP_GAP = 0.05; FLAT = 0.02; APRON = 0.75; STAND = 2.5; FOLD = 0.2
 
 def _subdivide(P, U):
     """(n, k, 3) corners and (n, k, 2) texture coordinates of triangles (k = 3) or quads (k = 4) -> four times as many"""
+    import numpy as np
     k = P.shape[1]; m = (P + np.roll(P, -1, axis=1)) / 2; mu = (U + np.roll(U, -1, axis=1)) / 2
     if k == 3:
         parts = [(P[:, 0], m[:, 0], m[:, 2]), (m[:, 0], P[:, 1], m[:, 1]), (m[:, 2], m[:, 1], P[:, 2]), (m[:, 0], m[:, 1], m[:, 2])]
@@ -64,12 +67,14 @@ def _subdivide(P, U):
     return np.stack([np.stack(q, 1) for q in parts], 1).reshape(-1, k, 3), np.stack([np.stack(q, 1) for q in uv], 1).reshape(-1, k, 2)
 
 def _pack(P, weld):
+    import numpy as np
     q = np.round(np.asarray(P, np.float64) / weld).astype(np.int64) + (1 << 20)
     return (q[..., 0] << 42) | (q[..., 1] << 21) | q[..., 2]
 
 def _order_limits(X0, X1, movable, S, keep=KEEP_GAP, cell=4.0):
     """lowest and highest y every corner may take so that it stays on its side of the lying triangles S (m, 3, 3).
     X0 = where the corners were, X1 = where they are now."""
+    import numpy as np
     lo = np.full(len(X1), -np.inf); hi = np.full(len(X1), np.inf)
     idx = np.nonzero(movable)[0]
     if not len(idx) or not len(S): return lo, hi
@@ -97,6 +102,7 @@ def _order_limits(X0, X1, movable, S, keep=KEEP_GAP, cell=4.0):
 
 def _gap_over(X, S, cell=4.0):
     """how far (up or down) every corner is from the lying triangles S it stands over; inf where it stands over none"""
+    import numpy as np
     gap = np.full(len(X), np.inf)
     if not len(S): return gap
     cx = np.floor(X[:, 0] / cell).astype(np.int64); cz = np.floor(X[:, 2] / cell).astype(np.int64); BIG = 1 << 22
@@ -128,6 +134,8 @@ def round_natural(faces, level=1, origin=None, passes=2, lam=0.5, weld=0.02, log
     # middle of its neighbours, which is partly ALONG the surface: the shape hardly changes by that part, but the picture is fixed to the corners and
     # is stretched on one side and squeezed on the other (owner, 2026-10-13: "watch out for texture warping").
     import retex
+    import numpy as np
+    _numpy_fast()
     if origin is None:
         import overlay_bake as OB
         origin = OB.ORIGIN
@@ -331,14 +339,17 @@ CREASE = 45.0; TOL = 2.0; OUT_CAP = 1.5
 def _bends(X, TA, TB):
     """signed bend (degrees, + = inward: a hollow seen from the side the triangles face) of every edge shared by two drawn triangles.
     TA / TB (m, 3): the two triangles' corners as (u, v, w) with u -> v the shared edge in TA's order and w the third corner"""
+    import numpy as np
     a = X[TA[:, 0]]; b = X[TA[:, 1]]; n1 = np.cross(b - a, X[TA[:, 2]] - a); n2 = np.cross(X[TB[:, 1]] - X[TB[:, 0]], X[TB[:, 2]] - X[TB[:, 0]])
     l1 = np.linalg.norm(n1, axis=1); l2 = np.linalg.norm(n2, axis=1); ok = (l1 > 1e-12) & (l2 > 1e-12)
     ang = np.degrees(np.arccos(np.clip((n1 * n2).sum(1) / np.maximum(l1 * l2, 1e-30), -1.0, 1.0)))
     return np.where(((X[TB[:, 2]] - a) * n1).sum(1) > 0, ang, -ang), ok
 
-def round_outward(faces, level=1, origin=None, weld=0.02, log=print, exclude=(), road=None, keep_at=None, crease=CREASE, tol=TOL, cap=OUT_CAP):
-    """faces2, info = round_outward(faces, level): rules O1 - O4 above. The same input, output and light-map table (PATCH) as round_natural."""
+def _old_round_outward(faces, level=1, origin=None, weld=0.02, log=print, exclude=(), road=None, keep_at=None, crease=CREASE, tol=TOL, cap=OUT_CAP):
+    """(the numpy original of round_outward: the reference)"""
     import retex, time
+    import numpy as np
+    _numpy_fast()
     t0 = time.time()
     if origin is None:
         import overlay_bake as OB
@@ -497,6 +508,7 @@ def round_outward(faces, level=1, origin=None, weld=0.02, log=print, exclude=(),
 
 def _emit(faces, isnat, grp, orig, AB, coarse, level, stat, log, what):
     """the pieces as polygons, the light-map table PATCH and the stretch figures (as at the end of round_natural)"""
+    import numpy as np
     sr_ = []
     for k in grp:
         O = orig[k]; Pk = grp[k][0]
@@ -529,28 +541,186 @@ def canon_keys(K4):
     """(n, 4) corner numbers -> one key a polygon whatever order its corners run in: sorted, a corner written twice (a triangle) counted once and the
     fourth place filled with the largest number. (Sorted as they were, a triangle turned round for its other side, corners 0 2 1 1, did not match the
     piece it is, 0 1 2 2: every other-side triangle piece missed its polygon's rectangle and was lit alone; owner's shot SR3_20261015_003943.)"""
+    import numpy as np
     s = np.sort(np.asarray(K4, np.int64), axis=1); d = np.zeros(s.shape, bool); d[:, 1:] = s[:, 1:] == s[:, :-1]
     return np.sort(np.where(d, np.iinfo(np.int64).max, s), axis=1)
 def corner_keys(P4):
     """(n, 4, 3) corners -> (n, 4) one number per corner: its place to the millimetre, taken from the float32 the mesh writer stores"""
+    import numpy as np
     q = np.round(np.asarray(P4, np.float32).astype(np.float64) * 1000.0).astype(np.int64) + (1 << 20); return (q[..., 0] << 42) | (q[..., 1] << 21) | q[..., 2]
 def patch_lookup(P4, back=None):
     """(n, 4, 3) corners as the mesh writer has them -> (id per polygon, -1 = not a piece of a rounded polygon ; (n, 4, 2) the corners' places in that
     polygon's square, the unit square where it is none). back[n] = this polygon is the other-side copy of one written once per side: it never
     shares the front's rectangle (its light is another light), only the other-side copies of the same polygon's pieces share one (the polygon's number +
     BACK_RECT); it is known by its corners running the other way round."""
+    import numpy as np                                                # (build_classic hands numpy corners and takes numpy arrays back; PATCH holds buffers)
     n = len(P4); ids = np.full(n, -1, np.int64); ab = np.tile(np.array([(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]), (n, 1, 1))
     if not n or 'row' not in PATCH: return ids, ab
     hq = corner_keys(P4); hs = canon_keys(hq); get = PATCH['row'].get; rows = np.array([get(b_.tobytes(), -1) for b_ in hs], np.int64); m = np.nonzero(rows >= 0)[0]
     if not len(m): return ids, ab
-    st = PATCH['corner'][rows[m]]; sa = PATCH['ab'][rows[m]]; got = np.zeros((len(m), 4, 2))
+    pcorner = np.frombuffer(PATCH['corner'], np.int64).reshape(-1, 4); pab = np.frombuffer(PATCH['ab'], np.float64).reshape(-1, 4, 2); pid = np.frombuffer(PATCH['id'], np.int64)
+    st = pcorner[rows[m]]; sa = pab[rows[m]]; got = np.zeros((len(m), 4, 2))
     for c in range(4): j = (st == hq[m][:, c:c + 1]).argmax(1); got[:, c] = sa[np.arange(len(m)), j]
     area = 0.5 * sum(got[:, c, 0] * got[:, (c + 1) % 4, 1] - got[:, (c + 1) % 4, 0] * got[:, c, 1] for c in range(4))      # the corners as cut run one way round the square, a polygon turned round the other
     bk = np.zeros(len(m), bool) if back is None else (np.asarray(back, bool)[m] & (area < 0))
     # the other-side copies of a polygon's pieces share a rectangle of THEIR OWN (the polygon's number + BACK_RECT): alone, each piece of a side seen only
     # from a free camera was lit in a rectangle of 2 x 2 texels, and the light broke into blotches along the pieces (owner's shot SR3_20261015_003943)
-    ids[m] = PATCH['id'][rows[m]] + np.where(bk, BACK_RECT, 0); ab[m] = got; return ids, ab
+    ids[m] = pid[rows[m]] + np.where(bk, BACK_RECT, 0); ab[m] = got; return ids, ab
 BACK_RECT = 1 << 40
 
-# compiled / array versions of the slow functions above (fastround.py, checked to give the same bytes; SR3_FASTGEO=0 switches them off)
-import sys as _sys, fastround as _fr_mod; _fr_mod.install(_sys.modules[__name__])
+def _numpy_fast():
+    """compiled versions of the slow numpy functions above for the numpy code (fastround.install: checked to give the same bytes; SR3_FASTGEO=0 off)"""
+    import fastround
+    fastround.install(sys.modules[__name__])
+
+# ---------------------------------------------------------------- round_outward without numpy
+_L = None
+def _lib():
+    global _L
+    if _L is None:
+        import cbuild
+        cbuild.runtime(); L = ctypes.CDLL(cbuild.dll('round1995')); P = ctypes.c_void_p; LL = ctypes.c_longlong; D = ctypes.c_double; I = ctypes.c_int
+        for nm, a, r in (('ro_hard', [LL, P, P, D, P], LL), ('ro_lying', [LL, P, P, LL, LL, P, P], LL), ('ro_faces', [LL, P, P, D, P, LL, D, P, P, P, P], I),
+                         ('ro_dd', [LL, I, P, P, P, P, P], None), ('ro_weld', [LL, P, P, D, P, P, P], LL), ('ro_cap', [LL, P, D, P], LL), ('ro_argsort_x', [LL, P, P], None),
+                         ('ro_keep', [LL, P, P, P, P, P], None), ('ro_order', [LL, P, P, P, P, P], LL), ('ro_tris', [I, P, P, P, P, P, LL, P, P, P, P, P, P, P, P], LL),
+                         ('ro_b0', [LL, P, P, P, P, P, P, P, P], I), ('ro_o3', [LL, P, P, P, LL, P, P, LL, P, P, P, P, D, D, P, P], I),
+                         ('ro_flat', [LL, P, P, I, P, P, P, P, LL, D, P, P], LL), ('ro_moves', [LL, P, P, P], None), ('ro_gather', [LL, P, P, P], None),
+                         ('ro_stretch', [LL, I, P, P, P], LL), ('ro_good', [LL, I, P, P, P], None), ('ro_patch', [LL, I, P, P, P, P, P], LL)):
+            f = getattr(L, nm); f.argtypes = a; f.restype = r
+        _L = L
+    return _L
+def _ad(a):
+    """the address of a buffer for the C: array.array, npyio.Arr, bytearray"""
+    if a is None: return None
+    if isinstance(a, array.array): return a.buffer_info()[0]
+    if hasattr(a, 'ptr'): return a.ptr()
+    return ctypes.addressof((ctypes.c_char * max(len(a), 1)).from_buffer(a)) if len(a) else None
+def _arr(dtype, shape, a):
+    """an npyio.Arr on a buffer (an array.array as its bytes: Arr counts bytes)"""
+    from npyio import Arr
+    return Arr(dtype, shape, memoryview(a).cast('B') if isinstance(a, array.array) else a)
+def _f8(a):
+    """float64 numbers of an array (numpy's, an Arr, or rows) as array('d')"""
+    out = array.array('d')
+    if hasattr(a, 'view') and hasattr(a, 'ptr'): out.frombytes(memoryview(a.buf)[:a.nbytes])
+    elif hasattr(a, 'shape'): out.frombytes(memoryview(a).tobytes())
+    else: out.extend(float(v) for r in a for v in (r if hasattr(r, '__len__') else [r]))
+    return out
+def round_outward(faces, level=1, origin=None, weld=0.02, log=print, exclude=(), road=None, keep_at=None, crease=CREASE, tol=TOL, cap=OUT_CAP):
+    """faces2, info = round_outward(faces, level): rules O1 - O4 above. The same input, output and light-map table (PATCH) as round_natural.
+    The steps of _old_round_outward (its numpy is quoted in round1995.c) on buffers; the same faces, figures and PATCH."""
+    import retex, time, bisect, npexact
+    import fastround as FR
+    from npyio import Arr
+    t0 = time.time()
+    if origin is None:
+        import overlay_bake as OB
+        origin = OB.ORIGIN
+    lab = {k: v[0] for k, v in retex.labels().items()}; tile = lambda m: origin.get(str(m).split('|')[0], str(m).split('|')[0]); exclude = tuple(exclude)
+    def natural(fc):
+        mat, sec = str(fc[0]), str(fc[1])
+        if mat.split('|')[0].endswith('_t') or sec == 'sea' or sec.startswith(('hf_terrain', 'hf_weld', 'hf_seal', 'hf_roof', 'verge', 'gantry', 'eave', 'gable')): return False
+        if exclude and (tile(mat).startswith(exclude) or mat.startswith(exclude)): return False
+        return lab.get(tile(mat)) in NATURAL and len(fc[2]) in (3, 4)
+    isnat = [natural(fc) for fc in faces]; nat = [i for i, b in enumerate(isnat) if b]; stat = dict(mode='outward', polygons=len(nat))
+    if not nat: return list(faces), stat
+    L = _lib(); ad = _ad; P_ = ctypes.c_void_p
+    def corners(fl):
+        coff = array.array('q', [0]); C = array.array('d')
+        for fc in fl: C.extend(float(v) for p in fc[2] for v in tuple(p)[:3]); coff.append(coff[-1] + len(fc[2]))
+        return coff, C
+    oth = [fc for i, fc in enumerate(faces) if not isnat[i]]
+    co, C = corners(oth); hard = array.array('q', bytes(16 * max(co[-1], 1))); nh = L.ro_hard(len(oth), ad(co), ad(C), weld, ad(hard))      # (O2) the edges of everything not rounded
+    co2, C2 = corners([fc for fc in oth if not (str(fc[0]).split('|')[0].endswith('_t') or str(fc[1]) == 'sea')])                         # (2.) the lying surfaces
+    if road is not None: ns_, nc_ = int(road.shape[0]), int(road.shape[1]); Rb = _f8(road)
+    else: ns_ = nc_ = 0; Rb = array.array('d', [0.0])
+    nS = L.ro_lying(len(co2) - 1, ad(co2), ad(C2), ns_, nc_, ad(Rb), None); S = array.array('d', bytes(72 * max(nS, 1))); L.ro_lying(len(co2) - 1, ad(co2), ad(C2), ns_, nc_, ad(Rb), ad(S))
+    z = array.array('q', [0]); nSR = L.ro_lying(0, ad(z), ad(Rb), ns_, nc_, ad(Rb), None); SR = array.array('d', bytes(72 * max(nSR, 1))); L.ro_lying(0, ad(z), ad(Rb), ns_, nc_, ad(Rb), ad(SR))
+    # ---- the 1995 polygons (triangles first, then quads, as round1995 groups them)
+    ks = [k for k in (3, 4) if any(len(faces[i][2]) == k for i in nat)]; G = {}; FB = {}; nf = 0
+    for k in ks:
+        ids = [i for i in nat if len(faces[i][2]) == k]
+        G[k] = dict(ids=ids, n=len(ids), P=array.array('d', [float(v) for i in ids for q in faces[i][2] for v in q]), U=array.array('d', [float(v) for i in ids for q in faces[i][3] for v in q]))
+        FB[k] = nf; nf += len(ids)
+    Pf = array.array('d', bytes(96 * nf)); Kf = array.array('i', bytes(4 * nf))
+    for k in ks:
+        P = G[k]['P']
+        for j in range(G[k]['n']): f = FB[k] + j; Pf[12 * f:12 * f + 3 * k] = P[3 * k * j:3 * k * (j + 1)]; Kf[f] = k
+    D1 = array.array('d', bytes(96 * nf)); D2 = array.array('d', bytes(96 * nf)); cav2 = array.array('d', bytes(8 * nf)); st = array.array('q', [0, 0, 0])
+    if L.ro_faces(nf, ad(Kf), ad(Pf), weld, ad(hard), nh, math.cos(math.radians(crease)), ad(D1), ad(D2), ad(cav2), ad(st)): raise RuntimeError('round1995.c: UCRT acos unavailable')      # np.cos(np.radians(crease)): the same UCRT cos, x * (pi / 180)
+    tot = dict(edges=st[0], smooth_edges=st[1], sharp_or_open_edges=st[2])
+    # ---- cut every polygon as round_natural does; each piece corner goes onto its polygon's patch
+    nper = 4 ** level
+    for k in ks:
+        g = G[k]; n = g['n']; Pa = Arr('<f8', (n, k, 3), bytearray(g['P'].tobytes())); Ua = Arr('<f8', (n, k, 2), bytearray(g['U'].tobytes()))
+        ABa = Arr('<f8', (n, k, 2), bytearray(array.array('d', ([0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0] if k == 4 else [0.0, 0.0, 1.0, 0.0, 1.0, 1.0]) * n).tobytes()))
+        for _ in range(level): Pa, Ua = FR.subdivide_buf(Pa, Ua); ABa = FR.subdivide_buf(Arr('<f8', ABa.shape[:2] + (3,)), ABa)[1]      # (orig: the same cuts, the same numbers as Pa)
+        g.update(O=Pa, U=Ua, AB=ABa, np=n * nper); g['PF'] = array.array('q', [FB[k] + p // nper for p in range(g['np'])])
+        g['DD'] = array.array('d', bytes(24 * g['np'] * k)); L.ro_dd(g['np'], k, ad(g['PF']), ad(ABa), ad(D1), ad(D2), ad(g['DD']))
+    # ---- the pieces' corners welded; what may move and how far
+    allp = array.array('d'); alld = array.array('d')
+    for k in ks: allp.frombytes(memoryview(G[k]['O'].buf)[:G[k]['O'].nbytes]); alld.extend(G[k]['DD'])
+    na = len(allp) // 3; winv = array.array('q', bytes(8 * na)); nv = L.ro_weld(na, ad(allp), ad(alld), weld, ad(winv), None, None)
+    start = array.array('d', bytes(24 * nv)); D = array.array('d', bytes(24 * nv)); L.ro_weld(na, ad(allp), ad(alld), weld, ad(winv), ad(start), ad(D)); off = 0
+    for k in ks: G[k]['vi'] = winv[off:off + G[k]['np'] * k]; off += G[k]['np'] * k
+    dl = array.array('d', bytes(8 * nv)); tot['capped'] = L.ro_cap(nv, ad(D), cap, ad(dl))
+    startA = _arr('<f8', (nv, 3), start)
+    gap = FR.gap_over_buf(startA, _arr('<f8', (nSR, 3, 3), SR)).view(); keep = bytearray(1 if v < APRON else 0 for v in gap)      # (5.)
+    tot['apron'] = sum(1 for k_, d_ in zip(keep, dl) if k_ and d_ > 1e-6)
+    if keep_at is not None and len(keep_at):                           # (6.) corners sorted by x, a slab of them looked at per spectator
+        xo = array.array('q', bytes(8 * nv)); L.ro_argsort_x(nv, ad(start), ad(xo)); xs = [start[3 * i] for i in xo]; stand = bytearray(nv); SS = STAND * STAND
+        for q in keep_at:
+            kx, ky, kz = float(q[0]), float(q[1]), float(q[2])
+            for c in xo[bisect.bisect_left(xs, kx - STAND):bisect.bisect_left(xs, kx + STAND)]:
+                dx = start[3 * c] - kx; dz = start[3 * c + 2] - kz
+                if dx * dx + dz * dz < SS and abs(start[3 * c + 1] - ky) < 3.0: stand[c] = 1
+        tot['stands'] = sum(1 for s_, d_ in zip(stand, dl) if s_ and d_ > 1e-6); keep = bytearray(a | b for a, b in zip(keep, stand))
+    X = array.array('d', bytes(24 * nv)); mov = bytearray(nv); L.ro_keep(nv, ad(keep), ad(start), ad(D), ad(X), ad(mov))
+    lo, hi = FR.order_limits_buf(startA, _arr('<f8', (nv, 3), X), _arr('|u1', (nv,), mov), _arr('<f8', (nS, 3, 3), S))
+    tot['held_by_order'] = L.ro_order(nv, lo.ptr(), hi.ptr(), ad(start), ad(X), ad(D))
+    # ---- (O3) no new hollow, (7.) nothing turns over: the triangles the game draws, their shared edges
+    ksA = array.array('i', ks); nsA = array.array('q', [G[k]['np'] for k in ks]); vis = (P_ * len(ks))(*[ad(G[k]['vi']) for k in ks]); Os = (P_ * len(ks))(*[G[k]['O'].ptr() for k in ks]); PFs = (P_ * len(ks))(*[ad(G[k]['PF']) for k in ks])
+    cn = array.array('q', [0, 0]); L.ro_tris(len(ks), ad(ksA), ad(nsA), vis, Os, PFs, nv, ad(cn), None, None, None, None, None, None, None); nt, ne = cn[0], cn[1]
+    T = array.array('q', bytes(24 * max(nt, 1))); TO = array.array('d', bytes(72 * max(nt, 1))); TP = array.array('q', bytes(8 * max(nt, 1))); TA = array.array('q', bytes(24 * max(ne, 1))); TB = array.array('q', bytes(24 * max(ne, 1)))
+    TPA = array.array('q', bytes(8 * max(ne, 1))); TPB = array.array('q', bytes(8 * max(ne, 1))); L.ro_tris(len(ks), ad(ksA), ad(nsA), vis, Os, PFs, nv, ad(cn), ad(T), ad(TO), ad(TP), ad(TA), ad(TB), ad(TPA), ad(TPB))
+    b0 = array.array('d', bytes(8 * max(ne, 1))); ok0 = bytearray(max(ne, 1)); L.ro_b0(ne, ad(start), ad(TA), ad(TB), ad(TPA), ad(TPB), ad(cav2), ad(b0), ad(ok0))
+    scale = array.array('d', [1.0]) * nv; X = array.array('d', bytes(24 * nv)); s3 = array.array('q', [0] * 5)
+    L.ro_o3(nv, ad(start), ad(D), ad(scale), nt, ad(T), ad(TO), ne, ad(TA), ad(TB), ad(b0), ad(ok0), tol, FOLD, ad(X), ad(s3))
+    tot['new_hollows_before_O3'] = s3[2]; tot['turned_over_before_O3'] = s3[3]
+    mv = array.array('d', bytes(8 * nv)); L.ro_moves(nv, ad(X), ad(start), ad(mv)); far = [v for v in mv if v > 0.005]
+    tot.update(O3_rounds=s3[0], O3_corners_cut=s3[1], new_hollows_left=s3[4], corners_curved=len(far), corners=nv)
+    tot['largest_move_m'] = round(max(mv), 2); tot['mean_move_m'] = round(npexact.pwsum(far) / len(far), 3) if far else 0.0      # (np.mean: numpy's pairwise sum / n)
+    # ---- (4.) flat stays coarse: a polygon whose pieces all stay within FLAT of where they were is written whole, its outline corners exactly back
+    foff = array.array('q', [0]); fo = {}
+    for k in ks: fo[k] = foff[-1]; foff.append(foff[-1] + G[k]['n'])
+    flat = bytearray(foff[-1]); tot['flat'] = L.ro_flat(nv, ad(start), ad(X), len(ks), ad(ksA), ad(nsA), vis, Os, nper, FLAT, ad(flat), ad(foff))
+    for k in ks: g = G[k]; g['X'] = array.array('d', bytes(24 * g['np'] * k)); L.ro_gather(g['np'] * k, ad(g['vi']), ad(X), ad(g['X']))
+    stat.update(tot); stat['seconds'] = round(time.time() - t0, 1)
+    return _emit_buf(faces, isnat, G, ks, flat, fo, level, stat, log, 'ROUNDED OUTWARDS (rules O1-O4, level %d)' % level)
+def _emit_buf(faces, isnat, G, ks, flat, fo, level, stat, log, what):
+    """_emit on round_outward's buffers: the pieces as polygons, the light-map table PATCH, the stretch figures"""
+    import fastround as FR
+    from npyio import Arr
+    L = _lib(); ad = _ad; nper = 4 ** level; sr = array.array('d')
+    for k in ks:
+        g = G[k]; r = array.array('d', bytes(8 * g['np'] * k)); m = L.ro_stretch(g['np'], k, ad(g['O']), ad(g['X']), ad(r)); sr.extend(r[:m])
+    if len(sr):
+        n = len(sr); pct = lambda c: round(100.0 * (c / n), 1)            # (the mean of a boolean array: how many / n)
+        stat['texture_stretch'] = dict(edges=n, percent_within_10=pct(sum(1 for v in sr if abs(v - 1) <= 0.10)), percent_longer_by_25=pct(sum(1 for v in sr if v > 1.25)), largest=round(max(sr), 2), smallest=round(min(sr), 2))
+    out_nat = []; PG = array.array('d'); PA = array.array('d'); PI = array.array('q')
+    for k in ks:
+        g = G[k]; ids = g['ids']; skip = bytearray(g['np'])
+        for f in range(g['n']):
+            if flat[fo[k] + f]: out_nat.append(faces[ids[f]]); skip[f * nper:(f + 1) * nper] = b'\x01' * nper      # the flat ones: as they came
+        good = bytearray(g['np']); L.ro_good(g['np'], k, ad(g['X']), ad(skip), ad(good))
+        Xl = g['X'].tolist(); Ul = g['U'].tolist(); ct = list(zip(Xl[0::3], Xl[1::3], Xl[2::3])); ut = list(zip(Ul[0::2], Ul[1::2]))      # every corner's (x, y, z) / (u, v)
+        sel = [q for q in range(g['np']) if good[q]]; pf = [ids[q // nper] for q in sel]
+        out_nat.extend([(faces[i][0], faces[i][1], ct[k * q:k * q + k], ut[k * q:k * q + k]) for q, i in zip(sel, pf)]); PI.extend(pf)
+        pg = array.array('d', bytes(96 * len(sel))); pa = array.array('d', bytes(64 * len(sel))); L.ro_patch(g['np'], k, ad(g['X']), ad(g['AB']), ad(good), ad(pg), ad(pa)); PG.extend(pg); PA.extend(pa)
+    PATCH.clear()
+    if len(PI):
+        m = len(PI); hk = FR.corner_keys_buf(_arr('<f8', (m, 4, 3), PG)); cn = FR.canon_keys_buf(hk); cb = bytes(memoryview(cn.buf)[:cn.nbytes])
+        PATCH['ab'] = PA; PATCH['id'] = PI; PATCH['corner'] = bytes(memoryview(hk.buf)[:hk.nbytes]); PATCH['row'] = {cb[32 * r:32 * r + 32]: r for r in range(m)}
+    out = [fc for i, fc in enumerate(faces) if not isnat[i]] + out_nat; stat['polygons_after'] = len(out_nat)
+    log('       %s: %s' % (what, stat))
+    return out, stat
