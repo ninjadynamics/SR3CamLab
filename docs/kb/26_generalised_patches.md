@@ -398,6 +398,37 @@ adds 12 triangles on Desert and 45 on Lake Side, and none of that was looked at.
 
 ## 11. Extending it
 
+### 2026-10-16 review: sloping kerb feet and deterministic correction
+
+Codex took over the patch-1/patch-2 generalization review after the standalone fix.
+The first correction is deliberately limited to the existing opt-in `forest_foot=true`
+rule; approved course patches and the default rule set are unchanged.
+
+Two defects reproduced with small geometry fixtures:
+
+- A sloping kerb was measured by the whole face's height and only its highest corner
+  was considered a top. A one-metre kerb rising one metre along its length therefore
+  looked two metres tall, and its lower end could be missed even within the height limit.
+  The rule now measures each local vertical top/foot pair within the existing thresholds.
+- Eligibility was tested while earlier corners were already being lowered. This could
+  make a later corner qualify only because of triangle order. Decisions now use the
+  unchanged input fill, then all approved corner moves are applied together.
+
+OFFLINE: `python tools/import/core/test_genpatch_forest_foot.py` passes four cases:
+both ends of a sloping kerb and shared fill vertices, level fill preserved, tall walls
+and unrelated rules preserved, and no order-dependent cascade. Original scenery
+coordinates are never modified. Headless before/after renders with triangle edges
+were inspected: the generated floor meets the local feet instead of climbing the kerb.
+These pictures are synthetic regression geometry, not a claim of improved course renders.
+
+All four saved course snapshots (Mountain, Desert, Forest, Lake Side) were regenerated
+against commit `21447a4`, both with defaults and with `only=FA forest_foot=true`.
+All eight patch files are byte-identical before/after; all eight audits report zero
+area-less faces, sub-2-cm slivers and overlapping added faces. This establishes no
+change to those existing outputs; it does not resolve the remaining lawn, side-wall,
+forest-band or visibility questions in sections 9/10. Evidence and render scripts:
+`SR3-investigation/generalization-review/` (local, outside the repository).
+
 Each rule is one function taking the `Scene` (faces in decoded coordinates with class, role, normal, area; `sc.rm` = triangles to remove,
 `sc.put(tile, corners, uv, rule letter)` = a face to add, `sc.note(rule, text)` = a report line, `sc.view(name, place)` = a picture to
 take). Add the function, call it in `run()` in the order its inputs need (ground before pavement, pavement before facades, facades before

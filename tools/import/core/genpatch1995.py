@@ -1034,17 +1034,18 @@ def forest_foot(sc):
     C = sc.cfg; tops = {}
     for k in range(sc.N):
         if sc.cut[k] or sc.role[k] not in ('', 'paving') or abs(sc.n[k][1]) > 0.3: continue
-        P = sc.P[k]; lo = float(P[:, 1].min()); hi = float(P[:, 1].max())
-        if not C['foot_min'] <= hi - lo <= C['foot_max']: continue
+        P = sc.P[k]
         for p in P:
-            if p[1] > hi - 0.05:
-                under = [q for q in P if np.hypot(q[0] - p[0], q[2] - p[2]) < 0.05 and q[1] < p[1] - C['foot_min']]
-                if under: kk = (round(float(p[0]), 2), round(float(p[1]), 2), round(float(p[2]), 2)); tops[kk] = min(tops.get(kk, 1e9), float(min(q[1] for q in under)))
+            # A sloping kerb has a different top/foot height at each end.
+            # Measure the local vertical pair, not the whole face's height or
+            # only its highest corner. Original scenery remains untouched.
+            under = [q for q in P if np.hypot(q[0] - p[0], q[2] - p[2]) < 0.05 and C['foot_min'] < p[1] - q[1] <= C['foot_max']]
+            if under: kk = (round(float(p[0]), 2), round(float(p[1]), 2), round(float(p[2]), 2)); tops[kk] = min(tops.get(kk, 1e9), float(min(q[1] for q in under)))
     use = collections.defaultdict(list)
     for i, (t, P, uv, r) in enumerate(sc.add):
         if r == 'F':
             for j, p in enumerate(P): use[(round(p[0], 2), round(p[1], 2), round(p[2], 2))].append((i, j))
-    n = 0; where = []
+    n = 0; where = []; changes = []
     for kk, L in use.items():
         if kk not in tops: continue
         ok = False                                                      # only where the floor itself lies lower: a triangle here has both its other corners under this one
@@ -1052,8 +1053,12 @@ def forest_foot(sc):
             P = sc.add[i][1]; o = [P[m][1] for m in range(3) if m != j]
             if max(o) < kk[1] - 0.2: ok = True
         if not ok: continue
-        for i, j in L: t, P, uv, r = sc.add[i]; P = list(P); P[j] = (P[j][0], tops[kk], P[j][2]); sc.add[i] = (t, P, uv, r)
+        changes.append((kk, L))
         n += 1; where.append([kk[0], tops[kk], kk[2]])
+    # Decide on the original fill. Lowering one corner must not make its
+    # neighbour eligible merely because triangles were visited in that order.
+    for kk, L in changes:
+        for i, j in L: t, P, uv, r = sc.add[i]; P = list(P); P[j] = (P[j][0], tops[kk], P[j][2]); sc.add[i] = (t, P, uv, r)
     sc.note('F', 'corners of the forest floor standing on a kerb top, set down to its foot: %d %s' % (n, [[round(x, 1) for x in w] for w in where[:40]]))
 
 def flanks(sc, T, floor):
