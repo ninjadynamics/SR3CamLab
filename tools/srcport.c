@@ -182,21 +182,7 @@ static float slip(float dx, float dz, float hx, float hz, float *len)
     return copysignf_(fsqrt(1.0f - c * c), cr != 0.0f ? cr : 1.0f);
 }
 
-/* SRC's tyre force for one axle (kb 29 section 7); returns the side force, fx in / out */
-static float tyre(float sig, float axle_speed, float fmax, float k, float *fx, float c)
-{
-    float a = fabsf_(sig) * k; if (a > PI / 2) a = PI / 2;
-    float fy = fmax * fsin(a);
-    float tot = fsqrt(fy * fy + *fx * *fx);                 /* (1 + w) with w = 0: SR3 does the wheelspin */
-    if (tot > fmax) {
-        float q = fmax / tot, f = c * fsqrt(q) + (1.0f - c) * q * q;
-        fy = fy * f * 1.1f; *fx = *fx * f;
-    }
-    if (sig >= 0.0f) fy = -fy;
-    float ls = fabsf_(sig) * axle_speed;
-    if (ls < 0.02f) fy *= ls / 0.02f;
-    return fy;
-}
+#include "src_kernel.h"
 
 static void port(void *veh, float dt, const float *v0, const float *w0)
 {
@@ -244,17 +230,19 @@ static void port(void *veh, float dt, const float *v0, const float *w0)
     float sp3 = fsqrt(vx * vx + vy * vy + vz * vz), sp2 = fsqrt(vx * vx + vz * vz);
 
     /* steering: SRC 0x395D8 / 0x39A90 */
-    float s;
+    float s, counts;
     if (drv) {
         float u = ((float)RD(drv, 0x1C85, u8) - (float)RD(drv, 0x1C84, u8)) / 255.0f;
-        s = 0.84f * clampf(g.counts * u, -80.0f, 80.0f) / 80.0f;
+        counts = g.counts * u;
+        s = 0.84f * clampf(counts, -80.0f, 80.0f) / 80.0f;
     } else {
         u8 *ctl = RD(veh, 0x28, u8 *);
         float u = (ctl ? RD(ctl, 8, float) : 0.0f) * g.ai_gain;
-        s = 0.84f * clampf(g.counts * u, -80.0f, 80.0f) / 80.0f;
+        counts = g.counts * u;
+        s = 0.84f * clampf(counts, -80.0f, 80.0f) / 80.0f;
     }
     if (!st->valid) { st->y = s; st->lt = 0.0f; }
-    st->y += (1.0f - fpow(0.1f, k)) * (s - st->y);
+    st->y = src_steering(counts, st->y, k);
     float d = -st->y;
 
     /* body slip angle and its change (0x3580C) */
@@ -285,9 +273,7 @@ static void port(void *veh, float dt, const float *v0, const float *w0)
     /* load transfer (0x37900, 0x38A18) from SR3's suspension */
     float Cf = comp[0] + comp[1], Cr = comp[2] + comp[3];
     float raw = Cf + Cr > 1e-6f ? (Cf - Cr) / (Cf + Cr) : st->lt;
-    float K = raw > st->lt ? R->lag_up : R->lag_dn;
-    float lt = raw - fpow(K, k) * (raw - st->lt);
-    if (lt > 0.0f) lt += 0.08f * fsin(PI * lt);
+    float lt = src_load_transfer(Cf, Cr, st->lt, R->lag_up, R->lag_dn, k);
     st->lt = lt;
 
     /* drive / brake force: what SR3 did along the car this step, without gravity (SRC's D, mass-1000 units) */
@@ -295,14 +281,16 @@ static void port(void *veh, float dt, const float *v0, const float *w0)
     float D = 1000.0f * (dot3(v1, az) - dot3(v0, az) - g.use_gravity * dot3(gv, az) * dt) / (F * k);
     if (!nax[0] || !nax[1]) D = 0.0f;                     /* an axle in the air: no drive force (SRC) */
 
-    /* tyre forces (0x37870) */
+    /* Tyre forces (0x37870). Adapter gap: SRC wheelspin is not mapped yet.
+       Passing zero preserves the disabled legacy adapter; it is NOT equivalent
+       to SRC merely because SR3 simulates longitudinal wheelspin. */
     float fm = G_SRC * 1000.0f * (1.0f + 0.3f * sp3);
     float fmf = fm * R->grip_f * (1.0f + lt), fmr = fm * R->grip_r * (1.0f - lt);
     float sf = sl[0];
     sf = fabsf_(sf) < 0.01f ? 0.0f : sf - copysignf_(0.01f, sf);
     float fxf = R->share * D, fxr = D - fxf;
-    float fyf = nax[0] ? tyre(sf, spd[0], fmf, 2.0f * PI / 3.0f, &fxf, 1.2f) : (fxf = 0.0f, 0.0f);
-    float fyr = nax[1] ? tyre(sl[1], spd[1], fmr, PI, &fxr, 0.4f) : (fxr = 0.0f, 0.0f);
+    float fyf = nax[0] ? src_tyre(sf, spd[0], fmf, 2.0f * PI / 3.0f, &fxf, 1.2f, 0.0f) : (fxf = 0.0f, 0.0f);
+    float fyr = nax[1] ? src_tyre(sl[1], spd[1], fmr, PI, &fxr, 0.4f, 0.0f) : (fxr = 0.0f, 0.0f);
     if (fxf < 0.0f) { fxr += fxf; fxf = 0.0f; }
 
     /* yaw torque and the yaw rate (0x36760, 0x36A5C) */
@@ -310,8 +298,7 @@ static void port(void *veh, float dt, const float *v0, const float *w0)
     float r14 = fxf > 0.0f && Cf > 1e-6f ? xs * 1.1f * (comp[1] - comp[0]) / Cf : 0.0f;   /* SRC: (right - left) */
     float r13 = fxr > 0.0f && Cr > 1e-6f ? xs * 1.1f * (comp[3] - comp[2]) / Cr : 0.0f;
     float T = g.axle * (fyr - xf) + 0.66f * r13 * fxr - 0.635f * r14 * fxf;
-    float wn = clampf(w + k * T / 1146.0f, -0.1f, 0.1f);
-    wn = wn - R->kb * dbeta - (1.0f - fpow(1.0f - R->kw, k)) * wn;
+    float wn = src_yaw(w, T, dbeta, R->kb, R->kw, k);
 
     /* the new side velocity (SRC's side force, gravity along the car's x) and forward velocity (SR3's) */
     float vxn = vx + k * (fyr + xf) / 1000.0f + g.use_gravity * xs * dot3(gv, ax) * dt / F;

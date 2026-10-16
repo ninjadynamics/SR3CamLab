@@ -196,3 +196,12 @@ loop); `tools\switch_mocktest.ps1` runs that loop against a scripted fake game.
 See [32_session_2026_10_15.md](32_session_2026_10_15.md) for the launcher/settings/controller and watchdog work,
 the reproduced texture-alias shutdown crash fixed in 9aee814, source-build provenance, and the physical-controller
 and full-race checks still outstanding. Importer byte comparisons do not establish gameplay stability.
+
+## Later startup decoder crash (2026-10-16, 12:18)
+
+OBSERVED: combined SRC/HD test crashed in `wmvdecod.dll+0x1AFA14` during state 4, with the native boot gate still busy and before the experimental handling helper installed any code. Three headless DirectShow cycles did not reproduce it. A reversible WMV2 transcode of the 18 original startup clips passed full decode checks and three Windows decoder cycles and was installed in the standalone test tree; dimensions, fps and decoded frame counts match. This is a compatibility workaround, not a verified root-cause fix. Original clips are backed up. Live retry pending. Evidence and guarded restore: `SR3-investigation/decoder-startup-20261016/FINDINGS.md` and `install-compat.ps1 -Restore`.
+
+2026-10-16 owner confirmation: HD Hornet textures work after the 2048/mip-chain correction; latest combined run reached both races. WMV2 remains a compatibility workaround, not a proven decoder root-cause fix.
+
+
+2026-10-16 owner reports watchdog ON still degrades performance and makes controls unresponsive/noisy compared with OFF. Do not consider watchdog regression resolved. Keep standalone test profile patches.watchdog: off and TEST-SRC-HD.ps1 --no-watchdog. Accepted handling remains frozen.

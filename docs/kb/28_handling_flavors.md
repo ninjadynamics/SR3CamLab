@@ -397,3 +397,27 @@ The SRC turning in the game (the session above) and the staged model-2 SRC files
 SR3's own cornering grip and slip curve; the SegaRally force model's behaviour; caching of car / grip files between races;
 the force models 0 / 1 / 3 for SR3's longer yaw lag; SR2 driving data (Supermodel with an external reader); per-car
 grip for Realism (a free tyre class or a per-car grip field still to be found).
+
+
+### SRC turn-in candidate: yaw inertia (2026-10-16)
+
+Bruno confirmed the port-disabled handling playable and the collision/steering-loss issue fixed; the remaining complaint
+was sluggish turn-in. A read-only SR3 lap captured 4,398 samples (59.305 s of race elapsed time), native vehicle step
+0x45C820 and PowerslideSteer 0x6799C0 throughout. A matching owner-driven Model 2 lap captured 4,671 samples;
+Bruno described its controls as excellent. Separate driven laps are not controlled step tests: estimated delays do not
+prove a single cause. Captures and comparison.json: SR3-investigation/steering-response/.
+
+Verified installed SRC files still used chunk 0 +0x0C = 2.5, SR3's yaw inertia per unit mass. The SR3 loader
+0x46C528..0x46C553 multiplies this field by mass. SRC's 0x34140 initialization gives yaw inertia 1146 and mass 1000
+(kb 29 section 1), a ratio of 1.146. The candidate uses body.yaw_inertia_per_mass = 1.146: at retained SR3 mass 1300,
+yaw inertia is 1489.8 rather than 3250. This is a code-derived ratio adapted to SR3's retained mass, not a complete SRC
+physics port and not a demonstrated cure for all understeer. It increases angular acceleration for a given torque;
+it can also change the physical response during contact, even though collision-recovery code is unchanged.
+
+Builder validation: all ten pre-change generated files exactly matched installed SRC files; only decoded chunk 0
+bytes +0x0C..+0x0F differ in each candidate, with every other chunk and pointer-fixup list preserved. The grip file is
+byte-identical. Zero, negative and nonfinite inertia values are rejected. Compressed SBF sizes may change on recompression.
+Only standalone modded/Rally/Main_release/car1 was installed, with hash-verified backups under steering-response/before-yaw-*.
+No runtime/plugin or stock/Realism files changed; SRC port remains disabled, force model stays 2. Owner driving validation
+of this candidate remains pending. TEST-STEERING.ps1 records the next lap; restore-yaw.ps1 accepts the backup directory
+and refuses to overwrite files changed since the candidate installation.

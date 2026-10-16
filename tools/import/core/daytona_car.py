@@ -61,20 +61,40 @@ def day_faces(row):
 
 class Tiles:
     """the Model 2 texture of a polygon (RGBA float, 0..1) baked at a fixed polygon luminance"""
-    def __init__(self, light):
+    def __init__(self, light, hd=None):
         import daytona_tex as T
         self.T = T; self.light = light; self.cache = {}
+        self.hd = os.path.abspath(hd) if hd else None; self.used_hd = {}
         T.poly_luma = lambda param, L=light: float(L)
 
     def tile(self, m):
         if not m["textured"]:
             return None
-        k = (m["sheet"], m["x"], m["y"], m["w"], m["h"], m["cbase"], m["lbase"], m["translucent"], m["mx"], m["my"])
+        k = (m["sheet"], m["x"], m["y"], m["w"], m["h"], m["cbase"], m["lbase"], m["translucent"], m["mx"], m["my"], m["param"], m["checker"])
         if k not in self.cache:
             img = self.T.tile_rgba(0, m["sheet"], m["x"], m["y"], m["w"], m["h"], m["cbase"], m["lbase"], m["param"],
                                    m["translucent"], m["mx"], m["my"])
+            if self.hd:
+                from daytona_export import mat_name
+                from PIL import Image
+                path = os.path.join(self.hd, mat_name(m) + ".png")
+                if os.path.isfile(path):
+                    with Image.open(path) as im: replacement = np.array(im.convert("RGBA"))
+                    h, w = img.shape[:2]; hh, ww = replacement.shape[:2]
+                    if ww < w or hh < h or ww % w or hh % h or ww // w != hh // h:
+                        raise ValueError("HD tile must be a uniform integer upscale: " + path)
+                    img = replacement
+                    self.used_hd[os.path.basename(path)] = dict(width=ww, height=hh, scale=ww // w,
+                                                               sha256=sha(open(path, "rb").read()))
             self.cache[k] = img.astype(np.float32) / 255.0
         return self.cache[k]
+
+    def sample(self, m, uv):
+        tile = self.tile(m)
+        if tile is None: return np.tile(self.solid(m), (len(uv), 1))
+        # Exported PNGs include mirrored halves; model UVs remain in original texels.
+        w = m["w"] * (2 if m["mx"] else 1); h = m["h"] * (2 if m["my"] else 1)
+        return sample(tile, uv[:, 0] * (tile.shape[1] / w), uv[:, 1] * (tile.shape[0] / h))
 
     def solid(self, m):
         return np.array(self.T.solid_rgb(m["cbase"], m["param"]) + [255.0], np.float32) / 255.0
@@ -159,8 +179,9 @@ class Atlas:
         return pos
 
 
-def bake(faces, layers, tiles, size, density, alpha_target=False):
+def bake(faces, layers, tiles, size, density, alpha_target=False, render_scale=1):
     """faces: the faces drawn (layer 0 ones of this atlas); returns (rgba image float, per-face corner uv list, density)"""
+    if render_scale not in (1, 2, 4): raise ValueError("render_scale must be 1, 2 or 4")
     base = [i for i in range(len(faces)) if layers[i] == 0 and faces[i]["sel"]]
     over = [i for i in range(len(faces)) if layers[i] > 0]
     def dims(dens):
@@ -180,18 +201,18 @@ def bake(faces, layers, tiles, size, density, alpha_target=False):
         dm = dims(density); pos = at.pack(dm)
         if pos is not None: break
         density *= 0.92
-    img = np.zeros((size, size, 4), np.float32)
+    image_size = size * render_scale
+    img = np.zeros((image_size, image_size, 4), np.float32)
     uvs = {}
     for k, i in enumerate(base):
-        f = faces[i]; Q = f["P"]; (w, h) = dm[k]; (x0, y0) = pos[k]; p = at.pad
+        f = faces[i]; Q = f["P"]; (w, h) = (v * render_scale for v in dm[k]); (x0, y0) = (v * render_scale for v in pos[k]); p = at.pad * render_scale
         xs = np.arange(-p, w + p) + 0.5; ys = np.arange(-p, h + p) + 0.5
         S, Tt = np.meshgrid(np.clip(xs / w, 0, 1), np.clip(ys / h, 0, 1))
         if len(Q) == 3:                        # keep padding texels on the triangle
             tot = np.maximum(S + Tt, 1e-9); over_ = tot > 1; S = np.where(over_, S / tot, S); Tt = np.where(over_, Tt / tot, Tt)
         P3 = param_points(Q, S, Tt).reshape(-1, 3)
         UV = param_points(f["uv"], S, Tt).reshape(-1, 2)
-        t = tiles.tile(f["mat"])
-        col = sample(t, UV[:, 0], UV[:, 1]) if t is not None else np.tile(tiles.solid(f["mat"]), (len(P3), 1))
+        col = tiles.sample(f["mat"], UV)
         if not alpha_target: col[:, 3] = 1.0 if not f["mat"]["translucent"] else col[:, 3]
         cand = [j for j in over if faces[j]["n"] @ f["n"] > 0.999 and abs((faces[j]["P"].mean(0) - Q.mean(0)) @ f["n"]) < 0.02
                 and (faces[j]["P"].min(0) <= P3.max(0) + 1e-3).all() and (faces[j]["P"].max(0) >= P3.min(0) - 1e-3).all()]
@@ -200,14 +221,13 @@ def bake(faces, layers, tiles, size, density, alpha_target=False):
             ins, Wt = bary_inside(P3, o["P"], f["n"])
             if not ins.any(): continue
             ouv = Wt[ins] @ o["uv"]
-            to = tiles.tile(o["mat"])
-            oc = sample(to, ouv[:, 0], ouv[:, 1]) if to is not None else np.tile(tiles.solid(o["mat"]), (ins.sum(), 1))
+            oc = tiles.sample(o["mat"], ouv)
             a = oc[:, 3:4]
             col[ins, :3] = col[ins, :3] * (1 - a) + oc[:, :3] * a
             col[ins, 3] = np.maximum(col[ins, 3], oc[:, 3])
         img[y0 - p:y0 + h + p, x0 - p:x0 + w + p] = col.reshape(h + 2 * p, w + 2 * p, 4)
         cuv = _corners(len(Q)) * np.array([w, h]) + np.array([x0, y0])
-        uvs[i] = cuv / size
+        uvs[i] = cuv / image_size
     return img, uvs, density
 
 

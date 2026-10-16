@@ -6,8 +6,8 @@
 1. clang (i686, freestanding, SSE2 + x87 for sin / cos / atan / pow) compiles srcport.c to a COFF object.
 2. The object's .text, .rdata, .data and .bss are laid out one after the other (16-byte aligned) from offset 0; every
    IMAGE_REL_I386_DIR32 site gets its target's offset, and its place is listed in "relocs": the launcher writes the
-   blob at the address it allocated, then adds that address to the dword at each listed offset. No other relocation
-   type is accepted (calls into Rally.exe are absolute addresses in registers, not relocations). The blob ends where
+   blob at the address it allocated, then adds that address to the dword at each listed offset. Internal IMAGE_REL_I386_REL32 calls are resolved at link time, with no runtime relocation.
+   Other relocation types are rejected (calls into Rally.exe use absolute addresses in registers). The blob ends where
    .bss starts (the log); the launcher allocates ALLOC bytes, zero-filled, so .bss needs no bytes in sr3mods.ps1.
 3. The surface table: the grip file's surface-pair records in file order (the index a tyre keeps at + 0x1C, the same
    order in every grip file the flavor builder writes), each classed for SRC's four records by its name and, for the
@@ -16,7 +16,7 @@
 Needs clang on the PATH (C:\\mingw64\\bin) and the game's SurfacePairEffects\\surfacepairdata_xdata.sbf (SEGA's own)."""
 import os, sys, re, json, struct, subprocess, argparse
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, '..', 'scripts', 'importer'))
+sys.path.insert(0, os.path.join(HERE, 'import', 'core'))
 SRC = os.path.join(HERE, 'srcport.c')
 FLAGS = ['-target', 'i686-pc-windows-gnu', '-O2', '-c', '-ffreestanding', '-fno-math-errno', '-msse2', '-mfpmath=sse',
          '-fno-stack-protector', '-fno-asynchronous-unwind-tables', '-Wall', '-Wno-unused-function']
@@ -59,12 +59,14 @@ def link(obj):
         if i not in base: continue
         for r in range(s['nrel']):
             va, si, typ = struct.unpack_from('<IIH', obj, s['prel'] + 10 * r)
-            if typ != 6: raise SystemExit('relocation type %d in %s: only DIR32 is handled' % (typ, s['name']))
+            if typ not in (6,20): raise SystemExit('unsupported relocation type %d in %s' % (typ, s['name']))
             nm, val, sec = syms[si]
             if sec <= 0 or (sec - 1) not in base: raise SystemExit('relocation to an outside symbol %s' % nm)
             site = base[i] + va
-            struct.pack_into('<I', blob, site, struct.unpack_from('<I', blob, site)[0] + base[sec - 1] + val)
-            relocs.append(site)
+            target = base[sec - 1] + val
+            addend = struct.unpack_from('<I', blob, site)[0]
+            struct.pack_into('<I', blob, site, (addend + target - (site + 4 if typ == 20 else 0)) & 0xFFFFFFFF)
+            if typ == 6: relocs.append(site) # REL32 is image-relative and needs no load relocation
     if any(r >= (bss_at or len(blob)) for r in relocs): raise SystemExit('a relocation inside .bss')
     return bytes(blob), names, sorted(relocs), bss_at or len(blob)
 

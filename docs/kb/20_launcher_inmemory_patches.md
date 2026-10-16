@@ -402,3 +402,12 @@ pattern. VERIFIED (it was used for unattended runs on 2026-10-07). No input addr
 `Set-RoadHide`: a track folder with `road.txt` (`hide` or `hide all`) has the first byte of the road drawing routine 0x4EEF70 (and, with `hide all`, of the per-car road patch 0x4EE920) replaced by `ret` (0xC3) while that track is selected; restored for every other track; refused unless the expected six bytes are there. VERIFIED in game on the Mountain build RAW. Details, the search and the tests: [25_verbatim_road_and_milestones.md](25_verbatim_road_and_milestones.md).
 
 `Set-ShaderTest`: `shader.txt` (`untextured` / `untextured-own`) swaps a pixel shader pointer of the uber effect; written, not yet run in game ([24_shaders.md](24_shaders.md)).
+
+
+### Standalone START readback follow-up (2026-10-16)
+
+Owner reported START no longer saved a picture. Run 14:34 detected two screenshot requests, each returning error 1460, so the binding/camera patch/export were present. Standalone capture.c now allows 2000 ms on the requesting worker and logs request error, elapsed time and readback stage (0 queued through 5 pixels copied). The added 350 ms simulated GPU-copy case exceeds the old 250 ms limit; it passes with the extended wait along with cancellation, in-flight timeout and COM cleanup checks. Runtime-only update installed with backup in SR3-investigation/start-capture-fix. Live root cause and successful race capture remain unconfirmed; consult sr3lab.log stage/timing if it still fails. The plugin DLL retains its old wording mentioning 250 ms.
+
+
+### START capture: queued timeout confirmed, frame hook replacement (2026-10-16)
+Owner still gets no screenshots. Run 16:02:53 records three error1460 / 2000ms / stage0 requests: never claimed by render thread. Timeout extension rejected as a fix. Capture now uses guarded game instruction 0x591C63 after EndScene, independent of D3D Present vtable; preserves original MOV and register/flags/floating-point state. Actual thunk and full native suite pass; race capture remains pending. Audit/backup: SR3-investigation/start-capture-framefix. Exact cause of old hook not servicing race requests remains unproven.

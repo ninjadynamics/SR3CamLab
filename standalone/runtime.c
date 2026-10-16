@@ -42,7 +42,6 @@ static volatile LONG outputCommand;
 static IDirect3D9 *(WINAPI *systemCreate9)(UINT);
 static HRESULT (WINAPI *systemCreateDevice)(IDirect3D9*,UINT,D3DDEVTYPE,HWND,DWORD,D3DPRESENT_PARAMETERS*,IDirect3DDevice9**);
 static HRESULT (WINAPI *systemReset)(IDirect3DDevice9*,D3DPRESENT_PARAMETERS*);
-static HRESULT (WINAPI *systemPresent)(IDirect3DDevice9*,const RECT*,const RECT*,HWND,const RGNDATA*);
 static BOOL WINAPI cabinetRead(HANDLE,LPVOID,DWORD,LPDWORD,LPOVERLAPPED);
 static void *cabinetReadPointer=cabinetRead;
 
@@ -304,11 +303,8 @@ static void presentation(D3DPRESENT_PARAMETERS *p) {
     p->PresentationInterval=settings.vsync?D3DPRESENT_INTERVAL_ONE:D3DPRESENT_INTERVAL_IMMEDIATE;
 }
 static HRESULT WINAPI resetDevice(IDirect3DDevice9 *self,D3DPRESENT_PARAMETERS *p) {presentation(p);return systemReset(self,p);}
-static HRESULT WINAPI presentDevice(IDirect3DDevice9 *self,const RECT *source,const RECT *dest,HWND window,const RGNDATA *dirty) {
-    static int first=1;
-    if(first){first=0;logline("D3D first Present: device=%p tick=%lu\n",self,(unsigned long)GetTickCount());}
-    sr3_capture_present(self);
-    return systemPresent(self,source,dest,window,dirty);
+static void captureResult(DWORD error,DWORD elapsed,LONG stage) {
+    logline("Screenshot readback: error=%lu elapsed=%lu ms stage=%ld\n",(unsigned long)error,(unsigned long)elapsed,(long)stage);
 }
 static HRESULT WINAPI createDevice(IDirect3D9 *self,UINT adapter,D3DDEVTYPE type,HWND window,DWORD flags,D3DPRESENT_PARAMETERS *p,IDirect3DDevice9 **out) {
     D3DDISPLAYMODE mode;HRESULT hr;
@@ -320,13 +316,10 @@ static HRESULT WINAPI createDevice(IDirect3D9 *self,UINT adapter,D3DDEVTYPE type
     presentation(p);hr=systemCreateDevice(self,adapter,type,window,flags,p,out);
     logline("D3D CreateDevice: 0x%08lx %ux%u windowed=%d\n",(unsigned long)hr,p->BackBufferWidth,p->BackBufferHeight,p->Windowed);
     if(SUCCEEDED(hr) && out && *out){
+        sr3_capture_set_log(captureResult);
         if((*out)->lpVtbl->Reset!=resetDevice){systemReset=(*out)->lpVtbl->Reset;replacePointer((void*)&(*out)->lpVtbl->Reset,resetDevice);}
-        if((*out)->lpVtbl->Present!=presentDevice){
-            systemPresent=(*out)->lpVtbl->Present;
-            if(replacePointer((void*)&(*out)->lpVtbl->Present,presentDevice))sr3_capture_enable();
-            else logline("Screenshot Present hook unavailable\n");
-        }
-        logline("D3D device ready: device=%p vtable=%p Present=%p tick=%lu\n",*out,(*out)->lpVtbl,(*out)->lpVtbl->Present,(unsigned long)GetTickCount());
+        sr3_capture_enable();
+        logline("D3D device ready: device=%p vtable=%p; capture uses game frame hook at 00591C63\n",*out,(*out)->lpVtbl);
         ShowWindow(window,SW_SHOW);
     }
     return hr;
@@ -358,6 +351,18 @@ BOOL WINAPI DllMain(HINSTANCE self,DWORD reason,LPVOID reserved) {
         logline("REFUSED: unsupported or already modified Rally.exe. No game patches applied.\n");return FALSE;
     }
     /* Complete text identity was checked above, before any mutation. No SEGA code is shipped. */
+    {
+        /* After EndScene, before the game's own Present lookup; independent of
+           driver vtable changes. The camera hook at 591C4D remains untouched. */
+        const unsigned char expected[]={0xa1,0x0c,0xd1,0x7e,0x00};
+        unsigned char call[]={0xe8,0,0,0,0};
+        int32_t relative=(int32_t)((uintptr_t)sr3_capture_frame_hook-(0x591c63+5));
+        if(memcmp((void*)0x591c63,expected,sizeof(expected)))return FALSE;
+        memcpy(call+1,&relative,4);
+        if(!writeMemory((void*)0x591c63,call,sizeof(call)))return FALSE;
+        logline("Screenshot game-frame hook enabled at 00591C63.\n");
+    }
+
     {
         const unsigned char expected[]={0x89,0x45,0x04,0x57,0x89,0x02};
         unsigned char call[]={0xe8,0,0,0,0,0x90};

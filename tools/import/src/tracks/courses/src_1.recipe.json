@@ -1,29 +1,53 @@
 {
- "note": "How the stack builds Mountain (stack.py): the importer's --set values, in this order. 'collect' and 'build' are the two passes around the light bake; 'flat' replaces both when the light maps are off. Values are JSON, as --set takes them. This is the recipe of the installed R4 build (fast_all.sh / build_variant.sh with NO_SCENE_PATCH=1, 2026-10-15): light_split 0.72 = 27 % softer shadows, the owner's choice",
- "common": {
-  "light_contrast": 0.01,
-  "light_dir": [0.0, -9.4, 3.4],
-  "scene_gain": [0.7065, 0.7135, 0.7425],
-  "fill": false,
-  "handfill": false,
-  "handmodel": false,
-  "roofs": false,
-  "seal": false,
-  "verge": false,
-  "lower_trees": false,
-  "unsmear": false,
-  "mirror_groups": [],
-  "road_verbatim": true,
-  "road_under": 0.0,
-  "surface_default": "tarmac",
-  "lit_sides": false,
-  "seen_sides": true,
-  "stitch": true,
-  "lm_cutouts": ["tex_s1_x0960_y0576_64x128_c10D_t", "tex_s1_x0960_y0576_64x128_c10F_t"],
-  "patch": true,
-  "patch_clean": true
- },
- "round": {"round": 4, "round_slide": false},
- "build": {"light_split": 0.72},
- "bake": {"quality": "slow", "compose": 0.34}
+  "note": "How the stack builds Mountain (stack.py): the importer's --set values, in this order. 'collect' and 'build' are the two passes around the light bake; 'flat' replaces both when the light maps are off. Values are JSON, as --set takes them. This is the recipe of the installed R4 build (fast_all.sh / build_variant.sh with NO_SCENE_PATCH=1, 2026-10-15): light_split 0.72 = 27 % softer shadows, the owner's choice",
+  "common": {
+    "light_contrast": 0.01,
+    "light_dir": [
+      0.0,
+      -9.4,
+      3.4
+    ],
+    "scene_gain": [
+      0.7065,
+      0.7135,
+      0.7425
+    ],
+    "fill": false,
+    "handfill": false,
+    "handmodel": false,
+    "roofs": false,
+    "seal": false,
+    "verge": false,
+    "lower_trees": false,
+    "unsmear": false,
+    "mirror_groups": [],
+    "road_verbatim": true,
+    "road_under": 0.0,
+    "surface_default": "tarmac",
+    "lit_sides": false,
+    "seen_sides": true,
+    "stitch": true,
+    "lm_cutouts": [
+      "tex_s1_x0960_y0576_64x128_c10D_t",
+      "tex_s1_x0960_y0576_64x128_c10F_t"
+    ],
+    "patch": true,
+    "patch_clean": true,
+    "flat_lit_classes": [
+      "sign",
+      "tree",
+      "crown"
+    ]
+  },
+  "round": {
+    "round": 4,
+    "round_slide": false
+  },
+  "build": {
+    "light_split": 0.72
+  },
+  "bake": {
+    "quality": "slow",
+    "compose": 0.34
+  }
 }

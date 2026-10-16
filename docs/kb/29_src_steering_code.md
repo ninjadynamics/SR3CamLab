@@ -344,3 +344,132 @@ step and a short full stick with the port on, SR3's own for comparison, optional
 Open: everything live (not yet run in the game: no SR3 launches on 2026-10-15 night): whether + 0x8C is the compression,
 the signs, the override holding to the next step, the gains in game against the table above, the AI with ai = 1;
 SR3's dt per step (1 / 60 assumed in the table).
+
+
+## 13. Compiled replay and wheelspin capture-stage correction (2026-10-16)
+
+Bruno's target is SRC feel verbatim. His yaw-inertia-only retest was closer and more
+pleasant but slightly twitchy; that native SR3 candidate is a fallback, not an exact
+port. Installed runtime/plugin files have NOT been changed by this kernel work.
+
+`tools/src_kernel.h` now contains shared C steering, load-transfer, tyre-force,
+wheelspin, drive-force and yaw-update equations. The disabled legacy adapter uses
+its steering/load-transfer/tyre/yaw functions. Its wheelspin argument is still
+explicitly zero until the SR3 adapter has a validated engine state; SR3 doing its own
+wheelspin is not a valid reason to omit SRC's friction-circle multiplier.
+
+`tools/src_kernel_replay.py` compiles those C functions with clang for i686 and runs
+on Unicorn against original-game captures, independently of `srcmodel.py`.
+Reference telemetry and its Lua capture description are preserved under
+`SR3-investigation/steering-response/src-reference/` with SHA-256 provenance.
+The AT torque curve is read from the owner's local program image, not fitted.
+
+### Important correction to section 7's old residual explanation
+
+The logger reads RAM `0x214254` at frame end. The tyre forces at `0x37DD4` and
+`0x38038` consume it BEFORE the writes at `0x38150` (zero when either drive force
+is zero), `0x38240`, and `0x382E0` (0.01 for certain slipping states). Thus logged
+`wsp` is sometimes an effects value, not the value that generated the forces.
+The old claim that the force misses were merely friction-circle rounding was
+incomplete. Reconstructing the earlier value resolves EVERY force residual above
+1e-5 in both archived runs, including airborne-axle cases.
+
+Standard-car reconstruction, from `0x3A5A0..0x3A860`:
+
+- Final drive `0x5D9254` = 3; gear ratios `0x5D9264` = 3.5, 2, 1.65, 1.4.
+- Rolling RPM = speed (m/frame) * 60 * 60 / 1.8849555921538759 * combined ratio.
+- Wheelspin = min(1, abs((engine RPM - rolling RPM) / engine RPM)).
+- Zero for neutral/shift, RPM <= 1000, or nonpositive forward velocity along the
+  steered heading. The hidden car has a separate feedback branch, not included.
+- Use original float rounding before the double circumference calculation.
+
+Drive force now also has a compiled equation: original AT/MT torque table indexed
+by trunc((RPM/100)/1.1), interpolation fraction (trunc(RPM) mod 100)/100;
+engine inertia .0002 + .0002 / combined ratio, friction .02, torque scale 2.75,
+next RPM clamped 0..8800, wheel radius .3; brake from integer half-count of the
+ADC byte above 48. The caller must still provide the correct RPM, engaged ratio,
+shift throttle override, gravity scale and torque table. This is not yet a full
+stateful gearbox/engine replacement.
+
+### Results
+
+Command (from repo, local paths shortened here):
+`python tools/src_kernel_replay.py --reconstruct-wheelspin desert.csv mountain.csv --report result.json`
+
+2,244 Desert + 2,014 Mountain frames, all with one fresh player force capture:
+
+- Steering: maximum error 1.82e-7 rad, zero exceptions above 1e-5.
+- Load transfer: maximum error 3.78e-7, zero exceptions above 1e-5.
+- All four axle forces: maximum error 2.72e-6 in source force units, zero exceptions
+  above 1e-5, using reconstructed pre-effects wheelspin and airborne drive cutoff.
+- Tyre yaw torque, reconstructed from captured forces: maximum error 3.72e-6.
+- Drive force: p95 <= 1.01e-5; max .000380 on one Desert frame with RPM rounded to
+  an integer by the seven-significant-digit logger. This interpolation-boundary
+  explanation is consistent with the data, not independently measured at higher precision.
+- Yaw update: p95 <= 6.26e-9 rad/frame, but 66 frames above 1e-5 remain. These include
+  later air/collision response outside this kernel; they are retained in the report,
+  not passed off as full-vehicle equivalence. Low-speed road alignment is excluded
+  explicitly at <= .0463 m/frame.
+- Countercheck with wheelspin forced to zero: front-force p95 error .135 / .428;
+  rear .298 / .257 (Desert / Mountain). This omission matters.
+
+The JSON report keeps maxima and worst frames. Reconstructed mode requires ALL tyre
+force frames within 1e-5; the yaw gate is explicitly a percentile gate, not a claim
+that the whole yaw trajectory matches. Source integration tests also retain native
+collision handling; no collision-timer fix is being attempted.
+
+### Remaining integration work
+
+Validate SR3 suspension depth/preload, contact and engine state against live read-only
+samples. The legacy adapter clamps suspension +0x8C as if it were SRC contact depth;
+SR3's force calculation also uses spring preload at +0x3C. Their equivalence is
+unproven. SR3 velocity deltas are not original SRC drive force. Suspension yaw torque,
+original RPM feedback/gear changes, low-speed alignment, fractional frame integration,
+and post-step air/collision changes remain distinct integration concerns.
+
+The user's `TEST-STEERING.ps1` now records raw suspension, contact, wheel spin/radius,
+engine RPM/gear, body axes and surface indices. It reads memory only and does not
+install the port. `sample_coherent` detects changes of velocity or elapsed time during
+the sample, but does not make the multi-object reads atomic. One-game-at-a-time
+protection rejects launch while Model 2 is running.
+
+
+### 2026-10-16: isolated combined SRC-core / HD Hornet test
+
+The replay now covers the stateful engine feedback and automatic gearbox as well as steering, load transfer, tyre forces and drive. Across 4,258 archived SRC frames, all replay gates pass and every checked automatic shift decision matches. Engine RPM maximum residual is 0.00525 RPM. Yaw still has 66 later air/collision-write outliers; this is not a claim of complete physics equivalence.
+
+`src_candidate.c` is a separate, user-run, process-only experiment. It uses fixed 57.5 Hz SRC drivetrain/tyre/steering/yaw equations and preserves native SR3 vertical motion, pitch/roll, airborne motion, impact recovery and reverse. The normal launcher/plugin does not install it. Native support load divided by 12 is a provisional suspension-depth bridge. Original suspension yaw, deformation drag and low-speed route alignment are not ported; the independent SRC engine is not synchronized to the native HUD engine.
+
+Offline candidate validation: 15 checks pass, including 30/60/120 Hz acceleration/shift agreement, turn/release response, native fallback cases, and 6,724 coherent samples from run-20261016-113518 (5,663 candidate applications). The first stress-test yaw assertion incorrectly assumed the original clamp was the final operation: SRC clamps before slip-change damping. The assertion now uses the equation's actual bound, (.1*.93 + .07*pi)*57.5, or incoming native yaw on zero-tick steps; candidate physics was not changed to satisfy the test. Maximum replay yaw was 6.37012 rad/s. This replay injects recorded states with a stubbed native step; it does not validate future live trajectories.
+
+Combined user test: `SR3-investigation/watchdog-stage/TEST-SRC-HD.ps1`. Choose red/blue Hornet and profile 2 (SRC). A hidden process helper verifies the executable and candidate blob, installs only into that process, and records candidate telemetry alongside the read-only recorder. Closing Rally ends the experiment. No game was launched by the agent. Live validation is pending.
+
+Hornet previously lacked a car1 file. The added `hornetgravel_data.sbf` changes only chunks 0,4,6,7,8,14; all geometry, IDs, fixups and references are preserved. Existing SRC grip matches the newly built grip byte-for-byte and was not overwritten. Installation provenance is in `steering-response/hornet-src-profile/installed.json`.
+
+The 25 user HD Hornet PNGs are preserved under `hornet-upscaled/hornet_0/textures`; the accidentally replaced export PNGs were restored from the owner's ROM. Five standalone model SBFs now contain rebuilt HD atlases, with nontexture data unchanged. Original SBF backups and a guarded `install-hd.ps1 -Restore` are under `hornet-upscaled`. Appearance awaits the same user test.
+
+### Combined-test texture failure and correction
+
+2026-10-16 12:26 combined test: startup passed with WMV2 workaround, but race/car load raised Out of memory for Tex. Handling candidate installed=false again. This message is generic for any failed CreateTexture, not proof of exhausted VRAM.
+Dump msgbox_20261016_122657.dmp records runtime caps 0x9F12B0/0x9F12B4 = 2048/2048. Loader 0x5863AE..0x5863DB clamps DDS width/height but retains the mip count. Our 4096 body with 13 levels thus produced invalid 2048/13-level texture creation (stack contains body texture ID F0ED198D); error wrapper 0x590C27 shows the generic message. Dismissal then dereferences the null texture at 0x4196D0.
+Fix: fit_texture_mips drops oversized top levels and updates both SR3 and DDS dimensions, linear size and mip count. New build-hd-2048 has body2048/12 levels, glass/wheels/blur2048 unchanged. Compressed retained levels are byte-identical suffixes (no reencoding), UV/model data unchanged. Edited atlas payload total 56MB -> 24MB. All 25 user source PNG hashes verified. install-hd.ps1 and TEST-SRC-HD.ps1 now use corrected manifest, retaining original SD backups and original 4K build. Live confirmation pending.
+
+The 12:26 run selected native SR3 handling for Hornet according to the plugin log. Retry must select profile 2 on the car-selection screen to exercise SRC.
+
+## 15. Native prediction/replay correction (2026-10-16)
+
+Owner confirmed HD textures work and SRC feels better, but reported a steering barrier/understeer. Capture src-hd-20261016-123202 is native Hornet first, SRC ST205 second. Its 5,820 candidate calls over 31.375 host seconds exposed repeated evaluations of dt=.016. At 0x44A7F0 SR3 saves/restores the vehicle around a prediction (+0x48=0), then enables cached-force replays (+0x48=1). The previous candidate incorrectly advanced private SRC state on every replay.
+
+The isolated candidate snapshots pre-prediction state and recomputes replays from it without advancing committed time again. It waits for a fresh prediction if installed during replay. All 18 Unicorn tests pass; the prior binary fails all three new replay tests (the previous 15 pass). No steering cap was loosened. Live understeer validation remains pending. Evidence: SR3-investigation/steering-response/solver-replay-fix/FINDINGS.md and validation.json. Normal plugin unchanged.
+
+
+## 16. Independent suspension state in the test candidate (2026-10-16)
+
+The owner still experienced capped turning after the replay fix. Native tyre +0x50 is normalized support force, not SRC compression. The test-only candidate now computes SRC spring/damper loads from its own sprung-body state and SR3 contact planes, including original suspension yaw torque and 3D wheel displacement. Planar tyre calculations use a flat yaw frame. Native world-vertical/collision motion remains in charge; this is not complete verbatim vehicle physics. All 25 offline integration checks pass; the owner has now accepted the live handling (see the acceptance record below). Full details, limitations, source hashes and prior binaries: `SR3-investigation/steering-response/suspension-bridge-fix/`. The recorder now stores contact planes and body position for that next validation.
+
+
+### Owner acceptance, 2026-10-16
+
+Owner tested the independent-suspension candidate and reported: "it plays like a dream now", with possible later adjustments but an explicit request to keep this handling. Freeze this accepted baseline; do not tune it while repairing scenery/screenshots. Latest run `src-hd-20261016-143410/candidate.json` confirms installed=true, 17,094 telemetry rows, zero dropped, candidate SHA256 `9e8244e3c06f7ea642dc6524c79eaa1a6d7906134435f540fa3cc6990235b801`. This is user acceptance of feel, not proof of complete physics equivalence. The process-only candidate is installed by TEST-SRC-HD.ps1; the normal launcher still does not install it.
+
+The same run's START button reached the screenshot code twice (14:35:56 and 14:36:00), but both back-buffer requests timed out (1460). The screenshot patch is present; rendering readback needs investigation. The owner rejected the v12 tree repair: small composed faces remain misplaced around the crown/trunk. Keep that defect open; the cliff edit is accepted.

@@ -7,6 +7,7 @@ static IDirect3DDevice9 device;
 static IDirect3DDevice9Vtbl deviceVtbl;
 static IDirect3DSurface9Vtbl surfaceVtbl;
 static FakeSurface back, resolved, systemSurface;
+static int slowCopy;
 static int failAt, useMsaa, wrongFormat, badPitch, calls, resolvedCopies;
 static DWORD renderThread;
 static HANDLE copyEntered, copyGate;
@@ -42,7 +43,8 @@ static HRESULT WINAPI createSystem(IDirect3DDevice9 *self,UINT w,UINT h,D3DFORMA
 }
 static HRESULT WINAPI readTarget(IDirect3DDevice9 *self,IDirect3DSurface9 *src,IDirect3DSurface9 *dst) {
     onRender();CHECK(self==&device && src==(useMsaa?&resolved.com:&back.com) && dst==&systemSurface.com);
-    if(copyGate){SetEvent(copyEntered);CHECK(WaitForSingleObject(copyGate,2000)==WAIT_OBJECT_0);}
+    if(slowCopy)Sleep(350);
+    if(copyGate){SetEvent(copyEntered);CHECK(WaitForSingleObject(copyGate,5000)==WAIT_OBJECT_0);}
     return failAt==6?D3DERR_DEVICELOST:S_OK;
 }
 typedef struct Result {void *pixels;int w,h,ok;DWORD error;} Result;
@@ -53,11 +55,29 @@ static DWORD WINAPI grab(void *arg) {
 static void waitQueued(void) {
     DWORD start=GetTickCount();while(!pendingCapture){CHECK(GetTickCount()-start<1000);Sleep(1);}
 }
-static void join(HANDLE thread) {CHECK(WaitForSingleObject(thread,2000)==WAIT_OBJECT_0);CloseHandle(thread);}
+static void join(HANDLE thread) {CHECK(WaitForSingleObject(thread,5000)==WAIT_OBJECT_0);CloseHandle(thread);}
 static void clean(void) {CHECK(back.refs==1 && !resolved.refs && !systemSurface.refs && !pendingCapture);}
+/* Real production thunk: same device address as the guarded EXE, no GPU.
+   Check registers/flags while every fake COM operation runs on this thread. */
+__attribute__((naked)) static int invokeFrame(void) {
+    __asm__("pushl %ebx\n\tpushl %ebp\n\tpushl %esi\n\tpushl %edi\n\t"
+            "movl $0x11223344,%ebx\n\tmovl $0x22334455,%ebp\n\t"
+            "movl $0x33445566,%esi\n\tmovl $0x44556677,%edi\n\t"
+            "movl $0x55667788,%ecx\n\tmovl $0x66778899,%edx\n\t"
+            "stc\n\tcall _sr3_capture_frame_hook\n\tjnc 1f\n\t"
+            "cmpl 0x7ed10c,%eax\n\tjne 1f\n\t"
+            "cmpl $0x11223344,%ebx\n\tjne 1f\n\t"
+            "cmpl $0x22334455,%ebp\n\tjne 1f\n\t"
+            "cmpl $0x33445566,%esi\n\tjne 1f\n\t"
+            "cmpl $0x44556677,%edi\n\tjne 1f\n\t"
+            "cmpl $0x55667788,%ecx\n\tjne 1f\n\t"
+            "cmpl $0x66778899,%edx\n\tjne 1f\n\t"
+            "movl $1,%eax\n\tjmp 2f\n\t1: xorl %eax,%eax\n\t"
+            "2: popl %edi\n\tpopl %esi\n\tpopl %ebp\n\tpopl %ebx\n\tret");
+}
 static Result serviced(void) {
     Result r={0};HANDLE thread=CreateThread(NULL,0,grab,&r,0,NULL);CHECK(thread);waitQueued();
-    renderThread=GetCurrentThreadId();sr3_capture_present(&device);join(thread);clean();return r;
+    renderThread=GetCurrentThreadId();CHECK(invokeFrame());join(thread);clean();return r;
 }
 static void failed(Result r) {CHECK(!r.ok && !r.pixels && !r.w && !r.h && r.error);}
 static void valid(Result r) {
@@ -68,13 +88,16 @@ static void valid(Result r) {
 static DWORD WINAPI presentThread(void *unused) {(void)unused;renderThread=GetCurrentThreadId();sr3_capture_present(&device);return 0;}
 int main(void) {
     Result r={0},other={0};HANDLE worker,renderer;int i,before;
+    CHECK(VirtualAlloc((void*)0x7e0000,0x10000,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE)==(void*)0x7e0000);
+    *(IDirect3DDevice9**)0x7ed10c=&device;
     device.lpVtbl=&deviceVtbl;back.com.lpVtbl=resolved.com.lpVtbl=systemSurface.com.lpVtbl=&surfaceVtbl;back.refs=1;
     surfaceVtbl.Release=releaseSurface;surfaceVtbl.GetDesc=getDesc;surfaceVtbl.LockRect=lockSurface;surfaceVtbl.UnlockRect=unlockSurface;
     deviceVtbl.GetBackBuffer=getBack;deviceVtbl.CreateRenderTarget=createTarget;deviceVtbl.StretchRect=stretch;
     deviceVtbl.CreateOffscreenPlainSurface=createSystem;deviceVtbl.GetRenderTargetData=readTarget;
     grab(&r);failed(r);CHECK(r.error==ERROR_NOT_READY);
     CHECK(!sr3rt_grab_backbuffer(NULL,&r.w,&r.h) && GetLastError()==ERROR_INVALID_PARAMETER && !r.w && !r.h);
-    sr3_capture_enable();before=calls;sr3_capture_present(&device);CHECK(calls==before);
+    sr3_capture_enable();before=calls;CHECK(invokeFrame());CHECK(calls==before);
+    slowCopy=1;valid(serviced());slowCopy=0;
     valid(serviced());useMsaa=1;valid(serviced());CHECK(resolvedCopies==1);
     for(i=1;i<=8;i++){failAt=i;failed(serviced());}failAt=0;useMsaa=0;
     wrongFormat=1;failed(serviced());wrongFormat=0;badPitch=1;failed(serviced());badPitch=0;
@@ -87,5 +110,5 @@ int main(void) {
     worker=CreateThread(NULL,0,grab,&r,0,NULL);CHECK(worker);waitQueued();renderer=CreateThread(NULL,0,presentThread,NULL,0,NULL);CHECK(renderer);
     CHECK(WaitForSingleObject(copyEntered,1000)==WAIT_OBJECT_0);join(worker);failed(r);CHECK(r.error==ERROR_TIMEOUT);
     SetEvent(copyGate);join(renderer);CloseHandle(copyEntered);CloseHandle(copyGate);copyGate=NULL;clean();valid(serviced());
-    puts("Capture: padded BGRA, MSAA resolve, COM failures, busy, queued/in-flight timeout and cleanup PASS (mock D3D, no GPU)");return 0;
+    puts("Capture: game-frame thunk/register/stack/flags, padded BGRA, MSAA resolve, COM failures, busy, queued/in-flight timeout and cleanup PASS (mock D3D, no GPU)");return 0;
 }

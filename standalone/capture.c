@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <string.h>
 #ifndef SR3_CAPTURE_WAIT_MS
-#define SR3_CAPTURE_WAIT_MS 250
+#define SR3_CAPTURE_WAIT_MS 2000
 #endif
 
 typedef struct CaptureRequest {
@@ -14,9 +14,12 @@ typedef struct CaptureRequest {
     void *pixels;
     int width, height;
     DWORD error;
+    volatile LONG stage;
 } CaptureRequest;
 static PVOID volatile pendingCapture;
 static volatile LONG captureEnabled;
+static void (*captureLog)(DWORD, DWORD, LONG);
+void sr3_capture_set_log(void (*fn)(DWORD, DWORD, LONG)) { captureLog = fn; }
 
 static void releaseRequest(CaptureRequest *r) {
     if (!InterlockedDecrement(&r->refs)) {
@@ -28,7 +31,7 @@ static void releaseRequest(CaptureRequest *r) {
 void sr3_capture_enable(void) { InterlockedExchange(&captureEnabled, 1); }
 
 int __cdecl sr3rt_grab_backbuffer(void **bgra, int *width, int *height) {
-    CaptureRequest *r; DWORD error, waited; int ok = 0;
+    CaptureRequest *r; DWORD error, waited, started; int ok = 0;
     if (bgra) *bgra = NULL;
     if (width) *width = 0;
     if (height) *height = 0;
@@ -42,6 +45,7 @@ int __cdecl sr3rt_grab_backbuffer(void **bgra, int *width, int *height) {
     if (InterlockedCompareExchangePointer(&pendingCapture, r, NULL)) {
         releaseRequest(r); releaseRequest(r); SetLastError(ERROR_BUSY); return 0;
     }
+    started = GetTickCount();
     waited = WaitForSingleObject(r->done, SR3_CAPTURE_WAIT_MS);
     if (waited == WAIT_OBJECT_0) {
         error = r->error;
@@ -55,6 +59,7 @@ int __cdecl sr3rt_grab_backbuffer(void **bgra, int *width, int *height) {
            retains its reference and cleans up even after this caller returns. */
         if (InterlockedCompareExchangePointer(&pendingCapture, NULL, r) == r) releaseRequest(r);
     }
+    if (captureLog) captureLog(error, GetTickCount() - started, InterlockedCompareExchange(&r->stage, 0, 0));
     releaseRequest(r); SetLastError(error); return ok;
 }
 
@@ -69,6 +74,7 @@ static DWORD readBackbuffer(IDirect3DDevice9 *device, CaptureRequest *r) {
     if (!desc.Width || !desc.Height || desc.Width > 16384 || desc.Height > 16384) { error = ERROR_INVALID_DATA; goto done; }
     stride = (SIZE_T)desc.Width * 4; bytes = stride * desc.Height;
     if (bytes > 256u * 1024u * 1024u) { error = ERROR_NOT_ENOUGH_MEMORY; goto done; }
+    InterlockedExchange(&r->stage, 2);
     source = back;
     if (desc.MultiSampleType != D3DMULTISAMPLE_NONE) {
         if (FAILED(IDirect3DDevice9_CreateRenderTarget(device, desc.Width, desc.Height, desc.Format,
@@ -78,7 +84,9 @@ static DWORD readBackbuffer(IDirect3DDevice9 *device, CaptureRequest *r) {
     }
     if (FAILED(IDirect3DDevice9_CreateOffscreenPlainSurface(device, desc.Width, desc.Height,
         desc.Format, D3DPOOL_SYSTEMMEM, &system, NULL))) goto done;
+    InterlockedExchange(&r->stage, 3);
     if (FAILED(IDirect3DDevice9_GetRenderTargetData(device, source, system))) goto done;
+    InterlockedExchange(&r->stage, 4);
     if (FAILED(IDirect3DSurface9_LockRect(system, &locked, NULL, D3DLOCK_READONLY))) goto done;
     isLocked = 1;
     if (!locked.pBits || (int64_t)locked.Pitch < (int64_t)stride) { error = ERROR_INVALID_DATA; goto done; }
@@ -89,6 +97,7 @@ static DWORD readBackbuffer(IDirect3DDevice9 *device, CaptureRequest *r) {
         memcpy(to, (const unsigned char *)locked.pBits + (SIZE_T)y * locked.Pitch, stride);
         for (x = 0; x < desc.Width; x++) to[x * 4 + 3] = 255;
     }
+    InterlockedExchange(&r->stage, 5);
     r->width = (int)desc.Width; r->height = (int)desc.Height; error = ERROR_SUCCESS;
 done:
     if (isLocked && FAILED(IDirect3DSurface9_UnlockRect(system))) error = ERROR_READ_FAULT;
@@ -103,7 +112,27 @@ void sr3_capture_present(IDirect3DDevice9 *device) {
     if (!pendingCapture) return;
     r = InterlockedExchangePointer(&pendingCapture, NULL);
     if (!r) return;
+    InterlockedExchange(&r->stage, 1);
     r->error = readBackbuffer(device, r);
     SetEvent(r->done);
     releaseRequest(r);
 }
+
+/* Replaces MOV EAX,[7ED10C] after EndScene, before Present. Preserve the
+   original instruction contract, including flags and floating-point state.
+   No COM objects are retained, and the game still invokes its current Present.
+   Private fixed-address device storage is supplied by the native mock test. */
+#if defined(__GNUC__) && defined(__i386__)
+__attribute__((naked)) void sr3_capture_frame_hook(void) {
+    __asm__("pushfl\n\tcmpl $0,_pendingCapture\n\tje 1f\n\tpushal\n\t"
+            "movl %esp,%ebp\n\tsubl $528,%esp\n\tandl $-16,%esp\n\t"
+            "fxsave (%esp)\n\tsubl $16,%esp\n\t"
+            "movl 0x7ed10c,%eax\n\tmovl %eax,(%esp)\n\t"
+            "call _sr3_capture_present\n\t"
+            "addl $16,%esp\n\tfxrstor (%esp)\n\t"
+            "movl %ebp,%esp\n\tpopal\n\t1: popfl\n\t"
+            "movl 0x7ed10c,%eax\n\tret");
+}
+#else
+#error Screenshot frame hook requires the supported x86 GCC build.
+#endif

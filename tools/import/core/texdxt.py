@@ -114,3 +114,28 @@ def texture_data(template, rgba, fourcc=None):
     struct.pack_into("<III", d, 48 + 8, h, w, len(mips[0])); struct.pack_into("<I", d, 48 + 24, len(mips))
     d[48 + 80:48 + 84] = fourcc.encode()
     return bytes(d) + b"".join(mips)
+
+
+def fit_texture_mips(data, maximum=2048):
+    """Fit a power-of-two DXT texture by dropping oversized top mips, without reencoding.
+    SR3 clamps DDS dimensions to its runtime cap without removing excess levels.
+    A 4096 full chain therefore becomes an invalid 2048/13-level D3D request.
+    """
+    w,h,fc=texture_info(data)
+    if fc not in ('DXT1','DXT5') or maximum<4:raise ValueError('Expected DXT1/DXT5 and a cap >= 4')
+    if any(v<1 or v&(v-1) for v in (w,h)):raise ValueError('Expected power-of-two dimensions')
+    levels=struct.unpack_from('<I',data,72)[0]
+    if levels!=max(w,h).bit_length():raise ValueError('Expected a full mip chain')
+    block=8 if fc=='DXT1' else 16
+    def size(x,y):return max(1,(x+3)//4)*max(1,(y+3)//4)*block
+    expected=172;ww,hh=w,h
+    for _ in range(levels):expected+=size(ww,hh);ww=max(1,ww//2);hh=max(1,hh//2)
+    if len(data)!=expected:raise ValueError('Incorrect mip payload size')
+    offset=172
+    while max(w,h)>maximum:
+        offset+=size(w,h);w=max(1,w//2);h=max(1,h//2);levels-=1
+    header=bytearray(data[:172])
+    struct.pack_into('<II',header,8,w,h)
+    struct.pack_into('<III',header,56,h,w,size(w,h))
+    struct.pack_into('<I',header,72,levels)
+    return bytes(header)+data[offset:]

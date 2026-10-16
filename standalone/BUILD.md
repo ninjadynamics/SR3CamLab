@@ -127,10 +127,12 @@ int sr3rt_grab_backbuffer(void **bgra, int *width, int *height);
 Return 1 gives top-down, tightly packed BGRA8 pixels with alpha 255; the caller
 owns them and calls `HeapFree(GetProcessHeap(), 0, pixels)`. Return 0 clears all
 supplied outputs and sets `GetLastError` (not-ready, busy, timeout or readback
-failure). The caller waits up to 250 ms. Call from a mod worker, never from the
+failure). The caller waits up to 2000 ms. Call from a mod worker, never from the
 game's render thread. The plugin owns PNG encoding and filenames.
 
-The render thread services a queued request immediately before device Present.
+The render thread services a queued request at the guarded game instruction
+0x591C63, after EndScene and before its current device Present lookup. This
+replaces the unreliable device-vtable hook; camera code at 0x591C4D is separate.
 Idle frames only check a pointer; no allocation or D3D work occurs. Requests own
 separate caller/render references so timeout during readback cannot free an
 event or buffer still in use. Every surface is released within that call; no
@@ -140,7 +142,8 @@ matching non-multisampled render target, then copied to system memory, following
 the [D3D9 readback requirements](https://learn.microsoft.com/en-us/windows/win32/api/d3d9/nf-d3d9-idirect3ddevice9-getrendertargetdata)
 and [multisample resolve documentation](https://learn.microsoft.com/en-us/windows/win32/api/d3d9/nf-d3d9-idirect3ddevice9-stretchrect).
 
-`test_capture.c` checks row padding, opaque output, resolve, each COM failure,
+`test_capture.c` exercises the actual x86 frame thunk (registers, stack and
+flags), then checks row padding, opaque output, resolve, each COM failure,
 single queued request, timeout before/after render-thread ownership, cleanup and
 subsequent reuse. Passing those checks does not prove live fullscreen capture.
 

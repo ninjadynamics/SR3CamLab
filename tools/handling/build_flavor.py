@@ -8,6 +8,7 @@ Writes   <out>\\Main_release\\car<digit>\\<car>bespoke_data.sbf   (all ten cars,
 The game reads them when the launcher turns the 's' of "cars" (0x6C631D) and of "Effects" (0x6C6176) into the digit.
 
 What is changed in each car file (chunk = index in SEGA's 42-chunk layout, checked by shape before writing):
+  ch0  rigid body    optional body.yaw_inertia_per_mass at +0x0C (SR3 multiplies it by mass)
   ch4  engine        +0x08 peak torque x torque_scale, +0x0C max rpm
   ch7  gears         +0x0C count (= forward + 2), ratios R, N, forward from km/h per 1000 rpm with the car's own wheel
                      radius (ch26 +0x28) and final drive (kept): ratio = 376.99 x r / (FD x v)
@@ -23,7 +24,7 @@ the game (2026-10-14): ST205 SEGA 1.36 / 3.24 s to 50 / 100 (measured 1.21 / 3.4
 to 50 / 100 / 150 / 180 (measured 0.62 / 1.44 / 2.50 / 3.12). "pace": "real" keeps the real torque.
 Grip file: records <tyre>_<surface>[_Top|_Base] get  SR3's Tyre_Rally_Tarmac_<same layer> x ratio x grip_scale  for the
 grouped surfaces, SR3's Tyre_Rally_<surface> x grip_scale for the rest. SR3's own Tyre_Rally records are not touched."""
-import sys, os, json, struct, argparse, re
+import sys, os, json, struct, argparse, re, math
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'import', 'core'))
 from sbfw import read_sbf, write_sbf
 CARS = ['C4', 'RSFocus', 'SubaruImpreza', 'SX4', 'MitsubishiEvo', '207', 'ST205', 'Delta_HF', 'Bowler', 'Enduro']
@@ -121,6 +122,14 @@ def build_car(path, T, args, car):
         setf(ch[6], 0x08, F(ch[6], 0x08) * max(1.0, ts))                  # clutch capacity (2000, LIKELY Nm) follows the torque
         if e.get('max_rpm'): setf(ch[4], 0x0C, float(e['max_rpm']))
         if e.get('torque_curve'): set_curve(ch, e['torque_curve'])
+    body = T.get('body') or {}
+    if 'yaw_inertia_per_mass' in body:
+        # VehicleGenerator 0x46C528..0x46C553: this field is I_yaw / mass,
+        # not an absolute inertia. Keep mass, pitch, roll and centre of mass.
+        yaw = float(body['yaw_inertia_per_mass'])
+        if len(ch[0].data) != 44 or not math.isfinite(yaw) or yaw <= 0.0:
+            raise ValueError('body.yaw_inertia_per_mass needs a positive finite value and the 44-byte rigid-body layout')
+        setf(ch[0], 0x0C, yaw)
     if P:                                                                   # per-car row (Realism)
         if 'mass' in P: setf(ch[0], 4, P['mass'])
         for k, o in zip(P.get('inertia_scale', ()), (8, 0xC, 0x10)): setf(ch[0], o, F(ch[0], o) * k)

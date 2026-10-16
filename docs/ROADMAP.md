@@ -1,4 +1,15 @@
-# SR3Lab roadmap
+# Ultimate Race Lab roadmap
+
+## Current owner decisions (2026-10-17)
+
+These decisions supersede older suite/app names and app-status descriptions below.
+
+- Suite: **Ultimate Race Lab**, a collection of SEGA Rally 3 mods that work together as independent, interoperable pieces ("like lego pieces").
+- Settings app: **Race Settings**, executable **settings.exe**.
+- **CamLab is fully completed** and is the UI/UX reference for every app in the suite.
+- **TexLab remains an idea**, not an implemented or completed application.
+- All suite applications must follow CamLab's UI/UX.
+- These are product and refactoring decisions; this documentation update does not rename deployed folders, executables, or the remote repository.
 
 The owner's roadmap (2026-10-15), in their words where it matters, with notes on what exists and what each item means for the
 code. Every component is standalone and plays nicely with the others, "like lego pieces".

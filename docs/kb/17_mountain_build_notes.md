@@ -135,3 +135,18 @@ A build is `python import_classic.py src 1 classic --norender --name <step> --se
 
 ## 7. Blender previews
 `tools\import\core\preview_obj.py <step>` decodes a built track back to an OBJ (it reads the strips, so shared corners are fine). A Cycles flyover of the decoded track was rendered once; the settings that matched the user's Photoshop grade: sun 3 degrees wide, sky model at strength 0.03 (it is about 20 times brighter than a flat colour at 1.0), bounce from the un-darkened tiles through a light-path switch, Filmic high contrast, exposure +1.4.
+
+
+## 2026-10-16: corrected tree assembly beside the edited cliff
+
+Owner rejected the uniform v12 tree-piece translation: disconnected/misplaced faces remained. Replaced the complete damaged assembly at course X/Z (-34.2218,-425.738) with the intact nearby SRC tree assembly, keeping its target base height and width. 275 local polygons replaced by 84 triangles; all other 82,132 source polygons and the separate road object are identical. Original user v11 is preserved; working repaired copy is `blender/mountain.patch3.v13.treefixed.blend` (SHA256 3b582b6580db9001ccd16552f51f21c5fb430fbdfa379909ecf080be15f5eb69).
+
+Full JSON regenerated from that copy, not a cliff-only patch. R4 build `mountain_v13_treefixed_20261016`, four workers, decoded game-file views checked front/back. Installed all 11 files by hash; only scenery graphics/texmap differ. No misplaced loose pieces or disconnected trunk in those previews; ordinary crossed-sprite seams remain. This is a whole-tree replacement, not a proven general exporter fix. Owner game confirmation pending. Audit, build logs, before files and renders: `SR3-investigation/mountain-v13-treefix`.
+
+### 2026-10-16: HD tiles refreshed after v13 tree repair
+
+Owner updated Mountain textures_hd PNGs. Ran existing core/texfast.py refresh on a staged copy of the installed standalone track1/Desert4: 103 changed HD tiles, 211 texture chunks rewritten in 5 seconds. Installed scenery SBF, finish/object SBF and texmap.json. Verified all nontexture chunks including geometry are identical, other eight installed files unchanged, and updated texture dimensions at most 2048. No light rebake. Audit, source hashes, pre-refresh backup, validated/installed manifests: SR3-investigation/mountain-hd-refresh-20261016. TEST-SRC-HD.ps1 now checks this manifest and passes --no-watchdog as requested; accepted handling candidate unchanged. Live visual confirmation pending.
+
+
+### Owner confirmation, 2026-10-16
+Owner confirms v13 tree repair and refreshed HD Mountain textures both work in game. Accepted geometry and texture baseline remains installed.
