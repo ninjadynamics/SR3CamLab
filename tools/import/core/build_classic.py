@@ -902,24 +902,48 @@ def _faces_to_mesh_numpy(faces, uv_mode, up_normals=False):
     if len(uvs): v['uv0'] = np.clip(np.round(uvs.reshape(-1, 2) * 32768), -32768, 32767).astype(np.int16).view(np.uint16)
     return v, len(quads), clamp
 
-def faces_to_mesh(faces, uv_mode, up_normals=False):
-    """Packed buffer assembly; retain array/debug/bake/relief compatibility."""
+def _faces_to_mesh_fast(up_normals):
+    """Shared dispatch guard for array and buffer callers."""
     import fastgeo
     if (not fastgeo.ON or fastgeo.CHECK or (BUMP and up_normals) or
             any(x is not None for x in (BAKE_COLLECT, BAKE_TABLE, LM_COLLECT, LM_TABLE))):
-        return _faces_to_mesh_numpy(faces, uv_mode, up_normals)
+        return False
     # The original permits unusual light environments that yield NaN normals;
     # leave that behavior on its reference path instead of rejecting it here.
     if up_normals and LIGHT_K > 0:
         import math
         amb, sun, sv = LIGHT_ENV
         if not all(math.isfinite(float(x)) for x in (LIGHT_K, amb, sun, *sv)) or (sv[1] == 0 and sv[2] == 0):
-            return _faces_to_mesh_numpy(faces, uv_mode, up_normals)
+            return False
+    return True
+
+def _faces_to_mesh_buffer(faces, uv_mode, up_normals):
     import buildfaces, buildsmooth
     smooth = buildsmooth.Smooth(SMOOTH_N) if SMOOTH_N and up_normals and LIGHT_K > 0 else None
     vertices, count, clamp = buildfaces.faces_to_mesh(
         faces, uv_mode, up_normals, LIGHT_K, LIGHT_ENV, smooth, FLAT_LIT, LM_CUTOUTS, LM_TEST)
     globals()['KEEP_T'] = None
+    return vertices, count, clamp
+
+def faces_to_mesh_buf(faces, uv_mode, up_normals=False):
+    """Return owned |V48 Arr, quad count and clamp count using current state.
+
+    Bake/lightmap/relief and debug branches retain the NumPy implementation
+    and its side effects; their vertex records are copied into an owned Arr.
+    """
+    if _faces_to_mesh_fast(up_normals):
+        return _faces_to_mesh_buffer(faces, uv_mode, up_normals)
+    from npyio import Arr
+    vertices, count, clamp = _faces_to_mesh_numpy(faces, uv_mode, up_normals)
+    packed = Arr('|V48', (len(vertices),))
+    packed.buf[:] = vertices.tobytes()
+    return packed, count, clamp
+
+def faces_to_mesh(faces, uv_mode, up_normals=False):
+    """Packed buffer assembly; retain array/debug/bake/relief compatibility."""
+    if not _faces_to_mesh_fast(up_normals):
+        return _faces_to_mesh_numpy(faces, uv_mode, up_normals)
+    vertices, count, clamp = _faces_to_mesh_buffer(faces, uv_mode, up_normals)
     return np.frombuffer(vertices.buf, dtype=meshgen.VTX).copy(), count, clamp
 
 def dxt1_grey(img, hole=None):
