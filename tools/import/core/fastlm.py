@@ -59,6 +59,8 @@ def lib():
         L.lm_nearest_xz.argtypes = [LL, P, P, D, D]; L.lm_nearest_xz.restype = LL
         L.bc_inside.argtypes = [P, LL, D, D]; L.bc_inside.restype = I; L.bc_limits.argtypes = [P, LL, D, D, D, D, P]; L.bc_limits.restype = I
         L.ob_recipe.argtypes = [P, P, I, I, P, P, I, I, P, D, D, D, D, I, I, P, P]; L.ob_recipe.restype = I
+        L.cp_near.argtypes = [LL, P, P, P, P, LL, D, D, D, P, P, P]; L.cp_near.restype = None; L.cp_cand.argtypes = [P, LL, LL, P, P, D, P, LL]; L.cp_cand.restype = LL
+        L.cp_cut.argtypes = [P, LL, P, LL, P, LL, D]; L.cp_cut.restype = I
         _lib = L
     return _lib
 

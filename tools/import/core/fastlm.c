@@ -612,4 +612,51 @@ EXPORT int ob_recipe(const unsigned char *rl, const unsigned char *hl, int W, in
     return any;
 }
 
+/* coursepatch.remove / apply: where the corners of a patch are among the build's corners. X: n corners (x, y, z), order: their x order
+   (np.argsort(kind='stable')), xs: their x in that order. For each of nq points b: the corners whose x lies in [b0 - wlo, b0 + whi)
+   (np.searchsorted(xs, ., side='left')) and whose np.linalg.norm(C - b, axis=1) = sqrt((dx dx + dy dy) + dz dz) < tol, in x order.
+   cnt[q]; with out NULL the counts only, else written at off[q] */
+static i64 lower_x(const double *xs, i64 n, double v) { i64 lo = 0, hi = n; while (lo < hi) { i64 m = (lo + hi) / 2; if (xs[m] < v) lo = m + 1; else hi = m; } return lo; }
+EXPORT void cp_near(i64 nq, const double *Qp, const double *X, const i64 *order, const double *xs, i64 n, double wlo, double whi, double tol, i64 *cnt, const i64 *off, i64 *out)
+{
+    #pragma omp parallel for schedule(dynamic, 256) if(nq > 2000)
+    for (i64 q = 0; q < nq; q++) {
+        const double *b = Qp + 3 * q; i64 a = lower_x(xs, n, b[0] - wlo), e = lower_x(xs, n, b[0] + whi), m = 0;
+        for (i64 s = a; s < e; s++) {
+            i64 i = order[s]; double dx = X[3 * i] - b[0], dy = X[3 * i + 1] - b[1], dz = X[3 * i + 2] - b[2];
+            if (sqrt((dx * dx + dy * dy) + dz * dz) < tol) { if (out) out[off[q] + m] = i; m++; }
+        }
+        cnt[q] = m;
+    }
+}
+/* the corners of the triangles to remove in a polygon's box: Bs (by x) rows lo .. hi (the x window), kept when (c >= mn - tol) & (c <= mx + tol)
+   in all three; the first cap of them into out, in x order -> how many in all */
+EXPORT i64 cp_cand(const double *Bs, i64 lo, i64 hi, const double *mn, const double *mx, double tol, double *out, i64 cap)
+{
+    i64 m = 0;
+    for (i64 i = lo; i < hi; i++) {
+        const double *c = Bs + 3 * i; int ok = 1;
+        for (int k = 0; k < 3; k++) if (!(c[k] >= mn[k] - tol && c[k] <= mx[k] + tol)) ok = 0;
+        if (ok) { if (m < cap) memcpy(out + 3 * m, c, 24); m++; }
+    }
+    return m;
+}
+/* any(np.linalg.norm(Q - c, axis=1).min() < tol and np.linalg.norm(P - c, axis=1).min() >= tol for c in cand) (a NaN distance makes the min NaN) */
+static double mindist(const double *A, i64 na, const double *c, int *nan_)
+{
+    double m = INFINITY; *nan_ = 0;
+    for (i64 j = 0; j < na; j++) { double dx = A[3 * j] - c[0], dy = A[3 * j + 1] - c[1], dz = A[3 * j + 2] - c[2], d = sqrt((dx * dx + dy * dy) + dz * dz); if (d != d) *nan_ = 1; else if (d < m) m = d; }
+    return m;
+}
+EXPORT int cp_cut(const double *cand, i64 nc, const double *Q, i64 nq, const double *P, i64 np_, double tol)
+{
+    for (i64 k = 0; k < nc; k++) {
+        int n1, n2; double a = mindist(Q, nq, cand + 3 * k, &n1);
+        if (n1 || !(a < tol)) continue;
+        double b = mindist(P, np_, cand + 3 * k, &n2);
+        if (!n2 && b >= tol) return 1;
+    }
+    return 0;
+}
+
 EXPORT int lm_threads(void) { return omp_get_max_threads(); }
