@@ -1,4 +1,5 @@
-"""A course's hand patch (courses/<game>.<course name>.patch.<number>.json, e.g. src.mountain.patch.1.json, made from patch.blend by blendpatch/patch_to_json.py) applied to the
+"""A course's hand patch (courses/<game>.<course name>.patch.<number>.json, e.g. src.mountain.patch.1.json, made from patch.blend by blendpatch/patch_to_json.py; since 2026-10-16
+the files ship as one zip per course, <game>.<course name>.patches.zip, unpacked beside it by the chain's first step: patchzip.py) applied to the
 1995 faces of a build: faces to add and corners of original polygons to move (user, 2026-10-09: "I'll try to patch the holes on
 blender myself, you can then diff the .blend files and ship only the patches"). Course setting: "patch": true (every numbered file of the course, in order) or the numbers wanted.
 

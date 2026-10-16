@@ -32,9 +32,15 @@ TMP = os.path.join(WORK, "tmp")
 ROMS = SETTINGS.get('roms') or os.path.join(REPO, 'roms')     # the folder with your own srallyc.zip (and daytona.zip, srally2.zip)
 BLENDER = SETTINGS.get('blender', '')
 def rom_zip(name): return os.path.join(ROMS, name + '.zip')
+PATCHZIP_AUTO = True; _PATCHZIP_SEEN = set()
 def courses_dir(game):
-    """course settings and patch files of one game: tools/import/<game>/tracks/courses"""
-    return os.path.join(IMPORT, game, 'tracks', 'courses')
+    """course settings and patch files of one game: tools/import/<game>/tracks/courses. The patch files ship zipped (patchzip.py): the
+    first call of a process for a folder unpacks what is missing or out of date there (a few milliseconds when nothing is; the stack
+    does it in its own first step)"""
+    d = os.path.join(IMPORT, game, 'tracks', 'courses')
+    if PATCHZIP_AUTO and d not in _PATCHZIP_SEEN:
+        _PATCHZIP_SEEN.add(d); import patchzip; patchzip.unpack(d, print)
+    return d
 def threads():
     """worker count: settings 'threads' = "all", "all_but_one" (default) or a number"""
     n = os.cpu_count() or 1; t = SETTINGS.get('threads', 'all_but_one')

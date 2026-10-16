@@ -1,6 +1,8 @@
 """The import stack, one course at a time: your own ROM set -> a track installed in SEGA Rally 3.
     python stack.py <game> <course> [options]
 Steps (--steps, comma-separated; default all of them, in this order; a step that fails stops the run):
+    unzip     always first, whatever --steps says: the course's patch files, shipped as one zip beside the course settings, unpacked
+              beside it (core/patchzip.py; a patch file changed there since it was unpacked is kept)
     rom       the 1995 game's files -> the data folder          tools/import/<game>/tracks/rom/rom_import.py
     light     the importer's first pass: the patch chain, the rounding, and the polygons to light laid out on light-map pages
     rt        ray tracing: the bake of those light maps (C, every worker thread), then their composition
@@ -23,7 +25,8 @@ Every line that starts with '@@ ' is for the stack window: '@@ step <name> start
 import os, sys, json, time, subprocess, shutil, threading
 HERE = os.path.dirname(os.path.abspath(__file__)); CORE = os.path.join(HERE, 'core')
 sys.path.insert(0, CORE)
-import common
+import common, patchzip
+common.PATCHZIP_AUTO = False                                          # (this process unpacks in its own step, with its own log line)
 STEPS = ['rom', 'light', 'rt', 'build', 'install']
 OLD = {'patch', 'round'}                                              # (accepted in --steps and ignored: they are settings now)
 
@@ -70,6 +73,11 @@ class Run:
         json.dump(data, open(p, 'w', newline='\n'))
 
     # ---- steps ----
+    def unzip(self):
+        """the course's patch files out of their zip (patchzip.py)"""
+        d = common.courses_dir(self.game); r = patchzip.unpack(d)
+        print('patches: %s' % ('; '.join('%s %s' % x for x in r) if r else 'up to date (%s)' % (', '.join(p for p in sorted(os.listdir(d)) if p.endswith('.patches.zip')) or 'no zip')), flush=True)
+
     def rom(self):
         self.py([os.path.join(HERE, self.game, 'tracks', 'rom', 'rom_import.py'), self.course], os.path.join(self.G, 'rom.log'))
         if 'rom' in self.blend: self.export_blend('rom')
@@ -138,7 +146,7 @@ class Run:
     def j(*a): return os.path.join(*a).replace('\\', '/')
 
     def go(self):
-        t0 = time.time(); todo = []
+        t0 = time.time(); todo = [('unzip', self.unzip)]                   # (every run: the steps read the patch files)
         if 'rom' in self.steps: todo.append(('rom', self.rom))
         if 'light' in self.steps or {'patch', 'round'} & set(self.blend): todo.append(('light', self.collect))
         if 'rt' in self.steps: todo.append(('rt', self.bake))

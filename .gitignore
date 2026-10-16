@@ -13,6 +13,10 @@ shot_*.png
 # release packaging
 dist/
 *.zip
+# the course patches ship zipped (tools/import/core/patchzip.py): the zips are committed, what the chain unpacks beside them is not
+!/tools/import/*/tracks/courses/*.patches.zip
+/tools/import/*/tracks/courses/*.patch.*.json
+/tools/import/*/tracks/courses/*.patches.unpacked.json
 # the toolchain zip, unpacked (tools/setup_toolchain.ps1): Python and gcc are binaries, never committed
 /tools/python/
 /tools/mingw/

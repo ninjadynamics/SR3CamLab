@@ -43,7 +43,11 @@ foreach ($r in @(Get-ChildItem -Path (Join-Path $Here '*\tracks\courses\*.recipe
     if ($r.Name -match '^([a-z0-9]+)_(\d+)\.recipe\.json$') {
         $g = $Matches[1]; $n = $Matches[2]; $cj = Join-Path $r.DirectoryName "$($g)_$n.json"; $name = "course $n"
         try { $c = [IO.File]::ReadAllText($cj) | ConvertFrom-Json; if ($c.name) { $name = (Get-Culture).TextInfo.ToTitleCase("$($c.name)") } } catch { }
-        $np = @(Get-ChildItem -Path (Join-Path $r.DirectoryName "$g.*.patch.*.json") -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^$g\.$([regex]::Escape($c.name))\.patch\.\d+\.json$" }).Count
+        $pat = "^$g\.$([regex]::Escape($c.name))\.patch\.\d+\.json$"; $pn = @{}
+        foreach ($f in @(Get-ChildItem -Path (Join-Path $r.DirectoryName "$g.*.patch.*.json") -ErrorAction SilentlyContinue)) { if ($f.Name -match $pat) { $pn[$f.Name] = 1 } }
+        $zp = Join-Path $r.DirectoryName "$g.$($c.name).patches.zip"      # (the patch files ship zipped: core/patchzip.py; the stack unpacks them)
+        if (Test-Path -LiteralPath $zp) { try { Add-Type -AssemblyName System.IO.Compression.FileSystem; $z = [IO.Compression.ZipFile]::OpenRead($zp); foreach ($e in $z.Entries) { if ($e.Name -match $pat) { $pn[$e.Name] = 1 } }; $z.Dispose() } catch { } }
+        $np = $pn.Count
         $Courses += [pscustomobject]@{ Game = $g; Course = $n; Label = "$($GameNames[$g]) - $name"; Name = "$($c.name)"; Patches = $np; Gameplay = "$($c.gameplay)" }
     }
 }
@@ -207,6 +211,7 @@ $Timer.Add_Tick({
     $s = $null
     while ($script:Q.TryDequeue([ref]$s)) {
         if ($s -match '^@@ step (\S+) (start|done|fail)\s*(.*)$') {
+            if ($Matches[1] -eq 'unzip' -and $Matches[2] -eq 'fail') { Add-Log "unpacking the patch files FAILED: $($Matches[3])" }
             $keys = switch ($Matches[1]) { 'rom' { @('rom') } 'light' { @('patch', 'round', 'light') } 'rt' { @('rt') } 'build' { @('build') } 'install' { @('install') } default { @() } }
             foreach ($k in $keys) { if (-not $Chk[$k].Checked -and $k -ne 'patch' -and $k -ne 'round') { continue }
                 $State[$k].Text = switch ($Matches[2]) { 'start' { 'running...' } 'done' { "done ($($Matches[3]) s)" } 'fail' { "FAILED: $($Matches[3])" } }
