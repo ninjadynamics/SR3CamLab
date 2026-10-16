@@ -27,11 +27,10 @@ V36S = struct.Struct('<4f3f2H2H'); V48S = struct.Struct('<4f3f12x2H4x')   # the 
 _F = struct.Struct('<f')
 def _f32(x): return _F.unpack(_F.pack(x))[0]
 def _upscale(b, H, W, ch, S):
-    """np.repeat(np.repeat(a, S, 0), S, 1) of an H x W x ch byte picture"""
-    out = bytearray()
-    for y in range(H):
-        row = b''.join(b[(y * W + x) * ch:(y * W + x + 1) * ch] * S for x in range(W)); out += row * S
-    return bytes(out)
+    """np.repeat(np.repeat(a, S, 0), S, 1) of an H x W x ch byte picture: Pillow's NEAREST resize by a whole factor takes source pixel
+    floor((x + 0.5) / S) = x // S, the same pixels (checked against np.repeat)"""
+    from PIL import Image
+    return Image.frombytes('RGB' if ch == 3 else 'L', (W, H), b).resize((W * S, H * S), Image.NEAREST).tobytes()
 def install(g, states, centre, tpl5, log=print, unlit=None):
     import build_classic as BC, builduv
     from npyio import Arr
@@ -49,7 +48,7 @@ def install(g, states, centre, tpl5, log=print, unlit=None):
                 if px is None: raise SystemExit('finish gate: no picture for %s' % tile)
                 ra, ha = px; H, W = ra.shape[:2]; rgb = bytes(memoryview(ra.buf).cast('B')[:ra.nbytes]); hole = None if ha is None else (bytes(memoryview(ha.buf).cast('B')[:ha.nbytes]), tuple(ha.shape))
             k = len(mats); tid = TEX0 + 2 * k; mid = tid + 1; gain = BC.UNLIT_GAIN if unlit else 1.0
-            if gain != 1.0: gf = _f32(gain); rgb = bytes(int(min(max(_f32(x * gf), 0.0), 255.0)) for x in rgb)      # np.clip(np.asarray(rgb, np.float32) * gain, 0, 255).astype(np.uint8)
+            if gain != 1.0: gf = _f32(gain); rgb = rgb.translate(bytes(int(min(max(_f32(x * gf), 0.0), 255.0)) for x in range(256)))      # np.clip(np.asarray(rgb, np.float32) * gain, 0, 255).astype(np.uint8), as a table of the 256 values
             BC.VIVID = tuple(BC.VIVID_CFG) if BC.VIVID_CFG else None; va = BC.vivid_buf(Arr('|u1', (H, W, 3), bytearray(rgb))); BC.VIVID = None      # the colours the scenery tiles get
             rgb = bytes(memoryview(va.buf).cast('B')[:va.nbytes])
             if BC.GATE_SHARP > 1:                                      # (as add_scenery does for the other gates)

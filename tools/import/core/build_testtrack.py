@@ -310,6 +310,19 @@ LAKESIDE_GRID = (2, 2, 2, -2, 14, 2, 14, -2, 26, 2, 26, -2, 38, 2, 38, -2)
 # ---------------------------------------------------------------- self checks on authored data
 def _nrow(a, b):                                                      # np.linalg.norm(a - b, axis=1) of one row: sqrt((dx dx + dy dy) + dz dz)
     dx = a[0] - b[0]; dy = a[1] - b[1]; dz = a[2] - b[2]; return math.sqrt((dx * dx + dy * dy) + dz * dz)
+def _min_dist(P, xs, order, p):
+    """np.linalg.norm(P - p, axis=1).min(): the rows of P sorted by x (order, xs), looked at outwards from p's x until the x gap alone is
+    past the best distance (with a margin far above any rounding of these sums): the same minimum"""
+    import bisect
+    k = bisect.bisect_left(xs, p[0]); best = math.inf; lo = k - 1; hi = k; n = len(xs)
+    while lo >= 0 or hi < n:
+        if hi < n and (lo < 0 or xs[hi] - p[0] <= p[0] - xs[lo]): gap = xs[hi] - p[0]; i = order[hi]; hi += 1
+        else: gap = p[0] - xs[lo]; i = order[lo]; lo -= 1
+        if gap > best * (1 + 1e-9) + 1e-12: break
+        d = _nrow(P[i], p)
+        if d < best or d != d: best = d
+        if best != best: return best                                   # (a NaN distance: numpy's min is NaN)
+    return best
 def check_authored(name, trk):
     """the built road read back, its figures logged (Python numbers in numpy's orders; _old_check_authored: the numpy original)"""
     import npexact
@@ -328,7 +341,8 @@ def check_authored(name, trk):
     start, dirn = struct.unpack_from('<ii', root.data, 0x2c); msg.append('start slice %d dir %d grid %s' % (start, dirn, struct.unpack_from('<16i', root.data, 0x34)))
     if root.u32(0x18):
         sp = fx.get(root.u32(0x18)); rec = sp.u32(0xc); npts = sp.u32(rec + 4); S = list(struct.iter_unpack('<3f', sp.data[sp.u32(rec + 8):sp.u32(rec + 8) + 12 * npts]))
-        dev = max(min(_nrow(c, p) for c in cen) for p in S); seg = [_nrow(S[i + 1], S[i]) for i in range(npts - 1)]
+        co = sorted(range(n), key=lambda i: cen[i][0]); cx = [cen[i][0] for i in co]
+        dev = max(_min_dist(cen, cx, co, p) for p in S); seg = [_nrow(S[i + 1], S[i]) for i in range(npts - 1)]      # max over p of np.linalg.norm(cen - p, axis=1).min()
         msg.append('spline %d pts, step %.2f..%.2f, closed %s, max distance to centre line %.3f' % (npts, min(seg), max(seg), S[0] == S[-1], dev))
     s = scene11.parse11(by[r.u32(4)]); msg.append('scene tree %d nodes %d leaves, root meshes %d' % (s.nnode, s.nleaf, len(s.nodes[0].meshes)))
     for q in msg: log('      ', q)
