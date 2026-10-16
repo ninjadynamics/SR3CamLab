@@ -212,6 +212,36 @@ EXPORT void seal_joints_get(i64 *E, i64 *je, double *jt, i64 *jv)
     if (g_jn) { memcpy(je, g_je, sizeof(i64) * g_jn); memcpy(jt, g_jt, sizeof(double) * g_jn); memcpy(jv, g_jv, sizeof(i64) * g_jn); }
     free(g_E); free(g_je); free(g_jv); free(g_jt); g_E = g_je = g_jv = 0; g_jt = 0; g_ne = g_jn = 0;
 }
+/* seal's new corners (2026-10-16; was newvert, struct by struct in Python): corner e = nv0 + e lies at place v[e] on the edge from corner
+   p[e] to corner r[e] (either an old one, in Vk, or a new one made before it, in out), at t[e] along it.  Its 48-byte record (seal1995.py,
+   the numpy lines it replaced):
+     w['p'][:3] = U32[v]; w['p'][3] = a['p'][3]
+     n, t: x = a * (1 - t) + b * t in float64; l = np.linalg.norm(x) of a fresh 3-vector = sqrt((x0 x0 + x2 x2) + x1 x1) (OpenBLAS's ddot,
+           npexact.ddot); (x / l if l > 1e-9 else a) as float32
+     uv0 (int16): np.clip(np.round(a * (1 - t) + b * t), -32768, 32767) ; uv1 (uint16): the same, 0 .. 65535 (np.round: half to even, rint)
+   U32 = the places as float32 (12 bytes each), first[v] the first vertex at place v. */
+static double clipd(double x, double lo, double hi) { double m = lo > x ? lo : x; return hi < m ? hi : m; }      /* min(max(x, lo), hi) as Python takes them */
+EXPORT void seal_newverts(i64 nv0, const unsigned char *Vk, i64 n, const i64 *pp, const i64 *rr, const double *tt, const i64 *vv, const unsigned char *U32, const i64 *first, unsigned char *out)
+{
+    for (i64 e = 0; e < n; e++) {
+        const unsigned char *a = pp[e] < nv0 ? Vk + 48 * pp[e] : out + 48 * (pp[e] - nv0), *b = rr[e] < nv0 ? Vk + 48 * rr[e] : out + 48 * (rr[e] - nv0);
+        unsigned char *w = out + 48 * e; double t = tt[e], u = 1.0 - t;
+        memcpy(w, U32 + 12 * first[vv[e]], 12); memcpy(w + 12, a + 12, 4);
+        for (int o = 16; o <= 28; o += 12) {
+            float xa[3], xb[3]; memcpy(xa, a + o, 12); memcpy(xb, b + o, 12);
+            double x[3]; for (int c = 0; c < 3; c++) x[c] = (double)xa[c] * u + (double)xb[c] * t;
+            double l = sqrt((x[0] * x[0] + x[2] * x[2]) + x[1] * x[1]); float f[3];
+            for (int c = 0; c < 3; c++) f[c] = l > 1e-9 ? (float)(x[c] / l) : xa[c];
+            memcpy(w + o, f, 12);
+        }
+        short ua[2], ub[2], uw[2]; memcpy(ua, a + 40, 4); memcpy(ub, b + 40, 4);
+        for (int c = 0; c < 2; c++) uw[c] = (short)clipd(rint((double)ua[c] * u + (double)ub[c] * t), -32768.0, 32767.0);
+        memcpy(w + 40, uw, 4);
+        unsigned short va[2], vb[2], vw[2]; memcpy(va, a + 44, 4); memcpy(vb, b + 44, 4);
+        for (int c = 0; c < 2; c++) vw[c] = (unsigned short)clipd(rint((double)va[c] * u + (double)vb[c] * t), 0.0, 65535.0);
+        memcpy(w + 44, vw, 4);
+    }
+}
 /* the quads to cut: any of the sides (0,1) (1,2) (2,0) (1,3) (3,2) of c4 = cid[s] that is a joint edge (np.isin(lo * nu + hi, Jk) &
    (lo != hi)); Jk sorted. flag[quad] per mesh, quads numbered on from qoff[m] */
 EXPORT void seal_flags(i64 nu, const i64 *Jk, i64 nk, i64 nm, const unsigned short *idx, const i64 *ioff, const i64 *cid, const i64 *voff, const i64 *qoff, unsigned char *flag)

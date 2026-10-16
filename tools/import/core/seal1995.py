@@ -109,7 +109,7 @@ def seal(new, log=print, tol=0.001, ids=None):
     qoff = array.array('q', [0])
     for k in range(len(items)): qoff.append(qoff[-1] + (ioff[k + 1] - ioff[k] + 2) // 6)
     flag = bytearray(qoff[-1]); L.seal_flags(nu, ad(Jk) if len(Jk) else None, len(Jk), len(items), ad(idx), ad(ioff), ad(cid), ad(voff), ad(qoff), ad_b(flag))
-    U32 = memoryview(P).cast('B'); fst = first
+    U32 = memoryview(P).cast('B'); fst = first; U32b = P.buffer_info()[0]          # (the places as float32: seal_newverts reads them)
     def clone(ch, cid_, recs, strip, mid):
         return meshbuf.clone_mesh(ch, cid_, Arr('|V48', (len(recs) // 48,), recs), Arr('<u2', (len(strip),), array.array('H', strip).tobytes()), mid)
     for k, it in enumerate(items):
@@ -118,20 +118,13 @@ def seal(new, log=print, tol=0.001, ids=None):
         if not any(fl):
             if moved: new[q] = clone(ch, ch.id, Vk, il, mid)
             continue
-        cl = cid[voff[k]:voff[k + 1]].tolist(); extra = []; cache = {}; nv0 = nvk
+        cl = cid[voff[k]:voff[k + 1]].tolist(); cache = {}; nv0 = nvk; ep = array.array('q'); er = array.array('q'); et = array.array('d'); ev = array.array('q')
         def newvert(p, r, t, v):
+            """a new corner at place v on the edge p - r: its number now, its record made by fastseal.c seal_newverts once the mesh is cut (the
+            numpy lines are quoted there; a corner refers only to corners made before it)"""
             key = (p, r, v)
             if key in cache: return cache[key]
-            a = Vk[48 * p:48 * p + 48] if p < nv0 else extra[p - nv0]; b = Vk[48 * r:48 * r + 48] if r < nv0 else extra[r - nv0]; w = bytearray(48)
-            w[0:12] = U32[12 * fst[v]:12 * fst[v] + 12]; w[12:16] = a[12:16]                                  # w['p'][:3] = U32[v]; w['p'][3] = a['p'][3]
-            for o in (16, 28):                                          # n, t: x = a * (1 - t) + b * t in float64; l = np.linalg.norm(x) (a fresh 3-vector); (x / l if l > 1e-9 else a) as float32
-                xa = struct.unpack_from('<3f', a, o); xb = struct.unpack_from('<3f', b, o); x = [xa[c] * (1 - t) + xb[c] * t for c in range(3)]
-                l = math.sqrt(npexact.ddot(x, x, 0)); struct.pack_into('<3f', w, o, *((x[0] / l, x[1] / l, x[2] / l) if l > 1e-9 else xa))
-            ua = struct.unpack_from('<2h', a, 40); ub = struct.unpack_from('<2h', b, 40)                     # uv0 as int16: np.clip(np.round(lerp), -32768, 32767)
-            struct.pack_into('<2h', w, 40, *(int(min(max(_rint(ua[c] * (1 - t) + ub[c] * t), -32768.0), 32767.0)) for c in range(2)))
-            ua = struct.unpack_from('<2H', a, 44); ub = struct.unpack_from('<2H', b, 44)                     # uv1: np.clip(np.round(lerp), 0, 65535)
-            struct.pack_into('<2H', w, 44, *(int(min(max(_rint(ua[c] * (1 - t) + ub[c] * t), 0.0), 65535.0)) for c in range(2)))
-            extra.append(bytes(w)); cl.append(v); cache[key] = nv0 + len(extra) - 1; return cache[key]
+            ep.append(p); er.append(r); et.append(t); ev.append(v); cl.append(v); cache[key] = nv0 + len(ep) - 1; return cache[key]
         def cut(tri):
             out = []; stack = [tri]; guard = 0
             while stack:
@@ -158,7 +151,9 @@ def seal(new, log=print, tol=0.001, ids=None):
             strip += u
         if not strip:                                              # every triangle of this mesh is gone (a sliver under 1 mm whose corners became one place): it keeps its own
             new[q] = clone(ch, ch.id, Vk, il, mid); nempty += 1; continue          # indices, on the moved corners (see _seal_numpy: a mesh with NO indices kills the game)
-        V2 = Vk + b''.join(extra); nv2 = len(V2) // 48
+        xr = bytearray(48 * len(ep))
+        if len(ep): L.seal_newverts(nv0, Vk, len(ep), ad(ep), ad(er), ad(et), ad(ev), U32b, ad(fst), ad_b(xr))
+        V2 = Vk + bytes(xr); nv2 = len(V2) // 48
         if nv2 >= 65536 or len(strip) >= 65536:
             if ids is None: skipped += 1; new[q] = clone(ch, ch.id, Vk, il, mid); continue
             npart = -(-len(units) * 6 // 54000); per = -(-len(units) // npart); nparted += 1          # too many indices for one mesh: several, each with the corners it uses

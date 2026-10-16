@@ -19,6 +19,7 @@ def lib():
         L.seal_clusters.argtypes = [LL, P, D, P]; L.seal_clusters.restype = None; L.seal_reps.argtypes = [LL, P, P, P, LL, P, P]; L.seal_reps.restype = LL
         L.seal_joints.argtypes = [LL, P, D, LL, P, P, P, P, P]; L.seal_joints.restype = LL; L.seal_joints_get.argtypes = [P, P, P, P]; L.seal_joints_get.restype = None
         L.seal_flags.argtypes = [LL, P, LL, LL, P, P, P, P, P, P]; L.seal_flags.restype = None
+        L.seal_newverts.argtypes = [LL, P, LL, P, P, P, P, P, P, P]; L.seal_newverts.restype = None
         _lib = L
     return _lib
 def candidates(U, E, xo, i0s, i1s, tol):
