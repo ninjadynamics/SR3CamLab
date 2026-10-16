@@ -585,7 +585,7 @@ def _lib():
                          ('ro_keep', [LL, P, P, P, P, P], None), ('ro_order', [LL, P, P, P, P, P], LL), ('ro_tris', [I, P, P, P, P, P, LL, P, P, P, P, P, P, P, P], LL),
                          ('ro_b0', [LL, P, P, P, P, P, P, P, P], I), ('ro_o3', [LL, P, P, P, LL, P, P, LL, P, P, P, P, D, D, P, P], I),
                          ('ro_flat', [LL, P, P, I, P, P, P, P, LL, D, P, P], LL), ('ro_moves', [LL, P, P, P], None), ('ro_gather', [LL, P, P, P], None),
-                         ('ro_stretch', [LL, I, P, P, P], LL), ('ro_good', [LL, I, P, P, P], None), ('ro_patch', [LL, I, P, P, P, P, P], LL)):
+                         ('ro_stretch', [LL, I, P, P, P], LL), ('ro_tally', [LL, P, P], None), ('ro_good', [LL, I, P, P, P], None), ('ro_patch', [LL, I, P, P, P, P, P], LL)):
             f = getattr(L, nm); f.argtypes = a; f.restype = r
         _L = L
     return _L
@@ -706,7 +706,8 @@ def _emit_buf(faces, isnat, G, ks, flat, fo, level, stat, log, what):
         g = G[k]; r = array.array('d', bytes(8 * g['np'] * k)); m = L.ro_stretch(g['np'], k, ad(g['O']), ad(g['X']), ad(r)); sr.extend(r[:m])
     if len(sr):
         n = len(sr); pct = lambda c: round(100.0 * (c / n), 1)            # (the mean of a boolean array: how many / n)
-        stat['texture_stretch'] = dict(edges=n, percent_within_10=pct(sum(1 for v in sr if abs(v - 1) <= 0.10)), percent_longer_by_25=pct(sum(1 for v in sr if v > 1.25)), largest=round(max(sr), 2), smallest=round(min(sr), 2))
+        tl = array.array('q', [0, 0]); L.ro_tally(n, ad(sr), ad(tl))      # (the two counts in C: 0.3 s of Python a call)
+        stat['texture_stretch'] = dict(edges=n, percent_within_10=pct(tl[0]), percent_longer_by_25=pct(tl[1]), largest=round(max(sr), 2), smallest=round(min(sr), 2))
     out_nat = []; PG = array.array('d'); PA = array.array('d'); PI = array.array('q')
     for k in ks:
         g = G[k]; ids = g['ids']; skip = bytearray(g['np'])

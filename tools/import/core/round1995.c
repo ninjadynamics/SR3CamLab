@@ -439,6 +439,14 @@ EXPORT i64 ro_stretch(i64 n, int k, const double *O, const double *Pk, double *r
         }
     return m;
 }
+/* the stretch figures' two counts (2026-10-16): out[0] = how many r with |r - 1| <= 0.10, out[1] = how many r > 1.25 (Python's
+   sum(1 for v in sr if abs(v - 1) <= 0.10) and sum(1 for v in sr if v > 1.25): the same comparisons, a NaN in neither) */
+EXPORT void ro_tally(i64 n, const double *r, i64 *out)
+{
+    i64 a = 0, b = 0;
+    for (i64 i = 0; i < n; i++) { if (fabs(r[i] - 1.0) <= 0.10) a++; if (r[i] > 1.25) b++; }
+    out[0] = a; out[1] = b;
+}
 /* the good pieces for the light-map table: 4 corners a piece (a triangle's last one twice, as the mesh writer has it), their places X and
    their places AB in the polygon's square -> how many */
 EXPORT i64 ro_patch(i64 n, int k, const double *X, const double *AB, const unsigned char *good, double *PG, double *PA)
