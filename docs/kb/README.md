@@ -20,6 +20,7 @@ or L75 ...) are defined in [GLOSSARY.md](GLOSSARY.md). Everything still unknown 
 
 | File | Topic |
 |---|---|
+| [33_accepted_baseline_and_cleanup.md](33_accepted_baseline_and_cleanup.md) | Accepted steering/tree/HD baseline, open watchdog and screenshot issues, representative previews, cleanup and regeneration |
 | [01_container.md](01_container.md) | SBF container, chunk kinds, alignment rules, writer |
 | [02_track_files.md](02_track_files.md) | The 7 files of a track, what each holds, which are mandatory |
 | [03_master_xdata_route.md](03_master_xdata_route.md) | Gameplay root, start grid, sectors, AI map, spline + pace notes, cameras |
@@ -152,6 +153,8 @@ distance; the kind 11 chunk is the SCENERY tree, not collision; the kind 7 blob 
 the "route/spline" guess for the first chunk of master_xdata was wrong - it is the AI map. Stadium4 has no spline at all.
 
 ## Preview pictures (work/previews) - look at these first
+
+October 17 cleanup: decoded OBJ caches and full flyover JPG sequences are being removed. Representative evidence and current baseline: [33](33_accepted_baseline_and_cleanup.md). Older paths below document historical builds; do not assume all generated caches still exist.
 All Blender pictures are rendered headless (`tools/import/core/render_all.py`, Blender 5.1 `-b --factory-startup`).
 Same nine camera positions in every set: `overview` and `road_1` .. `road_8` (driver height, along the centre line).
 - `final_<course>_<variant>_<n>_<view>.png` and `fly_<course>_allsr3.mp4` - every course and variant (14_importer.md).
