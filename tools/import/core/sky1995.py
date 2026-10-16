@@ -148,7 +148,9 @@ def apply(f, cfg, rd, log=print, preview=None):
             if col[3 * j] == col[3 * j]: img[3 * i:3 * i + 3] = col[3 * j:3 * j + 3]; good[i] = 1; nok += 1      # (not NaN: the ray hit something)
         if not nok: log('       1995 sky: no ray hit the backdrop; the slot keeps its own sky'); return False
         import fastlm; fastlm.lib().sky_fill(H, W, img.buffer_info()[0], good.buffer_info()[0])      # fill(img, good)
-        small = bytes(int(min(max(v, 0.0), 255.0)) for v in img)       # np.clip(img, 0, 255).astype(np.uint8)
+        sm_ = bytearray(len(img))                                       # np.clip(img, 0, 255).astype(np.uint8): bytes(int(min(max(v, 0.0), 255.0)) for v in img) in C
+        if fastlm.lib().sky_bytes(len(img), img.buffer_info()[0], (fastlm.ctypes.c_char * len(sm_)).from_buffer(sm_)): raise ValueError('cannot convert float NaN to integer')
+        small = bytes(sm_)
         big = Image.frombytes('RGB', (W, H), small).resize((w, h), Image.BILINEAR).tobytes()
         import numpy as np                                             # (the bridge: the build's vivid() takes a numpy array - kb 31)
         BC.VIVID = tuple(BC.VIVID_CFG) if BC.VIVID_CFG else None; big = BC.vivid(np.frombuffer(big, np.uint8).reshape(h, w, 3).copy()).tobytes(); BC.VIVID = None   # same brightening as the course's tiles

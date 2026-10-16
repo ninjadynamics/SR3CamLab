@@ -477,6 +477,17 @@ EXPORT int sky_tile(i64 n, const double *dirs, int tw, int th, const double *im,
     return 1;
 }
 
+/* sky1995's picture as bytes (2026-10-16; was bytes(int(min(max(v, 0.0), 255.0)) for v in img), for np.clip(img, 0, 255).astype(np.uint8)):
+   out[i] = the whole part of min(max(img[i], 0), 255) as Python takes them -> 0, or 1 when a value is NaN (Python's int() of it raises) */
+EXPORT int sky_bytes(i64 n, const double *img, unsigned char *out)
+{
+    for (i64 i = 0; i < n; i++) {
+        double v = img[i];
+        if (v != v) return 1;
+        double m = 0.0 > v ? 0.0 : v; m = 255.0 < m ? 255.0 : m; out[i] = (unsigned char)(int)m;
+    }
+    return 0;
+}
 /* sky_fill = fill(img, mask): a texel without a value takes the nearest valid one along its row (the earlier one on a tie), then along its
    column, as fill()'s maximum / minimum.accumulate do; img[H * W * 3], mask[H * W] (both changed in place) */
 EXPORT void sky_fill(int H, int W, double *img, unsigned char *mask)

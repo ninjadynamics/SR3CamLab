@@ -55,7 +55,7 @@ def lib():
         L.lm_albedo.argtypes = [LL, P, I, I, P, P]; L.lm_albedo.restype = LL
         L.lm_lookup.argtypes = [LL] + [P] * 7 + [I, P, P]; L.lm_lookup.restype = None
         L.sky_dirs.argtypes = [P, P, LL, P, I, I, P, P]; L.sky_dirs.restype = None; L.sky_tile.argtypes = [LL, P, I, I, P, D, D, P, P]; L.sky_tile.restype = I
-        L.sky_fill.argtypes = [I, I, P, P]; L.sky_fill.restype = None
+        L.sky_fill.argtypes = [I, I, P, P]; L.sky_fill.restype = None; L.sky_bytes.argtypes = [LL, P, P]; L.sky_bytes.restype = I
         L.fb_paint.argtypes = [I, I, P, P, P, P, I, I, I, I, P, P, P, I, I, I, I]; L.fb_paint.restype = LL; L.fb_fill.argtypes = [I, I, P, P]; L.fb_fill.restype = I
         L.lm_nearest_xz.argtypes = [LL, P, P, D, D]; L.lm_nearest_xz.restype = LL
         L.bc_inside.argtypes = [P, LL, D, D]; L.bc_inside.restype = I; L.bc_limits.argtypes = [P, LL, D, D, D, D, P]; L.bc_limits.restype = I
