@@ -154,7 +154,7 @@ the "route/spline" guess for the first chunk of master_xdata was wrong - it is t
 
 ## Preview pictures (work/previews) - look at these first
 
-October 17 cleanup: decoded OBJ caches and full flyover JPG sequences are being removed. Representative evidence and current baseline: [33](33_accepted_baseline_and_cleanup.md). Older paths below document historical builds; do not assume all generated caches still exist.
+October 17 cleanup: decoded OBJ caches and full flyover JPG sequences were removed. Representative evidence and current baseline: [33](33_accepted_baseline_and_cleanup.md). Older paths below document historical builds; do not assume all generated caches still exist.
 All Blender pictures are rendered headless (`tools/import/core/render_all.py`, Blender 5.1 `-b --factory-startup`).
 Same nine camera positions in every set: `overview` and `road_1` .. `road_8` (driver height, along the centre line).
 - `final_<course>_<variant>_<n>_<view>.png` and `fly_<course>_allsr3.mp4` - every course and variant (14_importer.md).
