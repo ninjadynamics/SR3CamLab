@@ -85,8 +85,6 @@ def orient(lists, rd, skip=(), also=(), single='~s', log=print, keep=None, read=
     fastlm.lib().lm_ss_prep(n, ad(X), ad(off), ad(lens), ad(use), ad(opaque), ad(J), ad(T), nt.ref, ad(idx), ad(Pj), ad(trij), ad(nrm), ad(cen), ad(S), ad(area)); nt = nt.value      # (fastlm.c quotes the numpy lines)
     del T[9 * nt:]                                                    # what stands in the way: the triangles the game draws
     C, E = roadsight.viewpoints(rd, STEP, SIDE, HEIGHT); per = len(SIDE) * len(HEIGHT)
-    Sk = []
-    for k in range(6): a = array('d'); a.frombytes(memoryview(S).cast('B')[24 * nj * k:24 * nj * (k + 1)]); Sk.append(a)      # the three pairs of sample points
     front = [0] * nj; back = [0] * nj; nrays = 0; took = ''
     fp = hashlib.sha1(bytes(Pj) + bytes(T) + bytes(E)).hexdigest()      # the judged polygons, what stands in the way, the viewpoints
     if read and os.path.exists(read):
@@ -96,8 +94,7 @@ def orient(lists, rd, skip=(), also=(), single='~s', log=print, keep=None, read=
     sc = None; saved = None
     if not took:
         sc = fastlm.Scene(T, nt)
-        for k in range(3):
-            f_, b_, r_ = fastlm.roadsight(sc, cen, Sk[2 * k], Sk[2 * k + 1], nrm, C, E, per, REACH); front = [x + y for x, y in zip(front, f_)]; back = [x + y for x, y in zip(back, b_)]; nrays += r_
+        f_, b_, nrays = fastlm.roadsight_n(sc, cen, S, 6, nrm, C, E, per, REACH); front = f_.tolist(); back = b_.tolist()      # the six sample points in one go: the sums of the three calls of two it was (2026-10-16, kb 31)
         if keep: saved = dict(fp=npyio.text(fp), front=npyio.Arr('<i8', (nj,), memoryview(array('q', front)).cast('B')), back=npyio.Arr('<i8', (nj,), memoryview(array('q', back)).cast('B')), nrays=npyio.scalar(nrays)); npyio.savez(keep, **saved)
     F = [f >= MIN_HITS for f in front]; B = [b >= MIN_HITS for b in back]
     onlyf = [f_ and (not b_ or f >= RATIO * b) for f_, b_, f, b in zip(F, B, front, back)]; onlyb = [b_ and (not f_ or b >= RATIO * f) for f_, b_, f, b in zip(F, B, front, back)]

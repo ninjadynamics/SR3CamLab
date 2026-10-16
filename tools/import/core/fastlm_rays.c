@@ -6,6 +6,7 @@
      rx_any     is ANYTHING hit (nearer than tmax)?  Stops at the first hit.
      rx_nearer  is the nearest hit nearer than tlim?  Stops at the first hit that clearly is.
      rx_near    the nearest hit, the nearer boxes first (cast_one takes the right child first whatever the ray's direction)
+     rx_nearer_h  rx_nearer, the leaf that hid the caller's last ray tried first, then the subtree round it, then the rest (point 5)
 
    cast_one = "the walk": depth first, right child first; a node is dropped when the ray enters its box later than it leaves it or
    later than the nearest hit so far; in a leaf (up to 4 triangles) every triangle is tested.
@@ -30,14 +31,23 @@
         nearer than tlim already); nothing nearer than tlim + DELTA in any box that begins before tlim + 2 DELTA -> no (by (A) nothing
         else can be nearer); a hit within DELTA of tlim and none clearly nearer -> cast_one decides.
    4. cast_one skips a push when its stack of 96 is nearly full: a tree of rays.c deeper than 93 levels silently loses triangles
-      (rx_depth; fastlm.py then sends every ray through rx_ref, the only walk that loses the same ones). */
+      (rx_depth; fastlm.py then sends every ray through rx_ref, the only walk that loses the same ones).
+   5. rx_nearer_h (2026-10-16, kb 31; road sight: 93% of its rays are hidden, and the next ray, to the polygon's next sample point or from
+      the next viewpoint, is mostly hidden by the same ground). rx_nearer's answer does not depend on the order of its walk: yes when
+      some triangle that passes the tests lies at 1e-9 < t < tlim - DELTA (and t < tmax) in a leaf whose box passes for the walk's limit
+      (it stops at the first one it finds); otherwise a close one hands the ray to cast_one; otherwise no. And by 1. "reached" is "its
+      own box passes". So any order of looking at the leaves that looks at all of them gives the same answer, and stopping at a yes is
+      allowed wherever it is found. rx_nearer_h looks first at the remembered leaf (its box through box4 on its own QNode, the
+      remembered triangle first: the walk's numbers), then walks the subtree RX_UP QNodes above it, then the whole tree without that
+      subtree. Exact, no assumption beyond rx_nearer's own; 1 886 million rays of Mountain's road sight: the same counts, 27 s -> 11 s. */
 #include "rays.c"
 #ifdef __AVX2__
 #include <immintrin.h>
 #endif
 
 typedef struct { double lo[3][4], hi[3][4]; int child[4], n, pad[3]; } QNode;      /* child >= 0: a QNode ; < 0: ~child = a leaf in RX.x */
-typedef struct { Scene *s; Node *x; QNode *q; int nx, nq, depth, own; } RX;         /* x: binary tree over the leaves of s (own = 1: built here) ; q: the same, four to a node */
+typedef struct { Scene *s; Node *x; QNode *q; int nx, nq, depth, own; int *lpar, *qpar; } RX;      /* x: binary tree over the leaves of s (own = 1: built here) ; q: the same, four to a node ;
+                                                                                                       lpar[leaf of x] = its QNode * 4 + its place there ; qpar[QNode] = the QNode above it (-1: the root) */
 
 static int depth_of(const Node *nodes, int node, int d) {
     const Node *n = &nodes[node]; if (n->count > 0) return d;
@@ -100,7 +110,10 @@ static int qbuild(RX *X, int b) {
     }
     for (int i = 0; i < 4; i++) for (int a = 0; a < 3; a++) { X->q[me].lo[a][i] = i < n ? B[ch[i]].lo[a] : 0.0; X->q[me].hi[a][i] = i < n ? B[ch[i]].hi[a] : 0.0; }
     X->q[me].n = n;
-    for (int i = 0; i < 4; i++) { int r = i >= n ? 0 : (B[ch[i]].count > 0 ? ~ch[i] : qbuild(X, ch[i])); X->q[me].child[i] = r; }
+    for (int i = 0; i < 4; i++) {
+        int r = i >= n ? 0 : (B[ch[i]].count > 0 ? ~ch[i] : qbuild(X, ch[i])); X->q[me].child[i] = r;
+        if (i < n) { if (r < 0) X->lpar[ch[i]] = 4 * me + i; else X->qpar[r] = me; }
+    }
     return me;
 }
 
@@ -117,11 +130,11 @@ EXPORT void *rx_open(void *h, int own_tree) {
         else free(x);
         free(prim);
     }
-    X->q = (QNode *)malloc(sizeof(QNode) * (size_t)(nl + 1));
-    if (!X->q) { if (X->own) free(X->x); free(X); return NULL; }
-    X->nq = 0; qbuild(X, 0); return X;
+    X->q = (QNode *)malloc(sizeof(QNode) * (size_t)(nl + 1)); X->lpar = (int *)malloc(sizeof(int) * (size_t)(X->nx + 1)); X->qpar = (int *)malloc(sizeof(int) * (size_t)(nl + 1));
+    if (!X->q || !X->lpar || !X->qpar) { if (X->own) free(X->x); free(X->q); free(X->lpar); free(X->qpar); free(X); return NULL; }
+    X->nq = 0; X->qpar[0] = -1; qbuild(X, 0); return X;
 }
-EXPORT void rx_close(void *h) { RX *X = (RX *)h; if (!X) return; if (X->own) free(X->x); free(X->q); free(X); }
+EXPORT void rx_close(void *h) { RX *X = (RX *)h; if (!X) return; if (X->own) free(X->x); free(X->q); free(X->lpar); free(X->qpar); free(X); }
 
 EXPORT int rx_ref(void *h, const double *o, const double *d, double tmax, double *tout) { return cast_one(((const RX *)h)->s, o, d, tmax, tout); }
 
@@ -223,6 +236,49 @@ EXPORT int rx_nearer(void *h, const double *o, const double *d, double tmax, dou
     return 0;
 }
 
+/* rx_nearer with a memory (point 5): hint[0] = the QNode * 4 + place of the leaf that hid the caller's last ray (-1: none), hint[1] = the
+   triangle in it; set when this ray is hidden.  The same answer as rx_nearer (point 5), the same rays handed to cast_one. */
+#define RX_UP 2                                                        /* the subtree looked at second: RX_UP QNodes above the remembered leaf's (1 .. 3 measured alike) */
+EXPORT int rx_nearer_h(void *h, const double *o, const double *d, double tmax, double tlim, long long *fell, int *hint) {
+    const RX *X = (const RX *)h; const Scene *s = X->s; if (s->ntri == 0) return 0;
+    RX_INV
+    double delta = 1e-6 * (1.0 + fabs(tlim)), far = tlim + 2.0 * delta, sure = tlim - delta, near = tlim + delta; if (far > tmax) far = tmax;
+    if (hint[0] >= 0) {                                                /* the remembered leaf: a yes is the walk's yes (a close one there is found again below) */
+        const QNode *Q = &X->q[hint[0] >> 2]; double e[4]; int k = hint[0] & 3;
+        if (box4(Q, o, inv, far, e) >> k & 1) {
+            const Node *n = &X->x[~Q->child[k]]; int i0 = n->first + hint[1];
+            for (int j = 0; j < n->count; j++) {
+                int i = j == 0 ? i0 : (n->first + j - 1 < i0 ? n->first + j - 1 : n->first + j);      /* the remembered triangle, then the others in order */
+                RX_TRI(i)
+                if (t <= 1e-9 || t >= tmax || !(t < sure)) continue;
+                if (s->tmat && through_hole(s, s->orig[i], b1, b2)) continue;
+                return 1;
+            }
+        }
+    }
+    int stack[RX_STACK], sp = 0, close = 0, anc = -1; double se[RX_STACK];
+    if (hint[0] >= 0) { anc = hint[0] >> 2; for (int u = 0; u < RX_UP && X->qpar[anc] >= 0; u++) anc = X->qpar[anc]; if (anc == 0) anc = -1; }      /* (the root: one walk) */
+    for (int pass = anc > 0 ? 0 : 1; pass < 2; pass++) {               /* pass 0: the subtree under anc ; pass 1: the whole tree but that subtree */
+        sp = 0; stack[sp] = pass ? 0 : anc; se[sp++] = 0.0;
+        while (sp) {
+            int r = stack[--sp];
+            if (r < 0) {
+                const Node *n = &X->x[~r];
+                for (int i = n->first; i < n->first + n->count; i++) {
+                    RX_TRI(i)
+                    if (t <= 1e-9 || t >= tmax || !(t < near)) continue;
+                    if (s->tmat && through_hole(s, s->orig[i], b1, b2)) continue;
+                    if (t < sure) { hint[0] = X->lpar[~r]; hint[1] = i - n->first; return 1; }
+                    close = 1;
+                }
+            } else if (pass && r == anc) continue;
+            else { double e[4]; const QNode *Q = &X->q[r]; int m = box4(Q, o, inv, far, e); RX_PUSH(Q, m, e) }
+        }
+    }
+    if (close) { double tt = tmax; int r = cast_one(s, o, d, tmax, &tt); if (fell) (*fell)++; return r >= 0 && tt < tlim; }
+    return 0;
+}
+
 /* the nearest hit: the answer of cast_one (see the top of this file).  *fell (when given) counts the rays handed to cast_one */
 EXPORT int rx_near(void *h, const double *o, const double *d, double tmax, double *tout, long long *fell) {
     const RX *X = (const RX *)h; const Scene *s = X->s; if (s->ntri == 0) return -1;
@@ -252,17 +308,23 @@ EXPORT int rx_near(void *h, const double *o, const double *d, double tmax, doubl
 }
 
 /* n rays, for fastlm.selftest: hit / t as rt_cast gives them (t = tmax when nothing is hit).
-   how 0: cast_one ; 1: rx_near ; 2: rx_nearer, t[i] holds the limit of ray i on entry and keeps it (hit 0 = nearer, -1 = not) ; 3: rx_any (hit 0 / -1) */
+   how 0: cast_one ; 1: rx_near ; 2: rx_nearer, t[i] holds the limit of ray i on entry and keeps it (hit 0 = nearer, -1 = not) ; 3: rx_any (hit 0 / -1) ;
+   4: as 2 through rx_nearer_h, its memory carried from ray to ray on each thread */
 EXPORT void rx_cast(void *h, int how, const double *org, const double *dir, long long n, double tmax, int *hit, double *t, long long *fell) {
-    long long i, f = 0;
-    #pragma omp parallel for schedule(dynamic, 4096) reduction(+: f)
-    for (i = 0; i < n; i++) {
+    long long f = 0;
+    #pragma omp parallel reduction(+: f)
+    {
+    int hint[2] = { -1, 0 };
+    #pragma omp for schedule(dynamic, 4096)
+    for (long long i = 0; i < n; i++) {
         double tt = tmax; int r;
         if (how == 0) r = cast_one(((const RX *)h)->s, org + 3 * i, dir + 3 * i, tmax, &tt);
         else if (how == 1) r = rx_near(h, org + 3 * i, dir + 3 * i, tmax, &tt, &f);
         else if (how == 2) { tt = t[i]; r = rx_nearer(h, org + 3 * i, dir + 3 * i, tmax, tt, &f) ? 0 : -1; }
+        else if (how == 4) { tt = t[i]; r = rx_nearer_h(h, org + 3 * i, dir + 3 * i, tmax, tt, &f, hint) ? 0 : -1; }
         else { r = rx_any(h, org + 3 * i, dir + 3 * i, tmax) ? 0 : -1; if (r < 0) tt = tmax; }
-        hit[i] = r; t[i] = (r < 0 && how != 2) ? tmax : tt;
+        hit[i] = r; t[i] = (r < 0 && how != 2 && how != 4) ? tmax : tt;
+    }
     }
     if (fell) *fell = f;
 }

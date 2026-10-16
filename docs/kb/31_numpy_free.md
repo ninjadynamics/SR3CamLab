@@ -121,7 +121,7 @@ data roots, old against new (scratchpad tools lightrun.py / buildrun.py): every 
 | Module | Now | Check |
 |---|---|---|
 | roadsight.orient | geobuf.pack + fastlm.c lm_rs_prep, plain Python decisions | 335,604 items and the log identical, 3.37 -> 3.22 s |
-| seenside.orient | geobuf.pack + lm_ss_prep / lm_open_sides; lm.sides.npz through npyio ('<U' text, 0-d scalars) | lists, logs, sides file identical; ~24 -> 22.7 s |
+| seenside.orient | geobuf.pack + lm_ss_prep / lm_open_sides; lm.sides.npz through npyio ('<U' text, 0-d scalars). 2026-10-16: the road-sight rays through fastlm_rays.c rx_nearer_h (the leaf that hid the last ray tried first, then the subtree round it, then the rest: rx_nearer's answer does not depend on the order it looks at the leaves in, point 5 there), the six sample points in one call (lm_roadsight_n: the sums the three calls of two gave) | lists, logs, sides file identical; ~24 -> 22.7 s; the rays (1,886 million on Mountain) 25.6 -> 11.9 s, the light step 70 -> 55 s, the counts the same in a bench of the recorded calls and fastlm.selftest's 24.7 million rays against cast_one (0 different) |
 | lightmap1995.save_collect / key_buf / lookup_buf / load_table_buf | buffer protocol in, fastlm.c lm_key12 / lm_gather / lm_lookup | lm.lm.npz identical; lookup 0.27 -> 0.12 s (not called yet) |
 | bake1995.save_scene, scenefile.save_arrays | lm_albedo (UCRT pow, numpy's pairwise / row-by-row means) | lm.scene identical |
 | sky1995 | its own operations in fastlm.c sky_dirs / sky_tile / sky_fill; build_classic.vivid / dxt1_rgb through a numpy bridge | all 10 game files identical |

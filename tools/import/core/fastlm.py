@@ -48,6 +48,7 @@ def lib():
         L.lm_bake.argtypes = [P, I, P, P, P, P, P, P, P, P, P, P, LL, P, P, P, I, P, P, I, P, I, I, D, D, P, I, P]; L.lm_bake.restype = LL
         L.lm_light.argtypes = [P, I, P, P, P, LL, P, P, P, I, P, P, I, P, I, P, P, P, P]; L.lm_light.restype = LL
         L.lm_roadsight.argtypes = [P, I, P, P, P, P, LL, P, LL, P, I, D, P, P, P]; L.lm_roadsight.restype = LL
+        L.lm_roadsight_n.argtypes = [P, I, P, P, I, P, LL, P, LL, P, I, D, P, P, P]; L.lm_roadsight_n.restype = LL
         L.lm_rs_prep.argtypes = [LL] + [P] * 11; L.lm_rs_prep.restype = LL
         L.lm_ss_prep.argtypes = [LL] + [P] * 15; L.lm_ss_prep.restype = LL; L.lm_open_sides.argtypes = [P, LL, P, I, P, D, P, I, P, P]; L.lm_open_sides.restype = None
         L.lm_key12.argtypes = [LL, P, P]; L.lm_key12.restype = None; L.lm_gather.argtypes = [LL, P, LL, P, P]; L.lm_gather.restype = None
@@ -91,7 +92,8 @@ class Scene:
         bits = np.concatenate(parts) if parts else np.zeros(1, np.uint8); self.keep = [tm, tu, w, h, off, bits]
         lib().rt_masks(self.h, _p(tm), _p(tu), n, _p(w), _p(h), _p(off), _p(bits))
     def cast(self, org, dir, tmax=600.0, how=0, limits=None):
-        """how 0: cast_one (= rays.Scene.cast) ; 1: rx_near ; 2: rx_nearer with a limit per ray (hit 0 = something nearer than the limit, -1 = nothing) ; 3: rx_any (hit 0 / -1).  -> hit, t, rays handed back to cast_one"""
+        """how 0: cast_one (= rays.Scene.cast) ; 1: rx_near ; 2: rx_nearer with a limit per ray (hit 0 = something nearer than the limit, -1 = nothing) ; 3: rx_any (hit 0 / -1) ;
+        4: as 2 through rx_nearer_h (the leaf that hid a thread's last ray tried first).  -> hit, t, rays handed back to cast_one"""
         import numpy as np
         o = _d(org).reshape(-1, 3); d = _d(dir).reshape(-1, 3); n = len(o); hit = np.empty(n, np.int32); t = np.empty(n, np.float64) if limits is None else _d(limits).copy(); fell = ctypes.c_longlong(0)
         lib().rx_cast(self.x, how, _p(o), _p(d), n, float(tmax), _p(hit), _p(t), ctypes.byref(fell)); return hit, t, fell.value
@@ -174,9 +176,19 @@ def roadsight(sc, cen, S1, S2, nrm, C, E, per, reach):
     nray = lib().lm_roadsight(sc.x, 1 if sc.ordered else 0, _p(cen), _p(S1), _p(S2), _p(nrm), n, _p(C), nC, _p(E), int(per), float(reach), _p(front), _p(back), ctypes.byref(fell)) if n else 0
     roadsight.fell = fell.value; return front, back, int(nray)
 
+def roadsight_n(sc, cen, S, ns, nrm, C, E, per, reach):
+    """roadsight with ns sample points a polygon, one after the other in S (array.array of ns * 3 * n doubles: sample k of polygon j at
+    3 * (k * n + j)): the sums of roadsight over pairs of them, with the rays of one viewpoint to all of them cast one after the other
+    (2026-10-16: the leaf that hid one is tried first for the next, fastlm_rays.c point 5).  -> front, back (array.array 'i'), rays cast"""
+    n = len(cen) // 3; nC = len(C) // 3; front = array('i', bytes(4 * n)); back = array('i', bytes(4 * n))
+    if len(E) // 3 != nC * per or len(S) != 3 * ns * n or ns > 16: raise ValueError('fastlm.roadsight_n: viewpoints / sample points')
+    fell = ctypes.c_longlong(0)
+    nray = lib().lm_roadsight_n(sc.x, 1 if sc.ordered else 0, _p(cen), _p(S), int(ns), _p(nrm), n, _p(C), nC, _p(E), int(per), float(reach), _p(front), _p(back), ctypes.byref(fell)) if n else 0
+    roadsight_n.fell = fell.value; return front, back, int(nray)
+
 # ---------------------------------------------------------------- the walks against rays.dll
 def selftest(path, nmax=40000000, log=print):
-    """the rays of a real bake (<path>.lm.npz + .scene: sky fans from the polygons' corners) through rays.dll and through this DLL's three walks, bit for bit"""
+    """the rays of a real bake (<path>.lm.npz + .scene: sky fans from the polygons' corners) through rays.dll and through this DLL's four walks, bit for bit"""
     import rays, numpy as np
     import scenefile; D = np.load(path + '.lm.npz'); S = scenefile.load(path + '.scene', numpy=True); T = S['tris'].astype(float); a = rays.Scene(T); a.masks(S['mat'], S['uv'], S['holes']); Lg = Lights(S); b = Lg.sc
     P = D['P'].astype(float).reshape(-1, 3); N = np.repeat(D['N'].astype(float), 4, axis=0); N /= np.maximum(np.linalg.norm(N, axis=1), 1e-12)[:, None]; k = max(1, nmax // 16); sel = np.linspace(0, len(P) - 1, min(k, len(P))).astype(int); P = P[sel]; N = N[sel]
@@ -186,8 +198,10 @@ def selftest(path, nmax=40000000, log=print):
     t0 = time.time(); h0, t_0 = a.cast(o, d, 1e9); ta = time.time() - t0; t0 = time.time(); h1, t_1, _ = b.cast(o, d, 1e9, 0); tb = time.time() - t0; t0 = time.time(); h2, t_2, fell = b.cast(o, d, 1e9, 1); tc = time.time() - t0
     t0 = time.time(); h3, _, _ = b.cast(o, d, 1e9, 3); td = time.time() - t0; k3 = np.arange(len(o)) % 5
     lim = np.where(h0 >= 0, t_0, 50.0) * np.choose(k3, [1.0, 0.999999, 1.000001, 1.0 - 1e-9, 1.0 + 1e-9]); h4, _, fell2 = b.cast(o, d, 1e9, 2, lim); want = np.where((h0 >= 0) & (t_0 < lim), 0, -1)      # limits on, just before and just behind the hit
+    t0 = time.time(); h5, _, fell3 = b.cast(o, d, 1e9, 4, lim); te = time.time() - t0
     r = dict(rays=len(o), tree_depth=b.depth, hit_some=int((h0 >= 0).sum()), cast_one_other_hit=int((h1 != h0).sum()), cast_one_other_t=int((t_1 != t_0).sum()), near_other_hit=int((h2 != h0).sum()), near_other_t=int((t_2 != t_0).sum()), near_handed_back=int(fell),
-             any_other=int(((h3 >= 0) != (h0 >= 0)).sum()), nearer_other=int((h4 != want).sum()), nearer_handed_back=int(fell2), seconds=dict(rays_dll=round(ta, 2), cast_one=round(tb, 2), near=round(tc, 2), any=round(td, 2)))
+             any_other=int(((h3 >= 0) != (h0 >= 0)).sum()), nearer_other=int((h4 != want).sum()), nearer_handed_back=int(fell2),
+             nearer_h_other=int((h5 != want).sum()), nearer_h_handed_back=int(fell3), seconds=dict(rays_dll=round(ta, 2), cast_one=round(tb, 2), near=round(tc, 2), any=round(td, 2), nearer_h=round(te, 2)))
     log('fastlm.selftest: %s' % r); return r
 
 if __name__ == '__main__':

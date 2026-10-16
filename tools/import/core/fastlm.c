@@ -24,6 +24,7 @@ extern int rx_ref(void *h, const double *o, const double *d, double tmax, double
 extern int rx_any(void *h, const double *o, const double *d, double tlim);
 extern int rx_near(void *h, const double *o, const double *d, double tmax, double *tout, long long *fell);
 extern int rx_nearer(void *h, const double *o, const double *d, double tmax, double tlim, long long *fell);
+extern int rx_nearer_h(void *h, const double *o, const double *d, double tmax, double tlim, long long *fell, int *hint);
 
 typedef double (*f1_t)(double); typedef double (*f2_t)(double, double);
 static f1_t usin = NULL, ucos = NULL; static f2_t ufmod = NULL;
@@ -173,28 +174,30 @@ EXPORT i64 lm_light(void *sc, int use_ordered, const double *P, const double *Nn
 }
 
 /* roadsight.orient, the loop over the judged polygons:
-   cen / S1 / S2 / nrm [nj * 3]: plan centre, the two sample points, the unit normal ; C[nrow * 3] road centre points ;
+   cen / nrm [nj * 3]: plan centre, the unit normal ; Sv[ns] the sample points, each [nj * 3] ; C[nrow * 3] road centre points ;
    E[nrow * per * 3] the viewpoints (viewpoint k of road point r = E[r + nrow * k]).  A polygon is looked at from every road point
-   nearer than reach (plan distance).  -> rays cast ; front[nj], back[nj] = samples reached on the winding side / on the other side */
-EXPORT i64 lm_roadsight(void *sc, int use_ordered, const double *cen, const double *S1, const double *S2, const double *nrm, i64 nj,
-                        const double *C, i64 nrow, const double *E, int per, double reach, int *front, int *back, i64 *fell_out)
+   nearer than reach (plan distance).  -> rays cast ; front[nj], back[nj] = samples reached on the winding side / on the other side.
+   The rays of one viewpoint to the polygon's sample points one after the other: they are mostly hidden by the same leaf, which
+   rx_nearer_h then tries first (fastlm_rays.c, point 5; the counts are sums, the same in any order) */
+static i64 roadsight_core(void *sc, int use_ordered, const double *cen, const double *const *Sv, int ns, const double *nrm, i64 nj,
+                          const double *C, i64 nrow, const double *E, int per, double reach, int *front, int *back, i64 *fell_out)
 {
     i64 nray = 0, fell = 0;
     #pragma omp parallel for schedule(dynamic, 32) reduction(+: nray, fell)
     for (i64 p = 0; p < nj; p++) {
-        const double *c = cen + 3 * p, *n = nrm + 3 * p; int fr = 0, bk = 0;
+        const double *c = cen + 3 * p, *n = nrm + 3 * p; int fr = 0, bk = 0, hint[2] = { -1, 0 };
         for (i64 r = 0; r < nrow; r++) {
             double dx = c[0] - C[3 * r], dz = c[2] - C[3 * r + 2];
             if (!(sqrt(dx * dx + dz * dz) < reach)) continue;
             for (int k = 0; k < per; k++) {
                 const double *e = E + 3 * (r + nrow * k);
-                for (int smp = 0; smp < 2; smp++) {
-                    const double *q = (smp ? S2 : S1) + 3 * p; double v[3] = { q[0] - e[0], q[1] - e[1], q[2] - e[2] }, L = NORM3(v), m = max2(L, 1e-9);
+                for (int smp = 0; smp < ns; smp++) {
+                    const double *q = Sv[smp] + 3 * p; double v[3] = { q[0] - e[0], q[1] - e[1], q[2] - e[2] }, L = NORM3(v), m = max2(L, 1e-9);
                     double dr[3] = { v[0] / m, v[1] / m, v[2] / m }, cs = -DOT3(dr, n);
                     if (!(fabs(cs) > 0.05 && L > 0.5)) continue;
                     nray++;
                     int seen;
-                    if (use_ordered) seen = !rx_nearer(sc, e, dr, 1e9, L - 0.08, &fell);
+                    if (use_ordered) seen = !rx_nearer_h(sc, e, dr, 1e9, L - 0.08, &fell, hint);
                     else { double tt = 1e9; int hh = rx_ref(sc, e, dr, 1e9, &tt); if (hh < 0) tt = 1e9; seen = tt >= L - 0.08; }
                     if (seen) { if (cs > 0) fr++; else if (cs < 0) bk++; }
                 }
@@ -204,6 +207,20 @@ EXPORT i64 lm_roadsight(void *sc, int use_ordered, const double *cen, const doub
     }
     if (fell_out) *fell_out = fell;
     return nray;
+}
+/* two sample points S1, S2 [nj * 3] (roadsight.py) */
+EXPORT i64 lm_roadsight(void *sc, int use_ordered, const double *cen, const double *S1, const double *S2, const double *nrm, i64 nj,
+                        const double *C, i64 nrow, const double *E, int per, double reach, int *front, int *back, i64 *fell_out)
+{
+    const double *Sv[2] = { S1, S2 }; return roadsight_core(sc, use_ordered, cen, Sv, 2, nrm, nj, C, nrow, E, per, reach, front, back, fell_out);
+}
+/* ns sample points one after the other in S [ns * nj * 3] (seenside.py: its six in one go, the sums of its three calls of two); -1: ns > 16 */
+EXPORT i64 lm_roadsight_n(void *sc, int use_ordered, const double *cen, const double *S, int ns, const double *nrm, i64 nj,
+                          const double *C, i64 nrow, const double *E, int per, double reach, int *front, int *back, i64 *fell_out)
+{
+    const double *Sv[16]; if (ns > 16) return -1;
+    for (int k = 0; k < ns; k++) Sv[k] = S + 3 * nj * k;
+    return roadsight_core(sc, use_ordered, cen, Sv, ns, nrm, nj, C, nrow, E, per, reach, front, back, fell_out);
 }
 
 /* roadsight.orient's set-up for the numpy-free path (2026-10-15, kb 31): n polygons packed by geobuf.pack (X corners, off[n + 1],
