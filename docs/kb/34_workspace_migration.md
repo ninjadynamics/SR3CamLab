@@ -41,3 +41,11 @@ The owner separately deleted the three external Revo converted/demo reference di
 All 37,801 inventoried files matched SHA256 after the first 34 directory moves, before configuration changes. Three further same-drive moves retained the original Rally/Shell/ShellData sibling layout. Final protected-file verification, junction audit and exact mapping are local in `work/runs/migration-20261017/`. All 25 SRC integration checks and eight Hornet mip cases passed from the migrated repo. Launcher checks and both texture-source checks passed without launching the game or taking desktop captures. Live gameplay remains for the owner to confirm.
 
 See [WORKSPACE.md](../WORKSPACE.md) for local usage and [SR3Lab-plan.md](../SR3Lab-plan.md) for remaining refactor/installer work. CamLab compilation through SETUP.bat remains a deferred TODO; the existing binary was retained unchanged.
+
+## First-launch correction
+
+The first owner launch exposed two gaps in the offline migration check. The installed patch DLL interprets `patches.mod_folder` from the game working directory, so relative `repo` failed to load `profiles.yaml`. Local settings now use the absolute workspace repo path, and the wrapper rejects relative paths and checks the camera and handling configuration files. Keep this absolute path updated when relocating the workspace.
+
+PowerShell's direct GUI executable invocation also left `LASTEXITCODE` unset, falsely reporting launch failure and stopping the handling helpers. The wrapper now starts the native launcher with `Start-Process`, waits for that launcher process to exit, and reads its actual exit code. It does not wait for the game to close. Runtime binaries and handling data remain unchanged.
+
+Verification: the installed DLL's offline plan reproduced the missing-profile error (exit 1) from the real game working directory before the correction, then generated its camera patch plan successfully (exit 0) afterward. The workspace preflight also passed. No game was launched during these checks.

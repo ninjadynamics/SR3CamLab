@@ -28,3 +28,5 @@ Do not run historical restore/install scripts without reviewing their targets. T
 The Revo converted/demo reference directories were deleted separately by the owner. Active importer settings no longer refer to them. They are not required to play this installed mod.
 
 SETUP.bat compilation and the public-release layout remain planned work. This is a migration of the existing accepted development setup, not a fresh installer. CamLab source compilation remains a deferred TODO.
+
+The installed mod DLL requires `patches.mod_folder` in local `settings.yaml` to be the absolute path to this workspace's `repo` folder. Update it if moving the workspace; `PLAY.bat -Check` validates this and the mod configuration files.
