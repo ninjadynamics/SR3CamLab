@@ -11,5 +11,9 @@
   "mame": "",
   "_mame": "[none] mame.exe, only for recording the 1995 music",
   "threads": "all_but_one",
-  "_threads": "all | all_but_one | a number"
+  "_threads": "all | all_but_one | a number",
+  "work_root": "",
+  "classic_root": "",
+  "_work_root": "Optional generated work directory; defaults to <data_root>/work",
+  "_classic_root": "Optional local extracted/authoring data directory; defaults to <data_root>/classic"
 }

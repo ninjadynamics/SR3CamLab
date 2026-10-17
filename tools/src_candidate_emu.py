@@ -1,7 +1,10 @@
 """Offline integration tests for the test-only SRC bridge. No live process access."""
 import json,math,sys
 from pathlib import Path
-meta=json.loads((Path(__file__).resolve().parents[2]/'SR3-investigation/steering-response/src-candidate.json').read_text())
+workspace=Path(__file__).resolve().parents[2]
+candidate=workspace/'assets/handling/src-candidate.json'
+if not candidate.exists(): candidate=workspace/'SR3-investigation/steering-response/src-candidate.json'
+meta=json.loads(candidate.read_text())
 # Reuse the existing in-memory SR3 fixture, without executing its legacy tests.
 fixture=(Path(__file__).parent/'srcport_emu.py').read_text().split('npass = nfail = 0')[0]
 fixture=fixture.replace("blob, ENTRY, DATA, RELOCS, CLS = B.build(A.game)","blob, ENTRY, DATA, RELOCS, CLS = bytes.fromhex(meta['code']),meta['entry'],meta['data'],meta['relocs'],meta['surfaces']")
@@ -69,7 +72,8 @@ check('Vertical/pitch/roll remain native',V[1]==2 and abs(W[0]-.1)<1e-6 and abs(
 # level road plane: older captures did not record contact planes. This is a
 # stress test of integration bounds, NOT a replay of actual suspension dynamics.
 import csv
-trace=Path(__file__).resolve().parents[2]/'SR3-investigation/steering-response/run-20261016-113518/steering.csv'
+trace=workspace/'work/research/steering-response/run-20261016-113518/steering.csv'
+if not trace.exists(): trace=workspace/'SR3-investigation/steering-response/run-20261016-113518/steering.csv'
 u,c=setup();tested=applied=0;max_yaw=0.0
 for row in csv.DictReader(trace.open()):
     if row['sample_coherent']!='1':continue

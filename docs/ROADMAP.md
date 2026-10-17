@@ -1,5 +1,11 @@
 # Ultimate Race Lab roadmap
 
+## Workspace migration completed (2026-10-17)
+
+The development workspace is now `F:/Jogos/Ultimate Race Lab`. Public code/KB live in `repo`; local game, editable assets, reference inputs, work files, screenshots and backups live outside that Git root. See [WORKSPACE.md](WORKSPACE.md) for entry points, actual folders and remaining limitations. All 37,801 inventoried files matched SHA256 after 34 directory moves, before path updates. Old paths are temporary junctions for Blender references and historical scripts.
+
+This completes the filesystem migration. Internal C/application source reorganization, the SETUP.bat release workflow, CamLab setup compilation and integration of the accepted handling helper into the settings app's own Launch button remain separate work. Use the workspace PLAY.bat for accepted handling, watchdog OFF.
+
 ## Current owner decisions (2026-10-17)
 
 These decisions supersede older suite/app names and app-status descriptions below.
@@ -10,6 +16,22 @@ These decisions supersede older suite/app names and app-status descriptions belo
 - **TexLab remains an idea**, not an implemented or completed application.
 - All suite applications must follow CamLab's UI/UX.
 - These are product and refactoring decisions; this documentation update does not rename deployed folders, executables, or the remote repository.
+
+
+## Local screenshots (owner decision, 2026-10-17)
+
+Screenshots belong in `<workspace>/screenshots/`, alongside `game/`, `assets/` and `repo/`, outside both the game installation and the public Git repository. The intended example is `F:/Jogos/Ultimate Race Lab/screenshots/`. Treat these as user files: preserve them during updates and cache cleanup.
+
+- [x] Move existing screenshots and sidecars to the local workspace. Native and PowerShell capture code already uses the parent of the mod folder; with `patches.mod_folder: repo`, captures resolve to the workspace `screenshots/` (case-insensitive on Windows). No runtime rebuild was required. An explicit configurable capture path remains a future improvement.
+
+## Installation decision and deferred CamLab build (2026-10-17)
+
+End users start with `SETUP.bat`. The bundled Python and compilers build Race Settings (`settings.exe`), the standalone runtime and mod components locally. A prebuilt settings app is not the installation entry point. This is the target installation workflow, not a claim that setup migration is complete.
+
+- [ ] Integrate CamLab source compilation into `SETUP.bat` using the bundled toolchain. **Deferred TODO**, explicitly requested by the owner; do not implement as part of the current reorganization. Preserve CamLab's accepted behavior and UI/UX.
+
+For now, retain the existing prebuilt `camlab.exe` exception. The long-term goal is to build the whole suite locally; this exception ends only when CamLab's setup build is implemented and validated.
+
 
 The owner's roadmap (2026-10-15), in their words where it matters, with notes on what exists and what each item means for the
 code. Every component is standalone and plays nicely with the others, "like lego pieces".

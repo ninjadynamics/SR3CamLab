@@ -10,7 +10,7 @@ def _settings():
     p = os.environ.get('SR3_SETTINGS') or os.path.join(IMPORT, 'settings.json')
     try: return json.load(open(p, encoding='utf-8-sig'))
     except (OSError, ValueError): return {}
-SETTINGS = {k: (os.path.normpath(v) if isinstance(v, str) and v and k in ('data_root', 'roms', 'sr3_game', 'blender', 'mame', 'revo_demo_tracks', 'revo_ps3_converted_tracks', 'ps3_usrdir') else v)
+SETTINGS = {k: (os.path.normpath(v) if isinstance(v, str) and v and k in ('data_root', 'work_root', 'classic_root', 'roms', 'sr3_game', 'blender', 'mame', 'revo_demo_tracks', 'revo_ps3_converted_tracks', 'ps3_usrdir') else v)
             for k, v in _settings().items()}        # one spelling of every folder, however the file writes it
 def _game():
     """SEGA Rally 3's folder (the one with Rally.exe): settings 'sr3_game', else the launcher's own setup.yaml (PLAY.bat writes it)"""
@@ -25,8 +25,8 @@ TRACKS = os.path.join(GAME, "Main_release", "tracks")
 DEMO = SETTINGS.get('revo_demo_tracks', '')                    # research only: the SEGA Rally Revo PC demo's Main_release\tracks
 CONV = SETTINGS.get('revo_ps3_converted_tracks', '')           # research only: the PS3 -> PC converter's output
 DATA = SETTINGS.get('data_root') or os.path.join(REPO, 'data')  # builds, ROM extracts, textures: never in git
-WORK = os.path.join(DATA, 'work')
-CLASSIC = os.path.join(DATA, 'classic')
+WORK = SETTINGS.get('work_root') or os.path.join(DATA, 'work')
+CLASSIC = SETTINGS.get('classic_root') or os.path.join(DATA, 'classic')
 OUT = os.path.join(WORK, "out")
 TMP = os.path.join(WORK, "tmp")
 ROMS = SETTINGS.get('roms') or os.path.join(REPO, 'roms')     # the folder with your own srallyc.zip (and daytona.zip, srally2.zip)

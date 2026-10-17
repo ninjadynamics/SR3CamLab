@@ -7,9 +7,12 @@ import numpy as np
 from mathutils import Vector
 def _classic():
     """<data_root>/classic from tools/import/settings.json (Blender runs this file on its own, without common.py)"""
-    try: d = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'settings.json'), encoding='utf-8-sig')).get('data_root')
-    except (OSError, ValueError): d = None
-    return os.path.join(d or os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', '..', 'data'), 'classic')
+    settings = os.environ.get('SR3_SETTINGS') or os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'settings.json')
+    try:
+        with open(settings, encoding='utf-8-sig') as f: config = json.load(f)
+    except (OSError, ValueError): config = {}
+    return config.get('classic_root') or os.path.join(config.get('data_root') or os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', '..', 'data'), 'classic')
+
 a = sys.argv[sys.argv.index('--') + 1:]; SRC, VIEWS, OUT = a[0], a[1], a[2]; SAVE = a[3] if len(a) > 3 else None; os.makedirs(OUT, exist_ok=True)
 D = np.load(os.path.join(SRC, 'asbuilt.npz')); P = D['P']; U0 = D['U0']; U1 = D['U1']; TEX = D['TEX']; LMP = D['LMP']; CUT = D['CUT']; ONE = D['ONE']; n = len(P)
 SHADE = os.environ.get('RT_SHADE', '') == '1'; GAIN = float(os.environ.get('RT_GAIN', '8')); CONTRAST = float(os.environ.get('RT_CONTRAST', '1.15')); SAT = float(os.environ.get('RT_SAT', '1.15')); SKYSAT = float(os.environ.get('RT_SKYSAT', '2.2'))

@@ -20,6 +20,7 @@ or L75 ...) are defined in [GLOSSARY.md](GLOSSARY.md). Everything still unknown 
 
 | File | Topic |
 |---|---|
+| [34_workspace_migration.md](34_workspace_migration.md) | New local workspace, launch/import paths, data outside Git, compatibility links and migration verification |
 | [33_accepted_baseline_and_cleanup.md](33_accepted_baseline_and_cleanup.md) | Accepted steering/tree/HD baseline, open watchdog and screenshot issues, representative previews, cleanup and regeneration |
 | [01_container.md](01_container.md) | SBF container, chunk kinds, alignment rules, writer |
 | [02_track_files.md](02_track_files.md) | The 7 files of a track, what each holds, which are mandatory |
