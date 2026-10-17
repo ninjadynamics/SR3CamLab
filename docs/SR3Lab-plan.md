@@ -1,3 +1,5 @@
+> **Implemented layout, 2026-10-17:** Git is at the Ultimate Race Lab root; readable code is in source, documentation in docs, CamLab in apps/camlab, assets in content. SETUP.bat builds the suite except the explicitly deferred CamLab build. Important work includes Blender and former backups; scratchpad is disposable. No nested repo or directory links. Texture extraction/update UI are TODO only. See [WORKSPACE.md](WORKSPACE.md) for the current layout; older proposals below are historical.
+
 # Ultimate Race Lab - restructuring plan
 
 ## Workspace migration completed (2026-10-17)

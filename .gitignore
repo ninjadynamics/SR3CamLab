@@ -14,19 +14,19 @@ shot_*.png
 dist/
 *.zip
 # the course patches ship zipped (tools/import/core/patchzip.py): the zips are committed, what the chain unpacks beside them is not
-!/tools/import/*/tracks/courses/*.patches.zip
-/tools/import/*/tracks/courses/*.patch.*.json
-/tools/import/*/tracks/courses/*.patches.unpacked.json
+!/source/tools/import/*/tracks/courses/*.patches.zip
+/source/tools/import/*/tracks/courses/*.patch.*.json
+/source/tools/import/*/tracks/courses/*.patches.unpacked.json
 # the toolchain zip, unpacked (tools/setup_toolchain.ps1): Python and gcc are binaries, never committed
-/tools/python/
-/tools/mingw/
-/tools/mingw64/
+/source/tools/python/
+/source/tools/mingw/
+/source/tools/mingw64/
 
 # tools/ outputs
 __pycache__/
-tools/*.json
-tools/*.csv
-tools/shots/
+source/tools/*.json
+source/tools/*.csv
+source/tools/shots/
 
 # this PC's paths (written by PLAY.bat / the setup window)
 setup.yaml
@@ -63,19 +63,34 @@ blender/
 # its default places inside the repository, your ROM sets, and this PC's settings
 /data/
 /roms/
-/tools/import/settings.json
+/source/tools/import/settings.json
 /classic/
 
 # handling flavors (docs/kb/28_handling_flavors.md): the owner's own choice of flavors, and any flavor build staged in the
 # repository (built car / grip files are SEGA data: they go to the game folder, never here)
 /handling.json
-/tools/handling/stage_*/
-/tools/handling/*.sbf
-/tools/handling/flavor_realism.json
+/source/tools/handling/stage_*/
+/source/tools/handling/*.sbf
+/source/tools/handling/flavor_realism.json
 
 # crash records of Git Bash (a killed shell leaves one in its working folder)
 *.stackdump
 # the C helpers being compiled (core/cbuild.py)
 .build_*/
 # sr3mods.dll's build (tools\sr3mods\build.py): made from the sources, never committed
-tools/sr3mods/build/
+source/tools/sr3mods/build/
+# Local installation, user content, configuration, and toolchain. Never publish these.
+/game/
+/content/
+/config/
+/work/
+/scratchpad/
+/screenshots/
+/toolchain/
+/apps/
+/settings.yaml
+/source/handling.json
+/source/setup.yaml
+/source/play.log
+/source/standalone/build/
+/source/standalone/deps/

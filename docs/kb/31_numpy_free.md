@@ -164,14 +164,14 @@ digit, and nothing reads it.
 `83db675` moves audio DSP to C/OpenMP and plain Python. PCM is interleaved doubles, with explicit view/copy ownership.
 The standalone pocketfft kernel is derived from NumPy 1.24.3 with the Python bindings removed; using this C kernel
 does not load the NumPy package. Its BSD license and the i0 attribution are in
-[AUDIO-LICENSE.txt](../../tools/audio/AUDIO-LICENSE.txt). Pairwise sums (128-element split) and FIR reduction order
+[AUDIO-LICENSE.txt](../../source/tools/audio/AUDIO-LICENSE.txt). Pairwise sums (128-element split) and FIR reduction order
 are retained because a last-bit change near a half-rounding boundary can change PCM bytes.
 
 All 221 real output files match: 151 co-driver WAVs plus mapping, 63 voice files, four music WAVs plus tunes.json
 and mapping. NumPy-blocked tests include 14 synthetic goldens and edge cases. Warm observed times: co-driver
 4.27 -> 0.49 s, voice 0.10 -> 0.086 s, music 57.16 -> 35.37 s, excluding about 5 s of initial compilation. The existing
 MAME recording was reused; this was not a new emulator run or an installation. Full evidence and commands are in
-[AUDIO-NUMPY-FREE.md](../../tools/audio/AUDIO-NUMPY-FREE.md).
+[AUDIO-NUMPY-FREE.md](../../source/tools/audio/AUDIO-NUMPY-FREE.md).
 
 `74b17ad` removes NumPy from `hd_textures.py` using course JSON and RGBA bytes directly. Four-course comparisons
 cover alpha-only differences, hidden RGB, size changes, new textures and missing textures. Exactness here concerns

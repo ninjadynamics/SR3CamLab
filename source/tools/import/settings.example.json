@@ -1,0 +1,15 @@
+{
+  "_comment": "SETUP creates config/import.json. Edit it or use the import window.",
+  "data_root": "",
+  "_data_root": "Defaults to workspace/content; keep imported assets here.",
+  "work_root": "",
+  "_work_root": "Defaults to workspace/scratchpad/import; disposable outputs.",
+  "classic_root": "",
+  "_classic_root": "Defaults to content/classic.",
+  "roms": "",
+  "sr3_game": "",
+  "blender": "",
+  "mame": "",
+  "gcc": "",
+  "threads": 2
+}

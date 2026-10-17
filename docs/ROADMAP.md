@@ -1,3 +1,20 @@
+# Current workspace decisions (2026-10-17)
+
+The root is now the Git repository: `source`, `docs`, `apps/camlab`, `toolchain`, local `game/content/config`, important `work`, disposable `scratchpad`, and preserved `screenshots`. This supersedes the earlier nested `repo/assets/backups` migration notes below. No directory links are required.
+
+- [x] Root SETUP.bat creates local folders/configuration and builds the runtime, launcher, Race Settings, mods, and importer helpers; preserves existing assets and settings.
+- [x] Race Settings Save & play uses the shared handling-aware launch flow; watchdog OFF.
+- [x] Retain the existing CamLab binary and its launch behavior under apps/camlab.
+- [ ] Build CamLab from source during setup ? explicitly deferred by Bruno.
+- [ ] Add **Extract textures** in Race Settings ? TODO only; do not implement in this reorganization.
+- [ ] Add **Update textures** in Race Settings ? TODO only; the convenience script stays under source/tools/workspace, not at root.
+- [ ] Update and validate the release ZIP/toolchain packager for this layout on a clean Windows system. The old packager targets the earlier tree.
+- [ ] Apply CamLab's UI/UX consistently to the remaining suite apps. TexLab remains an idea.
+
+`work` contains important authoring/recovery/reference data and must never be cache-cleaned. `scratchpad` is disposable. The Blender files are in `work/blender`.
+
+## Earlier planning notes (superseded where they conflict)
+
 # Ultimate Race Lab roadmap
 
 ## Workspace migration completed (2026-10-17)
