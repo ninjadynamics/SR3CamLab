@@ -7,6 +7,7 @@ The root is now the Git repository: `source`, `docs`, `apps/camlab`, `toolchain`
 - [x] Retain the existing CamLab binary and its launch behavior under apps/camlab.
 - [ ] Build CamLab from source during setup ? explicitly deferred by Bruno.
 - [ ] Add **Extract textures** in Race Settings ? TODO only; do not implement in this reorganization.
+- [ ] Expose Daytona source selection (Model 2 ROMs / PS3 PSN package) in Race Settings extraction UI. The importer CLI/config option is implemented and verified; raw ISO input is unsupported.
 - [ ] Add **Update textures** in Race Settings ? TODO only; the convenience script stays under source/tools/workspace, not at root.
 - [ ] Update and validate the release ZIP/toolchain packager for this layout on a clean Windows system. The old packager targets the earlier tree.
 - [ ] Apply CamLab's UI/UX consistently to the remaining suite apps. TexLab remains an idea.

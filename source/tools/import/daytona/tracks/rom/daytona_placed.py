@@ -16,7 +16,7 @@ What each handler does was read from its code; only the ones that draw an object
     BANNER   translate + scale (s, 1, s) + rotate Y, position and scale from table 0x236D60 (24 bytes per parameter)
 For animated objects the first frame is exported. Everything else is listed in placed_objects.json as "not exported".
 """
-import os, json, struct, math
+import os, json, struct, math, hashlib
 import numpy as np
 from daytona_paths import OUT, COURSES
 from daytona_objs import OBJTAB, OBJTAB_END
@@ -47,6 +47,30 @@ def prog():
     return _p
 
 
+# Verified PS3 NPUB30493 code layout. All 130 placement records retain their
+# positions/angles/parameters; data tables move by 0x11DC and handlers by the
+# individually verified offsets below. Raw source addresses remain in the log.
+def ps3_layout():
+    from daytona_ps3 import CODE_SHA256
+    global _ps3
+    if _ps3 is None: _ps3 = hashlib.sha256(prog()).hexdigest() == CODE_SHA256
+    return _ps3
+
+_ps3 = None
+PS3_HANDLERS = {
+    0x220A6C: 0x220A54, 0x220B48: 0x220B08, 0x220DD8: 0x220D34,
+    0x221144: 0x2210A0, 0x2212A0: 0x2211FC, 0x221348: 0x2212A4,
+    0x2213B0: 0x2212E4, 0x2216E4: 0x221618, 0x221730: 0x221664,
+    0x221764: 0x221698, 0x221798: 0x2216CC, 0x2217CC: 0x221700,
+    0x221F0C: 0x221E40, 0x221FC4: 0x221EF8, 0x2220E4: 0x222018,
+    0x22214C: 0x222080, 0x2223E0: 0x222314, 0x2225C4: 0x2224F8,
+    0x2226D4: 0x222608, 0x222AEC: 0x222A20,
+}
+
+def static_address(address):
+    return address + (0x11DC if ps3_layout() else 0)
+
+
 def rd(a, fmt): return struct.unpack_from(fmt, prog(), a - 0x200000)
 def is_obj(p): return OBJ_LO <= p < OBJ_HI and (p - OBJ_LO) % 20 == 0
 def obj_index(p): return (p - OBJ_LO) // 20
@@ -55,7 +79,7 @@ def in_prog(p): return 0x220000 <= p < 0x240000
 
 def records(cid):
     out = []
-    ptrs = rd(CELL_TABLES[cid], "<256I")
+    ptrs = rd(static_address(CELL_TABLES[cid]), "<256I")
     for cell, p in enumerate(ptrs):
         if not p: continue
         n = rd(p, "<I")[0]
@@ -75,6 +99,7 @@ def rot_y(a16):
 def resolve(r):
     """-> (kind, [object indices], transform function or None, note)"""
     fn = r["handler"]; dp = r["data"]
+    if ps3_layout(): fn = PS3_HANDLERS.get(fn, fn)
     T = np.array(r["pos"], np.float64)
     def frame0(p):
         if is_obj(p): return obj_index(p)
@@ -86,20 +111,20 @@ def resolve(r):
         if fn == 0x220A54: return "WORLD", [801], None, WORLD[fn]
         o = frame0(dp)
         objs = [o] if o is not None else []
-        if fn == 0x220D34: objs = [obj_index(rd(0x2361B0, "<I")[0]), 854, 855]
+        if fn == 0x220D34: objs = [obj_index(rd(static_address(0x2361B0), "<I")[0]), 854, 855]
         return "WORLD", objs, None, WORLD[fn]
     if fn in TR:
         o = frame0(dp); R = rot_y(r["angle"])
         return "TR", ([o] if o is not None else []), (lambda P, R=R, T=T: P @ R.T + T), TR[fn]
     if fn in FRAMES:
-        lst, n, div, _ = rd(FRAME_TABLE + r["param"] * 16, "<4I")
+        lst, n, div, _ = rd(static_address(FRAME_TABLE) + r["param"] * 16, "<4I")
         o = frame0(lst); R = rot_y(r["angle"])
         return "FRAMES", ([o] if o is not None else []), (lambda P, R=R, T=T: P @ R.T + T), FRAMES[fn]
     if fn in BANNER:
-        s, x, y, z, la, lb = rd(BANNER_TABLE + r["param"] * 24, "<4f2I")
+        s, x, y, z, la, lb = rd(static_address(BANNER_TABLE) + r["param"] * 24, "<4f2I")
         o = frame0(la); R = rot_y(r["angle"]); S = np.array([s, 1.0, s]); Tb = np.array([x, y, z], np.float64)
         return "BANNER", ([o] if o is not None else []), (lambda P, R=R, S=S, Tb=Tb: (P * S) @ R.T + Tb), BANNER[fn] + " scale %.2f" % s
-    if fn == 0x221618 and dp == 0x220E54:
+    if fn == 0x221618 and dp == (0x220EF8 if ps3_layout() else 0x220E54):
         # the generic "start the task whose routine is in the data word" record; 0x220E54 draws object 1599 (the statue the
         # player can turn) at the record's position, without rotation until it is touched (program 0x220E78 .. 0x220F98)
         return "TR", [1599], (lambda P, T=T: P + T), "statue (object 1599), turns when the player stops in front of it"

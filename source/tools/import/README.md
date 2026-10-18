@@ -60,7 +60,7 @@ the ROM import, then every step; see `docs\kb\30_import_stack.md`).
 | `src\tracks\rom\` | SEGA Rally Championship (Model 2A, `srallyc.zip`): region images, collision, objects, textures, gameplay data, checkpoint times and pace notes. |
 | `src\tracks\courses\` | `src_<course>.json` (everything course-specific) and `src.<track>.patch.<number>.json` (the patch chain, applied in order). |
 | `sr2\tracks\rom\` | SEGA Rally 2 (Model 3): the geometry, texture and gameplay readers. |
-| `daytona\tracks\rom\`, `daytona\tracks\courses\` | Daytona USA (Model 2): courses and cars. |
+| `daytona\tracks\rom\`, `daytona\tracks\courses\` | Daytona USA (Model 2 or verified PS3 PKG): courses and cars. See [source selection](daytona/tracks/rom/README.md). |
 | `..\audio\` | Co-driver, music and sound-bank tools: `src_audio.py codriver` (the 1995 co-driver's clips from the ROM), `src_music.py all` (the 1995 tunes recorded from the sound board in MAME), SEGA Rally 2's samples, the SR3 / Revo sound banks. |
 | `..\handling\` | The handling flavors (`build_flavor.py`). |
 

@@ -11,5 +11,8 @@
   "blender": "",
   "mame": "",
   "gcc": "",
-  "threads": 2
+  "threads": 2,
+  "daytona_source": "model2",
+  "daytona_ps3": "",
+  "_daytona_ps3": "Optional alternative: verified NPUB30493 PKG, rom.psarc, or extracted game folder. Select daytona_source=ps3."
 }

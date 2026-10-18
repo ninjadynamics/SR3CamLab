@@ -230,3 +230,32 @@ Export: `daytona_cars.py` -> `SR3 track format\classic\courses\daytona\cars\` (6
   depend on the course. Colour per polygon = palette entry x texel luminance, as the courses (section 5).
 - Coplanar decals (numbers, logos) need the `_lifted.obj` as on the courses. Polygon-RAM rows 2139..2141, drawn after
   the body at 0x8808 / 0x8C00, are filled at run time (not in the ROM; content UNKNOWN).
+
+
+## PS3 PSN source option (verified 2026-10-18)
+
+The owner's NPUB30493 package contains the original Model 2 polygon ROM (16 MiB),
+texture pixels (four 1 MiB banks), and populated texture-header/UV banks (8 MiB),
+all byte-identical to the parent Model 2 set. The PS3 executable/program bank is
+not byte-identical: table/handler relocations must be accounted for.
+
+`source/tools/import/daytona/tracks/rom/daytona_build.py --source ps3 --input <pkg> --export all`
+now extracts cars and all courses without requiring a Model 2 ROM set. Retail PKG,
+rom.psarc and extracted directories are supported; raw ISO is not. Source hashes
+reject unknown revisions before output. No executable is run and no game content
+is installed. Default source remains Model 2. Optional `daytona_source` and
+`daytona_ps3` settings live in local `config/import.json`.
+
+End-to-end comparison: 2,475 files per source, with 2,471 exact matches (all OBJ,
+PNG, MTL and CSV files). Three placement reports differ only in original source
+addresses; cars.json differs only in destination folder paths. All exported
+placement transforms, object choices and counts match. No existing importer
+omissions (people, animated animals, etc.) are claimed as newly supported.
+
+The PS3 archive also contains separate DDS HUD/menu and sky/background assets;
+these are not replacements for the byte-identical car/track surface textures.
+They were inspected separately and are not added by this extraction option.
+
+See [Daytona extraction instructions](../../source/tools/import/daytona/tracks/rom/README.md).
+PKG format references: [RPCS3 unpkg.h](https://github.com/RPCS3/rpcs3/blob/master/rpcs3/Crypto/unpkg.h)
+and [unpkg.cpp](https://github.com/RPCS3/rpcs3/blob/master/rpcs3/Crypto/unpkg.cpp).
