@@ -113,3 +113,31 @@ def faces(cfg, rd):
 if __name__ == '__main__':
     c = int(sys.argv[1]) if len(sys.argv) > 1 else 1; out, info, mats = build(c)
     print('written', out); [print('  ', i) for i in info]; print('   tiles:', sorted(mats))
+
+
+def banner_in_front(faces, clearance=0.05, log=print):
+    """Place the Mountain lap banner ahead of the FINAL resolved sign-post surfaces.
+
+    Overlay resolution can push the textured post skins beyond their raw ROM box.
+    Measure after resolution, move every panel/letter together, keep posts and UVs.
+    This is opted into by the Mountain recipe, for the ROM sign-post gate only.
+    """
+    post_tiles = {'col_047', 'tex_s0_x1536_y0064_256x64_c059_t'}
+    posts = [f for f in faces if str(f[0]).split('|')[0] in post_tiles]
+    panels = [f for f in faces if str(f[0]).split('|')[0] not in post_tiles]
+    if not posts or not panels: raise ValueError('finish banner: expected sign posts and panels')
+    pp = [p for f in posts for p in f[2]]; bp = [p for f in panels for p in f[2]]
+    a, b = max(((a,b) for a in bp for b in bp), key=lambda ab: (ab[1][0]-ab[0][0])**2+(ab[1][2]-ab[0][2])**2)
+    dx,dz=b[0]-a[0],b[2]-a[2]; length=math.hypot(dx,dz)
+    nx,nz=-dz/length,dx/length
+    proj=lambda p: nx*p[0]+nz*p[2]
+    # The original panel plane is already on the approach side of the post centres.
+    if sum(map(proj,bp))/len(bp)<sum(map(proj,pp))/len(pp): nx,nz=-nx,-nz
+    gap=min(map(proj,bp))-max(map(proj,pp)); move=max(0.0,float(clearance)-gap)
+    if move>1.0: raise ValueError('finish banner unexpectedly far behind posts')
+    out=[]
+    for f in faces:
+        if str(f[0]).split('|')[0] in post_tiles: out.append(f)
+        else: out.append(tuple(f[:2])+([(p[0]+nx*move,p[1],p[2]+nz*move) for p in f[2]],)+tuple(f[3:]))
+    log('       finish banner clearance: %.4f m -> %.4f m; translated %.4f m toward approach' % (gap,gap+move,move))
+    return out

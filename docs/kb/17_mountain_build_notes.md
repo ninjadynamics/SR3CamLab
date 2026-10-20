@@ -150,3 +150,78 @@ Owner updated Mountain textures_hd PNGs. Ran existing core/texfast.py refresh on
 
 ### Owner confirmation, 2026-10-16
 Owner confirms v13 tree repair and refreshed HD Mountain textures both work in game. Accepted geometry and texture baseline remains installed.
+
+
+## Mountain v14 regeneration (2026-10-19)
+
+Source: `work/blender/mountain.patch3.v14.blend`, SHA-256 `6d99f9ab00dc68ae97177d3cd387b91f3aa812cbfcdb8088b55dccf68ba5913b`. Regenerated the complete final patch stage against the retained accepted base, preserving earlier generated stages and board moves.
+
+Canonical comparison: v13 has 82,221 triangles; v14 has 82,220. 82,189 match exactly. 32 old triangles are removed/changed and 31 new triangles replace them. The road object is unchanged. The JSON reconstructs every v14 float32 position/UV/material triangle exactly. This compares canonical geometry, not literal JSON versus Blender file bytes.
+
+The applied chain contains all 31 changed v14 triangles exactly. Two further differences are explained: an unchanged surviving half of an edited quad, and an already degenerate source UV face whose importer fallback changes by at most 0.000265 when edits alter the density pool. No unexplained differences remain. R4 and game encoding intentionally transform this geometry afterward.
+
+The source retains composed materials whose old overlay polygons no longer recreate their recipes. Patch stages now accept `texture_recipes`; `coursepatch.restore_texture_recipes` resolves missing dependencies recursively, rejects cycles/missing inputs and keeps composition metadata. All 132 saved recipes reconstruct from local SD pixels. The full import found nine otherwise missing named materials. Recipes embed no pixel data.
+
+Isolated run: `scratchpad/mountain-v14-20261019`, patch chain, R4, collect, slow RT with two low-priority workers, composition at 0.34, build with light_split 0.72. Reports: `source-audit.json`, `chain-audit.json`, `recipe-check.json`. Final texture packing applies the 3x/4x set without changing non-texture chunks. Encoded light maps are extracted as PNGs with source chunk hashes into `lightmaps` before install. `install-report.json` records success, backup and hashes; live gameplay remains the owner's acceptance step.
+
+Installation completed and launcher `-Check` passed on 2026-10-19. All 11 track files and 178 clean HD PNGs were verified against their staged hashes. Backup: `work/texture-backups/mountain-before-v14-3x-20261019-013644`. Twenty-two lightmaps extracted. Packed textures remain within 2048 per side and valid mip limits; the track has 544 distinct DDS payloads (previously 528), about 122 MiB more texture data. Live loading, visual appearance and performance remain untested. Source/KB changes are local, not committed or pushed in this round.
+
+
+### 2026-10-19: loading regression, texture compatibility and track heap
+
+The initial v14/3x pack entered an infinite loading loop. The first correction made every mip compatible with Rally's floor-based DXT block arithmetic and consolidated 145 byte-identical texture chunks, without reducing artwork resolution. That candidate still crashed because all seven SBFs unpacked to 279.52 MiB, exceeding the fixed 256 MiB track heap even though the main SBF alone was 254.88 MiB.
+
+The guarded standalone runtime patch raises only the track arena to 384 MiB before heap creation. The owner confirmed that this corrected build loads and races. Preserve this fix with later geometry/lighting updates. The complete addresses, independent evidence, failed assumptions, memory accounting and compaction/refresh rules are maintained in [23_texture_pipeline.md](23_texture_pipeline.md#10-mountain-3x--facade-4x-preparation-and-recovery-2026-10-19), rather than duplicated here. The original staged reports remain historical snapshots.
+
+### 2026-10-19: v14 broad-shadow regression — authored labels omitted
+
+Owner confirmed that the 384 MiB track-heap repair loads and races successfully, then reported broad dark regions and mirrored LIBRAIRIE lettering. The isolated v14 workspace skipped ROM extraction and did not seed `src_1.tile_labels.csv`; its first import generated coarse automatic labels. This changed both R4 classification and the ray-only tree solids. Direct ray tracing identified two false canopies of radius 362.2 m and 389.2 m. They shadowed large parts of the course. The defective bake reported 624 trees/no lamps and 54% car-road shadow coverage; authored labels restore 588 trees/33 lamps and 36%, consistent with the retained v13 bake. Sun direction and composition settings were unchanged.
+
+Fixes: `course.use` seeds a missing workspace label CSV from the course's saved file without replacing existing manual edits. Stack bake signatures include the effective label SHA-256, so a later label change requires a fresh collect/bake. RT rejects canopy radii above 50 m with a label-diagnostic error. A regression check reproduces and rejects the bad 362.2 m canopy. Label seeding, manual-edit preservation and signature invalidation were tested. Restored sign classification also exposed the old SD-only 4x gate magnifier multiplying existing HD pictures; this boost now stops once the authored sign already reaches 1024 pixels.
+
+The three `tex_s1_x0512_y0640_128x128` facade variants have only their LIBRAIRIE lettering mirrored in the authored image (512px image region 180,328 to 350,350), preserving the facade layout and all other pixels. This compensates for the observed mirrored in-game UV mapping. Clean image originals are preserved in `scratchpad/mountain-v14-20261019/sign-fix`; the orientation preview checks both authored and in-game directions.
+
+Corrected R4/slow-RT build and final install report: `scratchpad/mountain-v14-20261019/lighting-final/report.json`. Keep the power-of-two mip repair, exact-duplicate consolidation, 384 MiB runtime patch, watchdog OFF, accepted handling, and v14 source edits. Owner requested all logical cores minus one (31 workers on this machine) and High process priority for this rebuild.
+
+Corrected build installed 2026-10-19 02:26. All 11 track files and 178 HD source PNGs verified; 22 lightmaps extracted; launcher -Check passed. Final seven SBFs occupy 287.12 MiB unpacked under the unchanged 384 MiB track heap. Exact duplicate consolidation removes 163 texture payloads. Visual inspection of compressed sign variants confirms readable LIBRAIRIE after mirrored mapping; controlled car-shadow comparison isolates the label defect (same geometry: 54% automatic labels, 36% authored labels). All 31 changed v14 triangles remain present before R4. Backup: `work/texture-backups/mountain-before-lighting-fix-20261019-022639`. Live visual acceptance remains pending.
+
+
+### Owner decision: LIBRAIRIE retained
+
+The owner confirmed the lettering correction works, then explicitly chose to keep it after clarification that only the lettering region was flipped. No whole-facade reflection or additional regeneration is requested. This confirms the sign decision, not visual acceptance of every area of the latest lighting bake. The reusable art workflow and current source/installation distinctions are in [35_faithful_texture_upscaling.md](35_faithful_texture_upscaling.md).
+
+
+## 2026-10-19 — v15 patch 3, selected R4 B, RT installation
+
+Owner approved `work/blender/mountain.patch3.v15.blend` as patch 3. Five plateau vertex heights repair the narrow steep strip that produced the long dark crease in v14. Original v14 is retained. Source v15 SHA256: `6259bbfb2df9b31cc48cd5da21038fc468ee54f31946938687ebd9534197c06e`.
+
+Regenerated complete final patch stage; canonical float32 triangle positions, UVs and material identities reconstruct all 82,220 triangles exactly (7,548,036 bytes; both SHA256 `a71dd3aeb80c3f28307c32cc169e03425e9b9e50efc1db0320e7944a31fb4434`). This is source payload identity, not Blender-file or quantized-game-file identity. Actual chain comparison against v14 under identical authored labels: 56,728 polygons unchanged, exactly 23 removed and 23 replacement triangles; all 23 exact, no unexplained differences. Comparing against old auto-labelled audit inputs gives misleading differences: use matching authored labels.
+
+Selected B is the existing outward R4 algorithm with `round=4`, `round_slide=false`, `round_crease=80`, `round_tol=2`, `round_cap=1.5`; area-weighted normals and normal gain 1. Source recipe and zipped patch chain updated. Rounded natural geometry: 313,614 polygons, maximum movement 1.5 m, zero new hollows left. Rebuilt RT with all 32 logical processors, High priority; 22 lightmaps, 588 tree solids and 33 lamp solids, 36% car-shadow texels. Actual stack: collect 61 s, RT 263 s, build 78 s. All-core availability does not make serial preparation steps saturate the CPU.
+
+Restored the accepted 178 HD source images and composed coverage; retained POT/mip safety, exact duplicate texture consolidation (164 duplicates), and the existing 384 MiB heap fix. Installed seven SBFs total 287.57 MiB unpacked; 22 lightmaps extracted. Banner fix described below. Prior installed track and patch package backed up under `work/texture-backups/mountain-before-v15-r4b-20261019-093424`. Audit reports, build logs, lightmaps and install hashes: `work/research/mountain-v15-r4b-20261019/`. Installation hash checks pass; owner driving test pending. No handling or watchdog changes.
+
+### Town-square lap banner in front of the posts
+
+Raw gate OBJ already puts the banner 5 cm ahead of the ROM post boxes. The overlay resolver subsequently pushes textured post skins outward to avoid coplanar overlap. The installed old mesh therefore had skins about 12.78 cm ahead of the banner. Moving the raw geometry alone without checking resolved geometry misses this cause.
+
+`gates1995.banner_in_front` now runs after overlay resolution, opted into by Mountain recipe `finish_banner_clearance=0.05`. It moves all banner panels/letter layers together along the gate-plane normal toward the approach, leaving post positions and all UVs unchanged. Both CHECK POINT and FINISH move about 17.78 cm; packed float32 mesh clearance is 0.0500023 m. Packed post vertices are byte-identical to the previous installation. The empty first-lap state stays empty. This is physical geometry placement with ordinary depth testing, not an always-on-top material.
+
+
+## 2026-10-20 — v19 patch 3, backdrop removal, R4 B and full installation
+
+Owner saved and triangulated `work/blender/mountain.patch3.v19.blend`, then requested the full chain, R4 B, RT, lightmaps and installation with all logical processors minus two. Source SHA256: `00f4354c1112ea90bbd511999024250927158125c3212b15db63ad1f741ab619`. The source contains 85,792 triangles; the separate SR3 road object remains byte-identical to the retained reference.
+
+Patch 3's final stage was regenerated against the retained original stage base, preserving its generated stages, board moves and texture recipes. Explicitly replaying its additional removals and additions reconstructs all 85,792 canonical float32 triangle records (positions, winding, UVs and normalized material identities): 7,854,052 bytes, SHA256 `2423759fcf5d86dd0c3ae5d56259772e06d4f5567c1c8003b1b02cf07434ad86` on both sides. This is source-payload identity, not `.blend` container identity or identity of later quantized game files.
+
+The real importer chain retains all 7,509 nondegenerate triangles changed since v15 exactly and none of the removed source triangles. One changed source triangle has two identical positions: the JSON retains it, while the importer deliberately discards this zero-area face. Other audit differences are verified unchanged backdrop polygons, deterministic UV-split pieces, surviving halves of old quads, and the existing density-based fallback for one unchanged unmapped face. These distinctions are recorded explicitly; the importer polygon list is not literally the Blender triangle array.
+
+**Backdrop bug found before installation:** the importer split nearby backdrop into `sky` before applying patches to `faces` alone. Castle-island wall removals therefore could not reach the original `obj_1257` surfaces. The staged v19 build exposed 374 new near/coplanar overlaps beneath the remeshed walls. Patch JSON now has opt-in `include_backdrop: true`; the numbered importer pass applies that patch to course plus backdrop, then restores surviving backdrop sections. Other patches retain their former scope. This removed 17 original backdrop polygons and eliminated all 374 new overlap warnings. The two previously accepted near-overlap warnings at facade_024/facade_076 remain; this is not a claim of globally perfect geometry.
+
+R4 B settings remain level4, outward, slide=false, crease80, tolerance2, cap1.5. Authored material labels were verified against the course CSV. RT again used 588 tree solids and 33 lamps, avoiding the former giant-canopy shadow regression. Full stack timing: collect96s, RT/compose248s, build59s, total403s; 22 lightmap pages and 73.84 million lit texels. Heavy workers were limited to 30 logical processors with two excluded by inherited affinity.
+
+Accepted 178 HD sources, LIBRAIRIE lettering, POT/mip safeguards, exact duplicate consolidation and the existing 384MiB runtime arena were retained. POM staging now accepts `--track-dir` so a rebuilt SBF uses its matching staged texmap, instead of accidentally reading installed metadata. Stage-wide relief was reapplied to 409 materials / 182 texture mappings / 139 unique normal-height maps, including all 201 facade materials. Geometry, albedo and new lightmaps remain unchanged by POM staging. Final seven SBFs total 324.2804MiB unpacked. No runtime, handling, watchdog or relief-control changes.
+
+Banner mesh bytes match the previous accepted front-of-post placement both before and after texture packing. `desert4_master_xdata.sbf`, `arcade_times.bin` and `road.txt` match the accepted installation byte for byte. All 22 encoded lightmaps were extracted and hashed. Installation checked every final track hash, repacked the patch ZIP and updated the accepted baseline. Launcher `-Check` passes, including a direct Windows PowerShell check through the normal PLAY script. Earlier checks from a Python subprocess could not load Get-FileHash and triggered automatic rollback; final verification succeeded with the available PowerShell runtime and independently with normal Windows PowerShell.
+
+Backup: `work/texture-backups/mountain-before-v19-r4b-20261020-130330/`. Durable audits, scripts, logs, extracted lightmaps and final installation hashes: `work/research/mountain-v19-r4b-20261020/`. Installed and ready for owner driving test; no game was launched for this rebuild. Source/KB changes are local, not committed or pushed in this round.

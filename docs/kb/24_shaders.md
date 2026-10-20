@@ -289,3 +289,441 @@ shader from compiled bytecode and stores that pointer.
 - Layout of the uber effect object (mask table +0x320, 0x28 bytes per entry) beyond the mask word.
 - The non-uber material format and its constant binding (route e).
 - What the unused `shaderlib_uber_data.sbf` (version 5 container) is.
+
+## 10. POM continuation, 2026-10-19 — offline candidates, not installed
+
+The investigation was resumed at the owner's request for rocks, roads and facades. Re-read the current local library-3 file: 1229 techniques / 726 records; `T_Lpse_Tdnl` remains at technique +0x6e74, VS +0x8ba4 and PS +0xab48. Its shadow variants have separate VS/PS records. These offsets and bindings are file-verified; runtime swapping, current material isolation and performance remain untested. The old TeknoParrot timing constraints above are historical: the standalone runtime now observes D3D9 device creation and already has a render-thread capture hook. No new proxy/watchdog is needed to investigate this route.
+
+The retained prototype/report is [work/research/pom-20261019/README.md](../../work/research/pom-20261019/README.md); generated maps and the offline comparison viewer are under `scratchpad/pom-20261019/`. No installed asset or runtime was changed, and no game was started.
+
+### Verified offline results
+
+- 101 opaque source candidates, 44 shared geometry heads: 23 rock, 6 asphalt, 5 cobbles, 3 dirt, 1 stone wall and 63 facade. Tone siblings share height/normal pixels. Cutouts and other classes are skipped.
+- Paired HLSL compiles with D3DCompiler_47 to vs_3_0 (63 static slots) and ps_3_0 (152 static slots for bounded 8/16/24/32-step POM; 90 for normal-only). Same static count does not imply same runtime cost. Register bindings fit the existing per-record maps.
+- The paired VS sends world position/view/light to a PS that reconstructs a geometric basis from derivatives, while retaining the brightness-rule lighting inputs. This avoids relying on fake lighting normals for view displacement. **Clone the isolated VS record; never overwrite shared #303**, which other wall techniques use. This paired route is compiled, not in-game verified.
+- Existing importer DXT5 encoding uses binary cutout alpha. It cannot preserve height in normal-map alpha. The isolated `encode_normal_height.py` creates continuous BC3 alpha, filters normal RGB independently of height, renormalizes normal mips, and avoids colour gain/gamma. Full mip dimensions are rounded up to powers of two to retain the SR3 uploader compatibility fix.
+- Independent DDS decoding passed for all 44 heads. A 256-level alpha-ramp test survives (max error <=1), constant-alpha small mip cases are exact, and all mip sizes satisfy standard plus engine block formulas. Worst image height RMSE is 0.899/255; worst per-image 99th-percentile normal angular error is 3.032 degrees. Source colour hashes remain unchanged.
+
+### Visual limits and integration gates
+
+Rock candidates look plausible; asphalt is deliberately near-flat so paint/skid marks do not become deep channels. **Facade inference is not ready to install.** Dark-region heuristics produce inconsistent window/grille treatment, miss dormers and can confuse paint/shadows with depth. Facades need authored masks/heights or semantic correction on the geometry head, then reuse that map for colour children. POM does not change silhouettes or collision, and it does not replace R4 rounding.
+
+The 44 exact unique DDS payloads total **31.7565 MiB**. Current installed slot SBF raw declarations total **287.1203 MiB**; adding source candidates gives **318.8768 MiB** under the 384 MiB track heap, leaving a theoretical **65.1232 MiB**. This is not measured peak headroom: derived/composed facade maps, alignment, metadata, other allocations and GPU copies are excluded. **Source map counts are not runtime coverage.** Follow composed facade recipes, crop/flip transforms, material clones and canonical texture aliases before claiming all selected in-game surfaces have relief.
+
+Before enabling anything: recensus effective masks; validate private shader-record ownership/restoration and device resets; check UV handedness/normal-Y with an asymmetric test; preserve accepted fog/tint/exposure/lightmaps; measure actual frame cost; enforce normal-map linear sampling; and implement the road's `_Sd`/`_Ss`/`_Sds` shadow variants before touching road draws. The plain prototype does not yet preserve those shadow receivers. Next candidate should cover one rock and one authored facade in an opt-in staged build, not the entire installed course.
+
+
+## 11. Opt-in POM runtime candidate (2026-10-19)
+
+Implementation now lives in `source/standalone/pom.c`, `shaders/pom*.hlsl`,
+`compile_pom.py`, and `stage_pom.py`; see `source/standalone/POM.md` for the contract.
+It is default OFF (`SR3LAB_POM=1` opts in), patches seven known slots in the original driver vtable and
+exact SHA-256 shader-pair identity, and restores the game VS/PS and normal sampler
+states after each qualifying draw. No shared effect records are edited. Thus the
+old private-engine-record proposal is not used in this candidate.
+
+Current Mountain rocks ALSO receive both shadows. The candidate therefore implements
+`T_Lpse_Tdnl_Sds`, preserving the inspected variance/dynamic and static-shadow
+coordinates/equations, anchored lightmaps, fog/tint/exposure. It remains matte.
+Only explicitly marked rock materials are staged; roads and facades stay unmarked.
+The other shadow-selection variants fail closed pending their own implementations.
+
+The first local stage is `scratchpad/pom-implementation-20261019`: 40 material
+instances in the x0000/y0000 rock family, one continuous BC3 normal/height texture
+1024x1024 with 11 mips, 0.008 UV depth. Unpacked track total 287.57 -> 288.91 MiB.
+Chunk-level verification preserves all geometry, original textures, lightmaps and
+shadow switches. No installation or game launch was performed.
+
+Mocked x86/x64 D3D tests cover draw/state restoration, exact identity, unsupported
+caps, malformed map rejection, recording state blocks, setup/draw/restore failures,
+reset/recreation and COM cleanup. Shader compilation is verified; live GPU visual
+quality, UV handedness, actual shadow equivalence and frame cost remain UNVERIFIED.
+Do not describe the prototype as game-tested or extend it to automatic facade maps.
+
+CPU preference: “all cores” always means all logical processors minus one (31 on
+Bruno's 13900K). This isolated build used eight workers while he tested the game.
+
+
+### POM first test crash and real-driver regression (2026-10-19)
+
+The first game test exited 0xC0000005 immediately after device creation. The launcher
+restored the accepted runtime and track. A hidden 64x64 real-D3D9 harness reproduced
+the failure at Clear: cloning only the public device vtable discarded private
+driver entries. The fix preserves the native table and replaces only seven known
+slots, with other-device calls passed through. A second access violation during
+teardown came from inspecting slots after final Release freed that table; hooks
+are now restored before Release and reinstalled only if the device remains alive.
+
+Verification: real GPU shader creation, three marked POM draws with original shader
+restoration, non-final Release, Reset/recreation, and final cleanup all passed.
+Full runtime regression suite passed. Actual game appearance, lighting and frame
+cost still require the user's test. The optional harness is
+`source/standalone/test_pom_device.c`; local original shader bytecode fixtures stay
+out of the repository. Evidence: `scratchpad/pom-implementation-20261019/`
+`test_pom_device-fixed.log`. Normal gameplay remains on the accepted baseline.
+
+
+### Stage-loading packaging correction (2026-10-19)
+
+The next user test reached stage loading, then exited 0xC0000005 without a POM
+activation log. Static inspection found the staging script appended the normal
+texture after the track root: the final chunk became kind 4 (0xc1b00010), replacing
+the loader's expected last-chunk root kind 12 (0x65352b89), and 40 material refs
+pointed forward. This violates the documented SR3 loader contract (KB01/08).
+
+`stage_pom.py` now inserts the texture before its first material user, preserves
+the original root and validates local dependency order again after readback.
+`test_stage_pom.py` checks valid insertion and duplicate/unused/forward-reference
+rejection. The rebuilt `track-ordered` candidate has the correct root and zero
+forward refs; every chunk payload, type, fixup and reference list is identical
+to the failed candidate. Only order/alignment changed. Test launcher preflight
+passes and normal installed baseline hashes are unchanged. The launcher now
+selects `track-ordered`; the previous failed candidate is retained for evidence.
+This corrects a demonstrated packaging defect; live loading confirmation remains
+pending. Crash itself had no dump, so no fault instruction was recovered.
+
+
+### First loaded POM trial: exit freeze unresolved
+
+User confirmed stage loads, but found shallow relief, washed contrast in direct light, and a freeze after finish/time-out. Rally PID 5472 was terminated on request; launcher restored both baseline files. Evidence is work/pom-tests/20261019-105957-0555c9. No marked-draw activation was logged, so actual POM activation is unconfirmed. Diagnostic runtime adds counts to the existing five-second log. TEST-POM-EXIT.bat starts a one-shot read-only state probe; after race-end it briefly samples/resumes threads three times and exits. Watchdog remains OFF. Sampler was verified on a disposable hidden x86 process. This prepares diagnosis, not a claimed freeze fix. User authorized broader non-flat coverage and stronger depth/contrast only after the freeze is resolved.
+
+
+### State-block hook loss reproduced and repaired (2026-10-19)
+
+Owner reported no crash on the next run (work/pom-tests/20261019-111920-6f2bda).
+There were no exit-probe files in that run. Normal files restored. Counters showed
+zero marked/replaced draws and froze at 8468 while the game continued. Treat the
+previous end-of-race freeze as intermittent/unresolved, not fixed by logging.
+
+A hidden real-D3D9 reproduction established that BeginStateBlock rewrites the
+driver table in place, replacing the POM draw and EndStateBlock hooks. EndStateBlock
+did not reinstall them. The old test covered state blocks only with mocks.
+Now both transitions temporarily restore native slots, call the native transition,
+capture the resulting native method table and wrap it again. Recording still skips
+POM substitution. Real-driver checks pass five marked draws across Begin/End,
+CreateStateBlock/Capture/Apply, non-final Release, Reset/recreation and final release.
+Full runtime suite passes. Evidence: stateblock-before.log and
+test_pom_device-stateblock-fixed.log in the local candidate folder.
+
+This fixes a proven activation/lifecycle bug, not a proven cause of the prior freeze.
+Actual in-game POM activation and another race-end transition still need checking.
+Broader material rollout and depth/contrast tuning remain authorized but deferred
+until the effect really activates and race-exit stability can be assessed.
+
+
+## Mountain-wide installation — 2026-10-19
+
+After Bruno approved the live rock-family POM test, relief was installed for normal
+PLAY.bat launches. The exact accepted runtime is reused (SHA256
+`189cc686a02100d40f341f1cbb2aadca94f5c3a2899ef646879bf7b313db5258`); no further
+shader or hook changes were needed. The last live family test recorded 386,272
+marked/replaced draws, zero rejected draws, setup failures or restoration failures.
+This establishes the family runtime, not a completed stage-wide gameplay test.
+
+Coverage: **411 material instances / 184 diffuse mappings / 143 deduplicated normal-height maps**:
+119 rock, 201 facade, 36 roof, 19 grass, 13 cobbles, 8 asphalt, 8 dirt,
+2 stone wall and 5 water. Opaque ivy/rock composites are included. Flat signs,
+checkpoint/finish banners, sky, vegetation cards and alpha-cutout silhouettes are
+excluded. Cutout castle silhouettes remain on their original material path; the
+opaque masonry is included. Do not describe this as support for every transparent
+surface or every SR3 material technique.
+
+`source/standalone/stage_pom_wide.py` stages without installing. It uses the original
+facade triangle UV recipes and overlay transforms to compose **scalar heights**,
+then computes normals after composition. This matters for flipped facades: simply
+flipping normal-map pixels would leave the tangent direction wrong. Palette siblings
+share their chosen geometry head. Facade edges fade to height 1 (the reference
+surface), making their parallax displacement zero at the border. Asphalt relief is
+very shallow and does not turn skid-mark brightness into potholes. The accepted
+simple rock-family DDS payload is reused byte-for-byte.
+
+`pom_maps.py` supplies conservative material-dependent height inference;
+`pom_dds.py` encodes continuous height alpha with normal-aware mipmaps. Height is
+linear data. The old binary-cutout alpha encoder is unsuitable. New relief maps
+are at most 512 pixels per side except the previously accepted 1024-square rock
+map. This reduces map memory without touching the installed albedo resolution.
+Maps alone add 36.86 MiB; the seven unpacked track SBFs grow from 287.57 to
+324.65 MiB, below the retained 384 MiB ceiling.
+
+Verification: all staged chunks read back byte-identically; only normal references,
+SPECM and the reserved relief marker changed in selected existing materials.
+Original albedo, geometry, collision, RT lightmaps, shadow switches and all other
+track files are unchanged. Each new map precedes its users; the original last-chunk
+root is retained, with no local forward references. Contact sheets for all 184
+mapped images were inspected for spatial alignment and gross relief errors.
+The hidden real-D3D9 smoke test passed five marked draws, Begin/EndStateBlock,
+Capture/Apply, non-final Release, Reset/recreation and final cleanup. Run this test
+outside the restricted sandbox; inside it device creation can fail with
+D3DERR_INVALIDCALL before testing POM.
+
+`config/workspace.json` now has `pom: true`. `source/tools/workspace/play.ps1`
+sets SR3LAB_POM only for its child launch and restores the prior process environment
+in finally. No persistent Windows environment setting is changed. Watchdog remains
+OFF and the accepted SRC helper is retained. The accepted file manifest tracks the
+installed runtime and main SBF hashes; the normal launcher check passes without
+starting the game.
+
+Local stage, map review and complete coverage/exclusion manifest:
+`scratchpad/pom-stagewide-20261019/`. Verified pre-install rollback is in
+`work/pom-backups/mountain-stagewide-20261019-114637/restore.ps1`; it refuses to
+replace files changed after this installation and requires the game to be closed.
+The install is backed up; a complete race with the expanded coverage still needs
+Bruno's gameplay check. Refreshing source HD art requires rebuilding its relief maps
+as well: the source hash guards deliberately reject stale height research assets.
+
+
+## Live relief controls and visual correction — 2026-10-19
+
+Bruno's screenshot SR3_20261019_120931.png showed apparently flat facades.
+Millions of replaced draws with no failures established activation only; they
+were not evidence of convincing relief. The original implementation had a
+60-world-unit specular-distance fade reused for POM and a grazing fade starting
+at cosine 0.28. Both could suppress the effect where it should be inspected.
+
+Current runtime uses projected UV footprint fading, a much narrower extreme-
+grazing fade (0.012–0.045), 24–64 ray layers with five binary refinement steps,
+and bounded height-field self-shadow on direct light only. Albedo sampler 0
+now explicitly uses up to 8x anisotropic minification, linear magnification and
+linear mip filtering (capability fallback to linear). Sampler 1 stays linear,
+non-sRGB. All modified sampler states, shaders and c30 controls are restored
+per draw; restore errors disable relief until reset. OFF uses the same paired
+shader and filtering with displacement, normal perturbation and relief shadow
+zeroed, so filtering differences cannot be mistaken for depth.
+
+Controls while the game is focused:
+- Backtick (` / VK_OEM_3): ON/OFF, ignores keyboard auto-repeat.
+- Plus/equal or numpad Add: increase depth by 0.1x.
+- Minus or numpad Subtract: decrease depth by 0.1x.
+- Range 0.0–4.0x; starts ON at 1.0x on launch. Session-only; reset/Alt-Tab retains
+  the choice. High settings can stretch/disocclude window artwork; 1.0x is the
+  tested starting point, not a claim that all higher values look good.
+
+Window input only changes atomic integers. No input polling helper or watchdog
+was added. The render thread draws a cached Segoe UI label into the backbuffer
+through the existing frame callback. In-game verification exposed that SR3 can
+leave an offscreen post-process render target bound: drawing onto that target
+made the label invisible despite a passing simple GPU fixture. The HUD now
+explicitly binds the backbuffer, removes the depth target, and restores target,
+depth surface, viewport and complete graphics state afterward. No retained state
+block; HUD texture is released on resource reset and device cleanup. Real-driver
+regression now includes an offscreen target with pointer equality after HUD draw.
+
+Height map provenance: the previous maps were filtered luminance heuristics;
+facades detected coherent dark rectangles, missing many windows/arches. Purple
+RGB encodes tangent-space surface normals for lighting, while grayscale scalar
+height lives in continuous BC3 alpha. Neither is recovered true geometry.
+`facade_relief.json` now defines visually authored source-space bounds for 182
+window/door openings across 21 facade heads. `pom_maps.facade_height` makes
+coherent beveled recesses and shallow jambs; local brightness contributes only
+a small mullion correction. Roof/wall texture noise does not become facade depth.
+Palette siblings reuse the head. The exact facade/crop/mirror recipes compose
+scalar heights before normal generation. Default facade UV depth is 0.012;
+other material depths and original accepted rock DDS remain unchanged. Natural
+material heights still use band-limited luminance inference, not semantic
+geometry; do not call those physically accurate depth reconstructions.
+
+`stage_pom_wide.py --base-main <verified pre-POM main SBF> --fresh-facades`
+rebuilds from the clean track payload rather than appending another map set to
+an already modified SBF. Final coverage remains 411 materials / 184 mappings,
+with 138 deduplicated maps and 323.72 MiB unpacked seven-track total. No albedo,
+geometry, collision, RT/lightmap, handling or other track files changed.
+
+Validation: full runtime tests pass; real-D3D9 tests pass seven marked draws,
+state-block recording/replay, HUD controls, offscreen target restoration,
+non-final Release, Reset/recreation and final cleanup. All 182 authored opening
+centers remain recessed (caught and repaired an accumulation error during staging).
+Matched real-GPU renders of an actual facade at OFF/1.0x/2.5x show displacement,
+with identical albedo/filtering/camera. Visual review reduced excessive mullion
+height and refined ray intersections. This fixture is not a full-stage drive.
+Live windowed launch verified backtick, keyboard increase, visible label and
+normal exit of the first test. Final game left to Bruno at OFF 1.0x after user
+input was detected; full race and final artistic acceptance remain pending.
+
+Evidence: scratchpad/pom-live-relief-20261019/ (gpu-comparison.png, game-label.png,
+gpu-lifecycle.log, render-checks.json, track-final/stage-report.json).
+Verified pre-change backup: work/pom-backups/live-relief-20261019-124321/restore.ps1.
+Older hard-coded linker-offset probes must NOT be used with this rebuilt runtime.
+The new capture-game.py uses only the exported backbuffer API, no private offsets.
+
+
+## Source-pixel facade masks and material tuning — 2026-10-19
+
+Bruno accepted rock at 4.0x and facades at 1.0x, but rejected approximate
+facade depth placement. `facade_semantics.py` replaces the old normalized
+opening rectangles and whole-image luminance guesses with manually authored
+source-pixel masks for all 21 HD heads. Doors, glass, shutters, blind panels,
+arches, ledges and balcony rails use different heights. The rose-window
+tracery is selected inside its explicitly reviewed ellipse; fine ironwork is
+selected only inside reviewed rail regions, excluding broad dark doors.
+Paint, lettering, stains and stone grain do not become facade recesses.
+
+Palette children share the source head's geometry. Scalar height passes through
+the installed facade/overlay crop and mirror recipes; normals are calculated
+after composition. 117 texture mappings cover 201 facade materials. All 21
+native-resolution source overlays and all 117 composed overlays were inspected.
+Source coordinates are carefully authored, not a mathematical pixel-perfect
+segmentation guarantee: small ornamental relief remains approximate, and BC3
+compression/mips limit runtime precision. Final aesthetic acceptance needs a
+gameplay check.
+
+The runtime recognizes the reserved .008 UV rock profile and applies a 4x
+material gain; other profiles start at 1x. Thus the accepted rock map remains
+byte-identical and both its normal and parallax components receive the same
+gain as the user's successful 4x test. Live +/- changes the global multiplier;
+effective material gains are capped at 4x. HUD shows actual Rock / Facades
+values. Backtick compares ON/OFF with identical albedo filtering.
+
+Evidence: `scratchpad/pom-facade-semantic-20261019/review.html`,
+`validation.json`, `gpu-lifecycle.log`, `track/stage-report.json`.
+All 1,005 protected non-POM chunks remain byte-identical, including albedo,
+geometry and lightmaps. Total track unpacked size 324.23 MiB; full-mip DXT5
+normal/height payloads 36.44 MiB. Runtime/input/capture tests pass, including
+draw-time gain checks and state restoration. Real GPU state blocks, offscreen
+HUD, reset and final release pass. Blender's unwanted old geometry and stray
+shadows are deferred and separately reminded; no geometry changed here.
+
+
+### Shader creation churn correction - 2026-10-20
+
+The live game rebuilt the POM shader pair roughly once per frame because its
+ordinary non-final device Releases cleared the draw-hook cache. Reproducing
+this in a one-pixel real-D3D9 fixture cost 9.40-9.62 ms per iteration; timing
+isolated about 9 ms in CreateVertexShader/CreatePixelShader. Lowering depth
+could not remove that CPU/driver cost.
+
+The accepted fix uses native texture private data (D3DSPD_IUNKNOWN) to retain
+the compiled pair with game-owned height textures. It does not retain those
+textures or skip device Release cleanup. Private data releases its shader
+references with the texture; an attach-generation tag prevents reuse across
+attachments. GetPrivateData returns owned references for the draw cache.
+No guessed device refcount threshold is used. The proposed threshold shortcut
+was rejected and never executed. GPU shader bytecode remains byte-identical.
+
+100 non-final Release/draw iterations now cost 0.37-0.46 ms each, with only
+two shader creations total. Real device tests pass state-block recording,
+full state capture/apply, offscreen HUD, reset/recreation and zero references
+at final device destruction. Runtime regressions and launcher validation pass.
+Full-game 60 FPS still needs the user's test. Approved YAML, track, albedo,
+height/normal maps, RT lighting and normal display settings remain unchanged.
+Evidence: scratchpad/pom-fixed-cost-20261020-165527/install-report.json and
+scratchpad/pom-performance-20261020/cache_lifecycle_final/.
+
+
+## Native-track hook overhead - 2026-10-20
+
+After disabling the FPS overlay, vanilla-track logs still showed tens of thousands of device Releases per five-second interval with zero POM replacements. The hook transition previously changed page protection separately for each of seven slots (28 VirtualProtect calls per Release round trip). Batch by unique vtable page instead, restoring each page's original protection; restore native slots before Release and rehook only after a nonzero return, without guessed COM thresholds. On a real D3D9 device, 10,000 AddRef/Release pairs dropped from 201.747-203.363 ms to 46.969-47.506 ms (native 0.113-0.443 ms). Native regression and real-device state-block/reset/final-release tests passed. Runtime installed with initial gain 0.6 and no overlay/FPS sampling. This demonstrates reduced hook cost, not yet a confirmed in-game stutter fix. Missed Mountain checkpoint does not establish timer drift; timer and handling remain unchanged. Evidence: scratchpad/runtime-stutter-20261020/install-report.json.
+
+
+## Native library integration and YAML — 2026-10-20 (current)
+
+The runtime now links `pom_native.c`, not `pom.c`. POM installs no D3D draw,
+state-block or Release hooks and owns no GPU shader objects. The native kind-3
+loader creates and releases the records in `shaderlib3_uber_data.sbf`. All 726
+original shader records are preserved; only `T_Lpse_Tdnl_Sds` selects the added
+pair. The extra `url_pom_controls_v1.fx` effect holds 0.0–1.0 variants. At a frame
+boundary, the existing capture callback selects native technique record pointers
+only after a gain change or Reset. 0.0 selects the exact original VS and PS.
+This still uses the standalone runtime's existing frame/control infrastructure;
+it is not a claim that all game hooks have been removed.
+
+`config/mountain-pom-depth.yaml` remains the settings source:
+
+- `global_depth_initial` is read once on device creation, from the configured
+  `patches.mod_folder`. Supported values are 0.0–1.0 in steps of 0.1.
+- `live_tuner` controls +/- input. Current start is 0.6 and live tuning is on.
+  Missing/invalid startup settings disable relief and log the error. No file
+  access occurs in a draw or idle frame callback. Edits take effect on restart;
+  this is not file hot reload.
+- `families`, `excluded_variants`, height directory and normalization are consumed
+  during map staging (`stage_pom_wide.py --tuning ...`). These values are baked
+  into normal/height textures and material constants, not parsed per draw.
+  Changing them requires map restaging and native integration. Merely changing
+  an exclusion must not be presented as a live material update.
+- `pom_native_config.py` checks the installed receipt against YAML before PLAY.
+  Stale family settings or exceptions fail preflight with a restaging message.
+  `integrate_pom_library.py` independently audits the YAML-staged material report,
+  recipe-resolved exclusions, depth constants and normal/height payload hashes.
+  Current audit: 38 families, 391 active materials, 16 excluded c1A6 materials.
+  FPS overlay and measurement remain off; unsupported enable requests are rejected.
+
+Native normal-map dimensions come from small uniform BC3 metadata textures in
+the unused specular slot s2. Four endpoint bits encode width/height powers of two
+without sensitivity to sRGB conversion. Existing albedo, heights, normals,
+lightmaps, geometry, collision, timing and handling are unchanged by integration.
+
+Rebuild sequence:
+1. For family/exclusion changes, stage maps with `stage_pom_wide.py --tuning`
+   from the verified clean RT base and matching texmap/review export.
+2. Run `integrate_pom_library.py --source-library ORIGINAL.sbf --source-track
+   YAML_STAGED.sbf --material-report STAGE_REPORT.json --out NEW_SCRATCHPAD`
+   (optional `--tuning` / `--texmap`). Never use an already integrated library
+   as the original input. Original bytecode identity and reserved IDs are checked.
+3. Copy the generated `pom_native_layout.h` into source and rebuild the runtime.
+   Deploy library, track, DLL and generated `pom-native-install.json` receipt
+   together after backup; update accepted-baseline hashes.
+4. Run `pom_native_config.py --workspace ROOT` and normal PLAY `-Check`.
+
+Evidence is in `scratchpad/pom-native-library-20261020`: prior matched 4K real-GPU
+comparisons of rock, facade, asphalt and fence produced zero pixel difference
+from accepted POM at 0.6. Native library startup was observed with `applied=6`
+and zero POM draw hooks before the user requested no further game launches.
+Offline controls tests cover gain selection, original zero pair, Reset, idle,
+YAML start values and invalid/missing YAML. A mocked registry is deliberately
+allocated away from low-address loader/heap allocations in the test only.
+Actual Mountain rendering and race performance await the user's test; these
+checks do not prove timer, stutter, frame-rate or all-track behavior.
+
+Pre-integration backup:
+`work/pom-backups/before-native-library-20261020-192155`.
+
+
+## Mountain relief page: automatic Apply — 2026-10-20
+
+Run `RELIEF.bat` at the workspace root to open the local relief editor
+(`http://127.0.0.1:8768/`). It displays installed YAML family gains, starting global
+depth, the +/- toggle, and per-variant exclusion checkboxes. `Apply to game`
+saves a staged YAML and automatically calls `stage_pom_wide.py` then
+`integrate_pom_library.py` when material settings differ. Global-only changes
+skip map rebuilding. No action launches the game. The old file page has an
+editor link which transfers its notes/camera locally via a URL fragment.
+
+`relief_apply.py` uses hash-pinned rebuild inputs in `work/pom-native-inputs`.
+The clean RT base and the original shader library are separate from installed
+assets, so repeated Apply never accumulates POM maps. The review-track snapshot
+matches the export's original texture metadata and identity. Rebuilds run below
+normal priority with bounded math-library threads. Native layout must match the
+installed runtime header before deployment; family edits require no DLL rebuild.
+
+Apply checks the YAML/receipt/baseline revision before and after building and
+checks accepted game hashes. Invalid values, unknown variants and stale tabs
+are rejected. A localhost-only server uses exact Host/Origin checks and a
+per-session token for writes. It serves only its page, preview assets and API,
+not arbitrary workspace files. A single Apply runs at a time.
+
+Installation backs up every changed file under `work/pom-backups/page-apply-*`,
+atomically replaces each file, checks its hash and restores the entire set on
+failure. A journal blocks PLAY during commit or after an interrupted commit.
+The game must be closed at preparation and commit, and is checked between file
+replacements. This is not a cross-file OS transaction; a hard process/power
+failure leaves the recovery journal and complete backup. Do not remove the
+journal without restoring/validating that backup.
+
+Validation: a real staged family-depth change rebuilt maps and native shaders
+with 391 active and 16 excluded materials; a UI Apply with current approved
+settings completed and saved a verified backup. Tests cover bad/stale payloads,
+running-game refusal, successful deployment and injected mid-install failure
+rollback. Preview rendering is approximate; gameplay/performance acceptance
+remains with the user. Removing POM draw/Release hooks addresses measured hook
+overhead but does not establish that all sources of stutter are gone.
+
+
+## Native relief idle callback — 2026-10-20
+
+The standalone frame hook now queues native relief-control work on startup,
+Reset and +/- changes and retries until applied. Settled frames bypass the C
+callback and floating-point save/restore; screenshots retain their own request
+path. Global 0.6, all 38 YAML families, the 16 material exclusions and native
+shader ownership are unchanged. Offline callback and native controls tests pass.
+The same runtime update corrects the standalone two-physical-core allocation to
+match TP's four separate P cores on this host. See [runtime findings](08_exe_loading.md).
+No live stutter claim: the owner will test; no game launched during this update.

@@ -1,5 +1,6 @@
 /* Real worker/event lifetimes, fake D3D COM objects: never opens a GPU/device. */
 #include <stdio.h>
+#define SR3_CAPTURE_TEST 1
 #include "capture.c"
 #define CHECK(x) do { if (!(x)) { fprintf(stderr,"FAIL capture line %d: %s\n",__LINE__,#x); ExitProcess(1); } } while(0)
 typedef struct FakeSurface { IDirect3DSurface9 com; LONG refs; } FakeSurface;
@@ -57,7 +58,7 @@ static void waitQueued(void) {
 }
 static void join(HANDLE thread) {CHECK(WaitForSingleObject(thread,5000)==WAIT_OBJECT_0);CloseHandle(thread);}
 static void clean(void) {CHECK(back.refs==1 && !resolved.refs && !systemSurface.refs && !pendingCapture);}
-/* Real production thunk: same device address as the guarded EXE, no GPU.
+/* Production thunk instructions, test-owned device slot, no GPU.
    Check registers/flags while every fake COM operation runs on this thread. */
 __attribute__((naked)) static int invokeFrame(void) {
     __asm__("pushl %ebx\n\tpushl %ebp\n\tpushl %esi\n\tpushl %edi\n\t"
@@ -65,7 +66,7 @@ __attribute__((naked)) static int invokeFrame(void) {
             "movl $0x33445566,%esi\n\tmovl $0x44556677,%edi\n\t"
             "movl $0x55667788,%ecx\n\tmovl $0x66778899,%edx\n\t"
             "stc\n\tcall _sr3_capture_frame_hook\n\tjnc 1f\n\t"
-            "cmpl 0x7ed10c,%eax\n\tjne 1f\n\t"
+            "cmpl " SR3_CAPTURE_DEVICE_ASM ",%eax\n\tjne 1f\n\t"
             "cmpl $0x11223344,%ebx\n\tjne 1f\n\t"
             "cmpl $0x22334455,%ebp\n\tjne 1f\n\t"
             "cmpl $0x33445566,%esi\n\tjne 1f\n\t"
@@ -86,10 +87,14 @@ static void valid(Result r) {
     CHECK(HeapFree(GetProcessHeap(),0,r.pixels));
 }
 static DWORD WINAPI presentThread(void *unused) {(void)unused;renderThread=GetCurrentThreadId();sr3_capture_present(&device);return 0;}
+static int controlCalls,requeueControl;
+static void controlsFrame(IDirect3DDevice9 *d) {
+    CHECK(d==&device);controlCalls++;
+    if(requeueControl){requeueControl=0;sr3_capture_request_overlay();}
+}
 int main(void) {
     Result r={0},other={0};HANDLE worker,renderer;int i,before;
-    CHECK(VirtualAlloc((void*)0x7e0000,0x10000,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE)==(void*)0x7e0000);
-    *(IDirect3DDevice9**)0x7ed10c=&device;
+    sr3_capture_test_device=&device;
     device.lpVtbl=&deviceVtbl;back.com.lpVtbl=resolved.com.lpVtbl=systemSurface.com.lpVtbl=&surfaceVtbl;back.refs=1;
     surfaceVtbl.Release=releaseSurface;surfaceVtbl.GetDesc=getDesc;surfaceVtbl.LockRect=lockSurface;surfaceVtbl.UnlockRect=unlockSurface;
     deviceVtbl.GetBackBuffer=getBack;deviceVtbl.CreateRenderTarget=createTarget;deviceVtbl.StretchRect=stretch;
@@ -97,6 +102,13 @@ int main(void) {
     grab(&r);failed(r);CHECK(r.error==ERROR_NOT_READY);
     CHECK(!sr3rt_grab_backbuffer(NULL,&r.w,&r.h) && GetLastError()==ERROR_INVALID_PARAMETER && !r.w && !r.h);
     sr3_capture_enable();before=calls;CHECK(invokeFrame());CHECK(calls==before);
+    sr3_capture_set_overlay(controlsFrame);CHECK(invokeFrame());CHECK(controlCalls==1);
+    for(i=0;i<20000;i++)CHECK(invokeFrame());
+    CHECK(controlCalls==1 && calls==before); /* settled frames bypass FXSAVE/callback */
+    sr3_capture_request_overlay();sr3_capture_request_overlay();CHECK(invokeFrame());CHECK(controlCalls==2);
+    requeueControl=1;sr3_capture_request_overlay();CHECK(invokeFrame());CHECK(controlCalls==3);
+    CHECK(invokeFrame());CHECK(controlCalls==4);CHECK(invokeFrame());CHECK(controlCalls==4);
+    sr3_capture_set_overlay(NULL);sr3_capture_request_overlay();CHECK(invokeFrame());CHECK(!frameOverlayPending);
     slowCopy=1;valid(serviced());slowCopy=0;
     valid(serviced());useMsaa=1;valid(serviced());CHECK(resolvedCopies==1);
     for(i=1;i<=8;i++){failAt=i;failed(serviced());}failAt=0;useMsaa=0;
@@ -110,5 +122,5 @@ int main(void) {
     worker=CreateThread(NULL,0,grab,&r,0,NULL);CHECK(worker);waitQueued();renderer=CreateThread(NULL,0,presentThread,NULL,0,NULL);CHECK(renderer);
     CHECK(WaitForSingleObject(copyEntered,1000)==WAIT_OBJECT_0);join(worker);failed(r);CHECK(r.error==ERROR_TIMEOUT);
     SetEvent(copyGate);join(renderer);CloseHandle(copyEntered);CloseHandle(copyGate);copyGate=NULL;clean();valid(serviced());
-    puts("Capture: game-frame thunk/register/stack/flags, padded BGRA, MSAA resolve, COM failures, busy, queued/in-flight timeout and cleanup PASS (mock D3D, no GPU)");return 0;
+    puts("Capture: idle bypass, queued/coalesced/requeued controls, frame thunk/register/stack/flags, padded BGRA, MSAA resolve, COM failures, busy, queued/in-flight timeout and cleanup PASS (mock D3D, no GPU)");return 0;
 }

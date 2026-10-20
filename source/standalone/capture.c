@@ -17,6 +17,12 @@ typedef struct CaptureRequest {
     volatile LONG stage;
 } CaptureRequest;
 static PVOID volatile pendingCapture;
+static void (*frameOverlay)(IDirect3DDevice9 *);
+static volatile LONG frameOverlayPending;
+void sr3_capture_request_overlay(void) { InterlockedExchange(&frameOverlayPending,1); }
+void sr3_capture_set_overlay(void (*fn)(IDirect3DDevice9 *)) {
+    frameOverlay=fn;InterlockedExchange(&frameOverlayPending,fn!=NULL);
+}
 static volatile LONG captureEnabled;
 static void (*captureLog)(DWORD, DWORD, LONG);
 void sr3_capture_set_log(void (*fn)(DWORD, DWORD, LONG)) { captureLog = fn; }
@@ -108,7 +114,10 @@ done:
 }
 void sr3_capture_present(IDirect3DDevice9 *device) {
     CaptureRequest *r;
-    /* The ordinary frame pays one pointer load and branch, no locked operation. */
+    /* Changes are consumed before calling so a request arriving during the
+       callback (or its startup retry) cannot be lost. Settled frames do no work. */
+    if(frameOverlayPending && InterlockedExchange(&frameOverlayPending,0) && frameOverlay)frameOverlay(device);
+    /* The ordinary frame pays only loads and branches, no locked operation. */
     if (!pendingCapture) return;
     r = InterlockedExchangePointer(&pendingCapture, NULL);
     if (!r) return;
@@ -121,17 +130,24 @@ void sr3_capture_present(IDirect3DDevice9 *device) {
 /* Replaces MOV EAX,[7ED10C] after EndScene, before Present. Preserve the
    original instruction contract, including flags and floating-point state.
    No COM objects are retained, and the game still invokes its current Present.
-   Private fixed-address device storage is supplied by the native mock test. */
+   The native mock substitutes only the address operand with test-owned storage. */
+#ifdef SR3_CAPTURE_TEST
+/* Test-owned storage avoids ASLR/heap collisions at the real game's address. */
+IDirect3DDevice9 *sr3_capture_test_device;
+#define SR3_CAPTURE_DEVICE_ASM "_sr3_capture_test_device"
+#else
+#define SR3_CAPTURE_DEVICE_ASM "0x7ed10c"
+#endif
 #if defined(__GNUC__) && defined(__i386__)
 __attribute__((naked)) void sr3_capture_frame_hook(void) {
-    __asm__("pushfl\n\tcmpl $0,_pendingCapture\n\tje 1f\n\tpushal\n\t"
+    __asm__("pushfl\n\tcmpl $0,_pendingCapture\n\tjne 2f\n\tcmpl $0,_frameOverlayPending\n\tje 1f\n\t2: pushal\n\t"
             "movl %esp,%ebp\n\tsubl $528,%esp\n\tandl $-16,%esp\n\t"
             "fxsave (%esp)\n\tsubl $16,%esp\n\t"
-            "movl 0x7ed10c,%eax\n\tmovl %eax,(%esp)\n\t"
+            "movl " SR3_CAPTURE_DEVICE_ASM ",%eax\n\tmovl %eax,(%esp)\n\t"
             "call _sr3_capture_present\n\t"
             "addl $16,%esp\n\tfxrstor (%esp)\n\t"
             "movl %ebp,%esp\n\tpopal\n\t1: popfl\n\t"
-            "movl 0x7ed10c,%eax\n\tret");
+            "movl " SR3_CAPTURE_DEVICE_ASM ",%eax\n\tret");
 }
 #else
 #error Screenshot frame hook requires the supported x86 GCC build.

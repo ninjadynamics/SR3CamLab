@@ -38,7 +38,7 @@ class Tiles:
                 if os.path.exists(o):
                     with _rgba(o) as original:same=original.size==im.size and original.tobytes()==im.tobytes()
                 if not same:
-                    w,h=im.size;size=tuple(2**max(2,min(11,round(math.log2(v)))) for v in (w,h))
+                    w,h=im.size;size=tuple(max(4,min(2048,1 << (v-1).bit_length())) for v in (w,h))
                     if im.size==size:out=_pixels(im)
                     else:
                         with im.resize(size,Image.Resampling.LANCZOS) as resized:out=_pixels(resized)

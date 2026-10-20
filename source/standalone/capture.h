@@ -18,5 +18,9 @@ void sr3_capture_enable(void);
    3 readback started, 4 readback complete, 5 pixels copied. */
 void sr3_capture_set_log(void (*fn)(DWORD error, DWORD elapsed, LONG stage));
 void sr3_capture_present(IDirect3DDevice9 *device);
+/* One-shot render-thread work, also queued when the callback is installed.
+   A callback can requeue while waiting for native resources to become ready. */
+void sr3_capture_set_overlay(void (*fn)(IDirect3DDevice9 *));
+void sr3_capture_request_overlay(void);
 void sr3_capture_frame_hook(void);
 #endif

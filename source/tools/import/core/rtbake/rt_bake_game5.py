@@ -187,6 +187,8 @@ for cl in clusters([i for i in range(NTRI) if is_tree[i]]):
     if y1 - y0 < 1.0: continue
     if cr:
         cy0 = min(p[1] for p in cr) if tr else y0 + 0.45 * (y1 - y0); rh = max(0.6, 0.8 * pct90([hypot(p[0] - ax[0], p[2] - ax[1]) for p in cr])); cc = (ax[0], (cy0 + y1) / 2, ax[1])
+        if rh > 50.0:
+            raise ValueError('Tree canopy radius %.1f m: check the authored course material labels before baking' % rh)
         canopy += ball(cc, rh, max(0.6, (y1 - cy0) / 2)); solid += cylinder(ax[0], ax[1], y0, cc[1], 0.22); TREES.append((cc[0], cc[1], cc[2], rh, max(0.6, (y1 - cy0) / 2), y0))
     else: solid += cylinder(ax[0], ax[1], y0, y1, 0.22)
     ntree += 1

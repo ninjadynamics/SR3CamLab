@@ -72,3 +72,62 @@ setup per node, 0x500EA0 visibility refresh, 0x4FFC30 stream decoder, 0x5003C0 l
 
 Note on "not packed" in the title of this file: 16_lighting_shadows_lightmaps.md (2026-10-08) calls the exe on disk
 "packed (3.3 MB file, data addresses beyond the raw size)". The two statements conflict; see OPEN_QUESTIONS.md.
+
+
+## 2026-10-19: HD track loading compatibility and arena budget
+
+VERIFIED by disassembly and executable-initialization replay, followed by owner loading/racing confirmation: the supported Rally build creates `SegaRally_Track_Heap` as 256 MiB. The seven larger Mountain SBFs totalled 279.52 MiB unpacked after duplicate consolidation; checking only the 254.88 MiB main gfx SBF missed the deficit.
+
+| Site | Meaning |
+|---|---|
+| `0x4196E9`, `0x4197D1` | DXT upload block counts use floor division by 4 (minimum one), disagreeing with standard ceiling at a 6px mip of 384/768 artwork |
+| `0x6530B0 -> 0x596BC0` | Track SBF loading allocates unpacked data from the track arena |
+| `0x7ECE3C` | Track arena pointer |
+| `0x5966F4`, immediate `0x5966FB` | Track allocation initializer changed in memory from 256 to 384 MiB before heap creation |
+
+The runtime checks the entire supported text CRC and expected instruction bytes before this change. Other arenas and the executable on disk are unchanged. This is specific to the supported build, not a general permission to patch other versions. Current textures use compatible power-of-two storage. Full recovery evidence and final-build budget: [23_texture_pipeline.md](23_texture_pipeline.md). The initial hang's exact cause was not independently isolated; the NPOT incompatibility and fixed-heap deficit were separately demonstrated.
+
+
+## 2026-10-20: standalone CPU allocation differs from TeknoParrot
+
+After a cold restart the owner reported stuttering standalone and nearly smooth
+TeknoParrot. A concrete runtime mismatch was verified on the i9-13900K: the old
+`runtime.c` chose logical IDs 0,1,2,3 for `runtime.cores: 4` (mask `0x0f`), which
+share only two physical P cores. The restored TP launcher uses 0,2,4,6 (`0x55`),
+four physical P cores. Both configurations use 3840x2160 fullscreen at 60 Hz with
+VSync, so the correction does not reduce resolution or disable the shader.
+
+`cpu_affinity.c` now queries Windows processor topology, selects one permitted
+thread per physical core, and prefers the higher-performance class. Siblings
+are used only when the requested thread budget exceeds available physical cores.
+The four-thread default remains bounded for the legacy video decoder and its
+32-bit memory budget; do not solve this by blindly enabling every thread.
+Missing topology falls back to the old allowed-mask behavior without widening
+the inherited affinity. Zero retains the existing unrestricted setting.
+
+The pinned MinGW headers call byte 1 of PROCESSOR_RELATIONSHIP Reserved[0];
+modern Windows exposes EfficiencyClass at that ABI byte. GroupCount offset is
+compile-time checked. Higher EfficiencyClass means greater performance, per
+[Microsoft's structure documentation](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-processor_relationship).
+
+Relief controls now queue render-thread work only at startup, device Reset and
+key changes, retrying until the requested technique is ready. Settled frames
+bypass the C callback and FXSAVE/FXRSTOR. Screenshot requests still work. This
+removes unnecessary idle work; its contribution to the reported stutter was not
+measured. No draw/Release hooks, FPS sampling, or overlay were reintroduced.
+
+Validation: full native runtime build/test suite PASS, including the real x86
+host topology query (24 physical cores; old mask covers two, new mask four),
+temporary affinity on a disposable fixture, sparse/nonadjacent/SMT selection,
+20,000 idle capture-thunk calls, queue/coalescing/retry, screenshot lifecycle,
+and native YAML gain/zero-bypass/reset fixtures. Accepted-file and native YAML
+launcher checks PASS. The game was not launched; live stutter improvement is
+pending the owner's test. Physics, timers, handling, SDL input, textures,
+lightmaps, 0.6 startup relief, exclusions and +/- are unchanged.
+
+Installed DLL SHA256:
+`e4e126dc46a0ad34d5cc19a5f7a83bd5bfe20d2c82feaff83825e432d7288ccb`.
+Backup, source/build hashes, launcher check and installation report:
+`work/runtime-backups/before-physical-core-fix-20261020-213055`.
+
+Owner gameplay confirmation (2026-10-20): after installing the physical-core/idle-callback runtime, Bruno reports that the standalone game runs 'smooth as silk'. This accepts the runtime performance fix; separate visual track defects remain under review.

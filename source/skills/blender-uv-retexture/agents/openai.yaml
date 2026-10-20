@@ -1,0 +1,4 @@
+interface:
+  display_name: "Blender UV Retexture"
+  short_description: "Repair texture stretching while preserving mesh and scale"
+  default_prompt: "Use $blender-uv-retexture to repair this scenery's UV mapping while preserving its geometry and original texture scale."

@@ -45,7 +45,17 @@ class Run:
         self.env = dict(os.environ, PYTHONPATH=CORE + os.pathsep + os.environ.get('PYTHONPATH', ''), PYTHONIOENCODING='utf-8',
                         OMP_NUM_THREADS=self.threads, OPENBLAS_NUM_THREADS=self.threads)      # every step on the threads the settings give (the bytes do not depend on it: 8 and 32 threads, checked 2026-10-15)
 
-    def choice(self): return dict(patch=bool(self.patch), round=int(self.level))
+    def choice(self):
+        # Material classes control rounding and ray-only tree solids; they are bake inputs.
+        import hashlib
+        sub = '' if self.game == 'src' and self.course == '1' else '%s_%s' % (self.game, self.course)
+        labels = os.path.join(common.WORK, 'retex', sub, 'tile_labels.csv')
+        saved = os.path.join(common.courses_dir(self.game), '%s_%s.tile_labels.csv' % (self.game, self.course))
+        if not os.path.exists(labels) and os.path.isfile(saved):
+            os.makedirs(os.path.dirname(labels), exist_ok=True)
+            shutil.copyfile(saved, labels)
+        digest = hashlib.sha256(open(labels, 'rb').read()).hexdigest() if os.path.isfile(labels) else None
+        return dict(patch=bool(self.patch), round=int(self.level), material_labels_sha256=digest)
 
     def sets(self, which):
         """the importer's --set arguments: the recipe's common values, then the settings, then the pass's own"""

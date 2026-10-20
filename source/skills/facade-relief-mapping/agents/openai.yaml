@@ -1,0 +1,4 @@
+interface:
+  display_name: "Facade Relief Mapping"
+  short_description: "Author aligned window and door depth for POM"
+  default_prompt: "Use $facade-relief-mapping to trace architectural features and build visually verified height maps for facade POM."

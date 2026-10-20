@@ -1,0 +1,4 @@
+interface:
+  display_name: "Faithful Texture Upscaling"
+  short_description: "Restore game textures faithfully and validate delivery"
+  default_prompt: "Use $faithful-texture-upscaling to restore and upscale these game textures while preserving their structure, palette, and clean engine-ready output."

@@ -12,6 +12,7 @@ $cfg=Get-Content -LiteralPath (Local-Path 'config/workspace.json') -Raw | Conver
 $game=Local-Path $cfg.game
 $yaml=Local-Path $cfg.settings
 $candidate=if ($cfg.candidate) { Local-Path $cfg.candidate } else { $null }
+if (Test-Path -LiteralPath (Local-Path 'config/pom-apply-pending.json')) { throw 'Relief Apply was interrupted. Restore its recorded backup before playing.' }
 $baseline=Get-Content -LiteralPath (Local-Path $cfg.baseline) -Raw | ConvertFrom-Json
 $python=[string]$cfg.python
 $launcher=Local-Path 'apps/runtime/launch.exe'
@@ -40,6 +41,10 @@ $shots=Local-Path $cfg.screenshots
 if ($shots -ne (Join-Path $Workspace 'screenshots')) { throw 'Screenshot folder must match the native mod-folder-parent convention.' }
 if ($ProfilesFile -and -not (Test-Path -LiteralPath $ProfilesFile -PathType Leaf)) { throw 'CamLab profile snapshot is missing.' }
 if (-not (Test-Path -LiteralPath (Join-Path $Workspace 'apps/camlab/profiles.yaml'))) { throw 'Camera profiles missing; run SETUP.bat.' }
+if ($cfg.pom -and $baseline.pom_native_library_update) {
+ & $python (Local-Path 'source/standalone/pom_native_config.py') --workspace $Workspace
+ if ($LASTEXITCODE -ne 0) { throw 'Native POM YAML/install validation failed. Restage changed material settings before playing.' }
+}
 if ($Check) { Write-Output 'PASS: accepted files, handling, settings, helper paths and local screenshots. No game launched.'; return }
 if (Get-Process Rally,emulator,emulator_multicpu -ErrorAction SilentlyContinue) { throw 'Close Rally and Model 2 first (one game at a time).' }
 $run=Join-Path (Local-Path $cfg.runs) ((Get-Date -Format 'yyyyMMdd-HHmmss')+'-'+[guid]::NewGuid().ToString('N').Substring(0,6))
@@ -64,7 +69,10 @@ if ($CameraProfile -or $ProfilesFile) {
  [IO.File]::WriteAllText($yaml,$runSettings,[Text.UTF8Encoding]::new($false))
 }
 $helpers=@()
+$previousPom=[Environment]::GetEnvironmentVariable('SR3LAB_POM','Process')
 try {
+ # Scope relief to this launch; do not alter the user's persistent environment.
+ $env:SR3LAB_POM=if ($cfg.pom) { '1' } else { '0' }
  if ($candidate) {
  $argsHost=@(('"'+$hostScript+'"'),'--candidate',('"'+$candidate+'"'),'--game',('"'+$game+'"'),'--out',('"'+(Join-Path $run 'candidate.csv')+'"'))
  $helpers+=Start-Process -FilePath $python -ArgumentList $argsHost -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $run 'candidate.log') -RedirectStandardError (Join-Path $run 'candidate.err')
@@ -81,4 +89,7 @@ try {
 } catch {
  foreach ($helper in $helpers) { if (-not $helper.HasExited) { Stop-Process -Id $helper.Id -ErrorAction SilentlyContinue } }
  throw
-} finally { foreach ($helper in $helpers) { $helper.Dispose() } }
+} finally {
+ [Environment]::SetEnvironmentVariable('SR3LAB_POM',$previousPom,'Process')
+ foreach ($helper in $helpers) { $helper.Dispose() }
+}

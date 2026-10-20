@@ -262,6 +262,12 @@ game. This narrows the open question below; the layout beyond the two colours is
   cut-out goes on; the first 0.12 m of a ray do not count.
 - Gates are unlit (SEGA's material); their gain is 0.94 (23_texture_pipeline.md, section 4).
 
+## 2026-10-19: material labels are part of the bake dependency graph
+
+The isolated v14 workspace generated automatic labels because the authored `src_1.tile_labels.csv` had not been seeded. Two ordinary scenery groups became ray-only tree canopies of radius 362.2m and 389.2m, creating broad shadows across the course. With the same geometry, authored labels restored road-shadow coverage from 54% to 36%, with 588 trees and 33 lamps instead of 624 trees and no lamps. Sun and composition settings were unchanged. This was a classification/input defect, not a need to brighten albedo or weaken all shadows.
+
+`course.use` now seeds only a missing label file, preserving existing manual edits; stack bake signatures include the effective label hash; the RT stage rejects canopy radii above 50m with a label diagnostic. These guards and the false-canopy case were tested. Full evidence, final installation and owner-acceptance boundaries: [17_mountain_build_notes.md](17_mountain_build_notes.md#2026-10-19-v14-broad-shadow-regression--authored-labels-omitted).
+
 ## Open questions
 - The vertex formats that carry a colour (SEGA's main way of baking).
 - The road's own sun / shadow overlay page.

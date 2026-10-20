@@ -31,6 +31,11 @@ def use(game, course):
     BC.HALF_WIDTH = int(cfg.get('half_width', 7)); BC.START = (int(cfg.get('start', {}).get('slice', 10)), int(cfg.get('start', {}).get('direction', 1)))
     retex.RT = os.path.join(WORK, 'retex') if c == '1' else os.path.join(WORK, 'retex', '%s_%s' % (game, c)); os.makedirs(retex.RT, exist_ok=True)
     retex.CSVP = os.path.join(retex.RT, 'tile_labels.csv')
+    # Rebuilds may skip ROM extraction, which normally seeds the authored labels.
+    saved_labels = os.path.join(courses_dir(game), '%s_%s.tile_labels.csv' % (game, c))
+    if not os.path.exists(retex.CSVP) and os.path.isfile(saved_labels):
+        import shutil
+        shutil.copyfile(saved_labels, retex.CSVP)
     for k, v in cfg.get('textures', {}).items(): retex.SR3_FOR_CLASS[k] = (v[0], int(v[1], 16))
     allsr3.configure(cfg.get('art', {}))
     cfg['game'] = game; cfg['course'] = c

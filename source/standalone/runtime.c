@@ -17,6 +17,9 @@
 #include "patch_loader.h"
 #include "capture.h"
 #include "texture_rebind.h"
+#include "pom.h"
+#include "pom_native.h"
+#include "cpu_affinity.h"
 #ifdef _MSC_VER
 /* Win32 x86 IAT/vtable replacement uses equal-sized function and data pointers. */
 #pragma warning(disable:4152)
@@ -94,7 +97,7 @@ static void hudAdjust(void) {
     }
 }
 static BOOL CALLBACK initialize(PINIT_ONCE ignored,PVOID parameter,PVOID *context) {
-    char path[MAX_PATH]; DWORD_PTR available,systemMask,chosen=0; int i,n;
+    char path[MAX_PATH]; DWORD_PTR available,systemMask,chosen=0;
     char yaml[SR3_PATH],error[256];DWORD explicitPath;
     (void)ignored;(void)parameter;(void)context;
     sr3_defaults(&settings);
@@ -121,8 +124,11 @@ static BOOL CALLBACK initialize(PINIT_ONCE ignored,PVOID parameter,PVOID *contex
     backgroundInput=settings.background;controllerIndex=settings.controller;freeplay=settings.freeplay;cores=settings.cores;
     hudAdjust();
     if(cores && GetProcessAffinityMask(GetCurrentProcess(),&available,&systemMask)) {
-        for(i=0,n=0;i<32 && n<cores;i++) if(available&((DWORD_PTR)1<<i)){chosen|=(DWORD_PTR)1<<i;n++;}
+        Sr3CpuCore topology[64];unsigned count=sr3_cpu_topology(topology,64);
+        chosen=sr3_cpu_select(topology,count,available,(unsigned)cores);
         if(chosen && !SetProcessAffinityMask(GetCurrentProcess(),chosen)) logline("Affinity failed: %lu\n",GetLastError());
+        else logline("CPU allocation: budget=%d mask=%08lx physical cores=%u; topology=%s\n",cores,
+            (unsigned long)chosen,sr3_cpu_physical_count(topology,count,chosen),count?"detected":"unavailable");
     }
     InitializeCriticalSection(&inputLock);
     GetSystemDirectoryA(path,sizeof(path));strcat_s(path,sizeof(path),"\\dinput8.dll");
@@ -195,7 +201,9 @@ static BOOL WINAPI cabinetRead(HANDLE file,LPVOID data,DWORD size,LPDWORD read,L
         if(!deadzone)v=sr3_tp_axis(in.steering);
         ((unsigned char*)data)[1]=((unsigned char*)data)[2]=(unsigned char)v;
     }
-    if((DWORD)(now-lastReportLog)>=5000){lastReportLog=now;logline("Input alive: focus=%d pad=%d steering=%d gas=%u brake=%u buttons=%02x\n",active,pad!=NULL,in.steering,in.gas,in.brake,in.buttons);}
+    if((DWORD)(now-lastReportLog)>=5000){lastReportLog=now;logline("Input alive: focus=%d pad=%d steering=%d gas=%u brake=%u buttons=%02x\n",active,pad!=NULL,in.steering,in.gas,in.brake,in.buttons);
+        {int on,depth;sr3_pom_native_controls(&on,&depth);logline("Native POM: depth=%d/10 enabled=%d applied=%d; draw hooks=0; overlay=off\n",depth,on,sr3_pom_native_applied());}
+    }
     if(read)*read=15;
     LeaveCriticalSection(&inputLock);
     /* Pace the HID reader which otherwise spins on a synchronous virtual device. */
@@ -265,6 +273,11 @@ static LRESULT CALLBACK windowProc(HWND w,UINT msg,WPARAM wp,LPARAM lp) {
        thread counter. */
     if(msg==WM_SETCURSOR && LOWORD(lp)==HTCLIENT && GetForegroundWindow()==w){SetCursor(NULL);return TRUE;}
     if(msg==WM_ACTIVATE)SetCursor(LOWORD(wp)==WA_INACTIVE?LoadCursorA(NULL,IDC_ARROW):NULL);
+    /* Session-only attenuation of approved per-material relief. No key repeat. */
+    if(msg==WM_KEYDOWN && GetForegroundWindow()==w && !(lp & (1L<<30))) {
+        if(wp==VK_OEM_PLUS || wp==VK_ADD){if(sr3_pom_native_adjust(1))sr3_capture_request_overlay();return 0;}
+        if(wp==VK_OEM_MINUS || wp==VK_SUBTRACT){if(sr3_pom_native_adjust(-1))sr3_capture_request_overlay();return 0;}
+    }
     if(msg==WM_KEYDOWN && wp==VK_ESCAPE){PostMessageA(w,WM_CLOSE,0,0);return 0;}
     return CallWindowProcA(oldWindowProc,w,msg,wp,lp);
 }
@@ -302,9 +315,23 @@ static void presentation(D3DPRESENT_PARAMETERS *p) {
     p->FullScreen_RefreshRateInHz=windowed?0:settings.refresh_rate;
     p->PresentationInterval=settings.vsync?D3DPRESENT_INTERVAL_ONE:D3DPRESENT_INTERVAL_IMMEDIATE;
 }
-static HRESULT WINAPI resetDevice(IDirect3DDevice9 *self,D3DPRESENT_PARAMETERS *p) {presentation(p);return systemReset(self,p);}
+static HRESULT WINAPI resetDevice(IDirect3DDevice9 *self,D3DPRESENT_PARAMETERS *p) {
+    sr3_pom_native_reset();sr3_capture_request_overlay();presentation(p);return systemReset(self,p);
+}
+static void nativeControlsFrame(IDirect3DDevice9 *device) {
+    int on,n;
+    sr3_pom_native_frame(device);
+    /* Native shader construction may still be pending at initial device setup
+       or Reset. Once applied, there is no per-frame callback until a key change. */
+    sr3_pom_native_controls(&on,&n);
+    if(sr3_pom_native_applied()!=(on?n:0))sr3_capture_request_overlay();
+}
 static void captureResult(DWORD error,DWORD elapsed,LONG stage) {
     logline("Screenshot readback: error=%lu elapsed=%lu ms stage=%ld\n",(unsigned long)error,(unsigned long)elapsed,(long)stage);
+}
+static void pomEvent(int event) {
+    const char *messages[]={"unknown","first marked draw activated","shader identity rejected","normal/height map rejected","D3D setup failed; using original draw","restore failed; disabled until Reset"};
+    logline("POM: %s\n",event>=1 && event<=5?messages[event]:messages[0]);
 }
 static HRESULT WINAPI createDevice(IDirect3D9 *self,UINT adapter,D3DDEVTYPE type,HWND window,DWORD flags,D3DPRESENT_PARAMETERS *p,IDirect3DDevice9 **out) {
     D3DDISPLAYMODE mode;HRESULT hr;
@@ -318,6 +345,17 @@ static HRESULT WINAPI createDevice(IDirect3D9 *self,UINT adapter,D3DDEVTYPE type
     if(SUCCEEDED(hr) && out && *out){
         sr3_capture_set_log(captureResult);
         if((*out)->lpVtbl->Reset!=resetDevice){systemReset=(*out)->lpVtbl->Reset;replacePointer((void*)&(*out)->lpVtbl->Reset,resetDevice);}
+        {
+            char pomFlag[8];int on=GetEnvironmentVariableA("SR3LAB_POM",pomFlag,sizeof(pomFlag))==1 && pomFlag[0]=='1';
+            char depthYaml[SR3_PATH];const char *folder=sr3_patch_value(&settings,"mod_folder");
+            sr3_pom_native_init(on);
+            snprintf(depthYaml,sizeof(depthYaml),"%s\\mountain-pom-depth.yaml",folder?folder:"");
+            if(!sr3_pom_native_configure(depthYaml))
+                logline("Native POM: missing/invalid YAML; relief disabled: %s\n",depthYaml);
+            else logline("Native POM startup controls loaded: %s\n",depthYaml);
+            sr3_capture_set_overlay(nativeControlsFrame);
+            logline("Native POM library controls enabled; no D3D draw/Release hooks installed.\n");
+        }
         sr3_capture_enable();
         logline("D3D device ready: device=%p vtable=%p; capture uses game frame hook at 00591C63\n",*out,(*out)->lpVtbl);
         ShowWindow(window,SW_SHOW);
@@ -351,6 +389,16 @@ BOOL WINAPI DllMain(HINSTANCE self,DWORD reason,LPVOID reserved) {
         logline("REFUSED: unsupported or already modified Rally.exe. No game patches applied.\n");return FALSE;
     }
     /* Complete text identity was checked above, before any mutation. No SEGA code is shipped. */
+    /* The entire track shares this fixed arena, including unpacked SBFs.
+       HD Mountain's main file is ~255 MiB before its other track resources.
+       Change only the track descriptor's allocation, before heap creation. */
+    {
+        const unsigned char expected[]={0xc7,0x84,0x24,0x48,0x01,0x00,0x00,0x00,0x00,0x00,0x10};
+        const uint32_t trackBytes=384u*1024u*1024u;
+        if(memcmp((void*)0x5966f4,expected,sizeof(expected)))return FALSE;
+        if(!writeMemory((void*)0x5966fb,&trackBytes,sizeof(trackBytes)))return FALSE;
+        logline("Track memory: 256 -> 384 MiB for HD courses.\n");
+    }
     {
         /* After EndScene, before the game's own Present lookup; independent of
            driver vtable changes. The camera hook at 591C4D remains untouched. */

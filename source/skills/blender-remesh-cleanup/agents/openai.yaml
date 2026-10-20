@@ -1,0 +1,4 @@
+interface:
+  display_name: "Blender Remesh and Cleanup"
+  short_description: "Preserve terrain shape and remove remesh debris"
+  default_prompt: "Use $blender-remesh-cleanup to remesh the selected scenery, preserve protected surfaces, and verify a clean result."

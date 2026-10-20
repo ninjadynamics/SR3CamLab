@@ -202,7 +202,18 @@ def stage_build(cfg, variant, name):
         have_ = sorted(_gl.glob(os.path.join(pd_, '%s.%s.patch.*.json' % (cfg['game'], cfg['name']))), key=num_); want_ = cfg['patch']
         if want_ is not True: want_ = [int(w_) for w_ in (want_ if isinstance(want_, list) else [want_])]; miss_ = [w_ for w_ in want_ if w_ not in [num_(p_) for p_ in have_]]; assert not miss_, 'no patch file number %s for this course in %s' % (miss_, pd_); have_ = [p_ for p_ in have_ if num_(p_) in want_]
         done_ = []; pset_ = {}
-        for p_ in have_: faces = coursepatch.apply_file(faces, p_, rd['ox'], rd['oz'], BC.HI, log, fill_uv=bool(cfg.get('patch_uv', True)), applied=done_, settings=pset_, pixels=BC.tile_pixels, save=BC.save_baked, origin=__import__('overlay_bake').ORIGIN, split=BC.uv_split, keep=BC.PAIRS); done_.append(num_(p_))
+        for p_ in have_:
+            # A Blender scene can contain nearby backdrop geometry as well as course faces.
+            # Opt in per patch: removals must see both or old backdrop walls survive a remesh.
+            include_backdrop_ = bool(json.load(open(p_)).get('include_backdrop', False))
+            patch_input_ = faces + sky if include_backdrop_ else faces
+            patched_ = coursepatch.apply_file(patch_input_, p_, rd['ox'], rd['oz'], BC.HI, log, fill_uv=bool(cfg.get('patch_uv', True)), applied=done_, settings=pset_, pixels=BC.tile_pixels, save=BC.save_baked, origin=__import__('overlay_bake').ORIGIN, split=BC.uv_split, keep=BC.PAIRS)
+            if include_backdrop_:
+                sky_sections_ = {fc[1] for fc in sky}
+                sky = [fc for fc in patched_ if fc[1] in sky_sections_]
+                faces = [fc for fc in patched_ if fc[1] not in sky_sections_]
+            else: faces = patched_
+            done_.append(num_(p_))
         for k_, v_ in pset_.items(): cfg[k_] = {**cfg[k_], **v_} if (isinstance(v_, dict) and isinstance(cfg.get(k_), dict)) else v_
         if pset_: log('       settings brought by the patches: %s' % pset_)
     if variant == 'classic' and cfg.get('board_moves'):                 # OPT-IN (2026-10-13): cut-out boards moved in Blender (trees lifted onto new ground) - the ORIGINAL polygons are moved whole, so they keep
@@ -320,7 +331,11 @@ def stage_build(cfg, variant, name):
                 cp_ = [fc for fc in ban_ if str(fc[1]).startswith('gate_finishcp')]; fi_ = [fc for fc in ban_ if str(fc[1]).startswith('gate_finish_')]
                 ban_ = [fc for fc in ban_ if not str(fc[1]).startswith('gate_finish')]
                 if lap_ and cp_ and fi_:
-                    pf_ = np.array([q for fc in fi_ for q in fc[2]], float); FINISH_GATE[name] = dict(states=[[], res_(cp_), res_(fi_)], centre=(float(pf_[:, 0].mean()), float(pf_[:, 1].min()), float(pf_[:, 2].mean())))
+                    cp_res_, fi_res_ = res_(cp_), res_(fi_)
+                    if cfg.get('finish_banner_clearance') is not None:
+                        cp_res_ = gates1995.banner_in_front(cp_res_, cfg['finish_banner_clearance'], log)
+                        fi_res_ = gates1995.banner_in_front(fi_res_, cfg['finish_banner_clearance'], log)
+                    pf_ = np.array([q for fc in fi_ for q in fc[2]], float); FINISH_GATE[name] = dict(states=[[], cp_res_, fi_res_], centre=(float(pf_[:, 0].mean()), float(pf_[:, 1].min()), float(pf_[:, 2].mean())))
                     ban_ = res_(ban_)
                 else: ban_ = res_(ban_ + fi_)
                 if cfg.get('gates_unlit', True): BC.UNLIT = {str(fc[0]).split('|')[0] for fc in ban_}; BC.UNLIT_TPL = des.files['master_gfx_xdata'].byid().get(0x47948b52)

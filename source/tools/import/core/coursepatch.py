@@ -362,6 +362,34 @@ def _old_move_boards(faces, BM, ox, oz, log):
     log('       boards moved whole (board_moves): %d cut-out polygons' % nb_)
     return faces
 
+def restore_texture_recipes(entries, pixels, save, origin=None):
+    """Recreate composed source materials retained by an edited Blender scene.
+
+    These are recipes, not game pixels. Resolve dependencies recursively so a
+    moved/deleted overlay polygon does not orphan an otherwise unchanged tile.
+    """
+    if not entries: return
+    import numpy as np
+    import overlay_bake as OB
+    assert pixels is not None and save is not None, 'source texture recipes need the importer tile reader'
+    active = set(); ready = {}
+    def resolve(name):
+        if name in ready: return ready[name]
+        value = pixels(name)
+        if value is not None: return value
+        if name not in entries: raise ValueError('Missing source texture for patch recipe: ' + name)
+        if name in active: raise ValueError('Cyclic source texture recipe: ' + name)
+        active.add(name)
+        lo, up, mapping, rect = entries[name]
+        value = OB._recipe(lo, up, np.asarray(mapping).reshape(3, 2), resolve, rect)
+        if value is None: raise ValueError('Cannot reconstruct source texture recipe: ' + name)
+        save(name, *value); ready[name] = value; OB.RECIPES[name] = entries[name]
+        # Retained source materials keep their existing lighting classification.
+        active.remove(name)
+        return value
+    for name in entries: resolve(name)
+
+
 def apply_file(faces, path, ox, oz, export, log, applied=(), **kw):
     """a numbered patch file: a plain patch (apply), or a STAGED one (2026-10-15, owner: "Mountain R4 is accepted, which means v11 is accepted
     too. Create patch 3 out of it"): {"stages": [patch, {"board_moves": [...]}, patch, ...]} applied one after the other exactly as separate
@@ -412,6 +440,7 @@ def apply(faces, path, ox, oz, export, log, fill_uv=True, applied=(), settings=N
     if J.get('whole_polygons'): split = None                            # OPT-IN by the patch file (genpatch1995.py): its triangles to remove are corners of the importer's own polygons, never of the pieces a build cuts them into
     nrem = remove(faces, J.get('remove', []), sr3, path, log, split=split, keep=keep) if J.get('remove') else None
     if nrem is not None: faces = nrem
+    restore_texture_recipes(J.get('texture_recipes', {}), pixels, save, origin)
     if J.get('bake'):                                                   # version 3: pictures composed from the course tiles (facadebake.py), named as tiles of their own
         import facadebake
         assert pixels is not None and save is not None, 'this patch composes pictures: the importer must hand over its tile reader'

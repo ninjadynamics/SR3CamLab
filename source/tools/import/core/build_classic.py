@@ -380,7 +380,7 @@ def _hd_tile_numpy(name):
         if os.path.exists(o):
             io = _I.open(o).convert('RGBA'); same = io.size == im.size and np.array_equal(np.asarray(io), np.asarray(im))
         if not same:
-            w, h = im.size; w2 = int(2 ** np.clip(np.round(np.log2(w)), 2, 11)); h2 = int(2 ** np.clip(np.round(np.log2(h)), 2, 11))      # sides are powers of two (compression blocks, mip chain)
+            w, h = im.size; w2 = max(4, min(2048, 1 << (w-1).bit_length())); h2 = max(4, min(2048, 1 << (h-1).bit_length()))      # SR3 needs power-of-two mip dimensions; round upward
             if (w2, h2) != (w, h): im = im.resize((w2, h2), _I.LANCZOS)
             a = np.array(im); hole = a[:, :, 3] < 128; out = (np.ascontiguousarray(a[:, :, :3]), hole if hole.any() else None)
     HD_USED[name] = out; return out
@@ -1294,7 +1294,7 @@ def _make_texture_dxt5_numpy(tpl5, new_id, rgb, hole):
     """kind 4 DXT5 chunk with a 1-bit alpha channel (255 / 0), full mip chain; header cloned from a DXT5 texture"""
     rgb = _vivid_numpy(rgb); h, w = rgb.shape[:2]; d = bytearray(tpl5.data[:48 + 124]); mips = []; g = rgb.astype(np.float32); a = np.where(hole, 0.0, 255.0).astype(np.float32)
     while True:
-        hh, ww = g.shape[:2]; pc = np.zeros((max(4, hh), max(4, ww), 3), np.float32); pa = np.zeros((max(4, hh), max(4, ww)), np.float32); pc[:hh, :ww] = g; pa[:hh, :ww] = a
+        hh, ww = g.shape[:2]; pc = np.pad(g, ((0, (-hh) % 4), (0, (-ww) % 4), (0, 0)), mode="edge"); pa = np.pad(a, ((0, (-hh) % 4), (0, (-ww) % 4)), mode="edge")
         if hh < 4: pc[hh:] = pc[hh - 1:hh]; pa[hh:] = pa[hh - 1:hh]
         if ww < 4: pc[:, ww:] = pc[:, ww - 1:ww]; pa[:, ww:] = pa[:, ww - 1:ww]
         col = np.frombuffer(dxt1_rgb(np.clip(pc, 0, 255).astype(np.uint8)), np.uint8).reshape(-1, 8)
@@ -1316,7 +1316,24 @@ def make_texture_dxt5_buf(tpl5, new_id, rgb, hole):
     return buildtexture.make_texture_dxt5(tpl5, new_id, _texture_arr(rgb, '|u1'),
         None if hole is None else _texture_arr(hole, '|b1'), vivid_buf)
 
+def _engine_texture_size(rgb, hole=None):
+    """SR3's DXT uploader floors block counts; keep every mip power-of-two safe.
+    Round UP so authored HD detail is never reduced to the preceding size.
+    """
+    from PIL import Image
+    h, w = rgb.shape[:2]
+    size = (1 << (w - 1).bit_length(), 1 << (h - 1).bit_length())
+    if max(size) > 2048:
+        raise ValueError('SR3 texture exceeds 2048; split the artwork before encoding')
+    if size != (w, h):
+        rgb = np.asarray(Image.fromarray(np.asarray(rgb, dtype=np.uint8)).resize(size, Image.Resampling.LANCZOS)).copy()
+        if hole is not None:
+            hole = np.asarray(Image.fromarray(np.asarray(hole, dtype=np.uint8) * 255).resize(size, Image.Resampling.NEAREST)) != 0
+    return np.ascontiguousarray(rgb), hole
+
+
 def make_texture_dxt5(tpl5, new_id, rgb, hole):
+    rgb, hole = _engine_texture_size(rgb, hole)
     import fastdxt
     if not fastdxt.ON or fastdxt.CHECK: return _make_texture_dxt5_numpy(tpl5, new_id, rgb, hole)
     try:
@@ -1331,6 +1348,7 @@ def make_texture(tpl, new_id, grey, hole=None):
     not powers of two, or that is not uint8 RGB after vivid, keeps the numpy loop; _old_make_texture is the numpy original)"""
     import fastdxt
     if grey.ndim == 2: grey = np.dstack([grey] * 3)
+    grey, hole = _engine_texture_size(grey, hole)
     grey = vivid(grey); h, w = grey.shape[:2]
     p2 = lambda n: n > 0 and n & (n - 1) == 0
     if not (fastdxt.ON and not fastdxt.CHECK and grey.dtype == np.uint8 and grey.ndim == 3 and grey.shape[2] == 3 and p2(h) and p2(w)): return _make_texture_levels(tpl, new_id, grey, hole)
@@ -1348,10 +1366,11 @@ def _make_texture_levels(tpl, new_id, grey, hole):
     """(make_texture's numpy loop from the picture after vivid on)"""
     h, w = grey.shape[:2]; d = bytearray(tpl.data[:48 + 124]); mips = []; g = grey.astype(np.float32)
     while True:
-        hh, ww = g.shape[:2]; pad = np.zeros((max(4, hh), max(4, ww), 3), np.float32); pad[:hh, :ww] = g
+        hh, ww = g.shape[:2]; pad = np.pad(g, ((0, (-hh) % 4), (0, (-ww) % 4), (0, 0)), mode="edge")
         if hh < 4: pad[hh:, :] = pad[hh - 1:hh, :]
         if ww < 4: pad[:, ww:] = pad[:, ww - 1:ww]
-        mips.append(dxt1_rgb(np.clip(pad, 0, 255).astype(np.uint8), hole if (not mips and hole is not None and hole.shape == pad.shape[:2]) else None))
+        mask = np.pad(hole, ((0, (-hh) % 4), (0, (-ww) % 4)), mode='edge') if not mips and hole is not None and hole.shape == (hh, ww) else None
+        mips.append(dxt1_rgb(np.clip(pad, 0, 255).astype(np.uint8), mask))
         if hh == 1 and ww == 1: break
         g = g[:max(1, hh // 2) * 2 if hh > 1 else 1, :max(1, ww // 2) * 2 if ww > 1 else 1]
         if hh > 1: g = (g[0::2] + g[1::2]) / 2
@@ -1451,9 +1470,13 @@ def add_scenery(f, sta_gfx, faces, mode, lv, trees=False, rd=None):
             un_ = UNLIT_TPL is not None and key in UNLIT            # checkpoint / finish gates: SEGA's own UNLIT material (Desert4 47948b52: alpha test, two-sided, shadow casting, no lighting), so no light experiment and no shade dulls them (user, 2026-10-08)
             if un_: grey = np.clip(np.asarray(grey, np.float32) * UNLIT_GAIN, 0, 255).astype(np.uint8)
             _NO_GAIN[0] = bool(un_)
-            if un_ and GATE_SHARP > 1:                              # the gates' pictures are small (CHECK POINT = 256 x 64 over 10 or 20 m): filtered and block-compressed at that size the letters came out soft and blotchy
-                if hole is not None and hole.shape == np.asarray(grey).shape[:2]: hole = np.repeat(np.repeat(hole, GATE_SHARP, 0), GATE_SHARP, 1)      # (user, 2026-10-08: "our checkpoint resolution is lower"). Each texel written as a block of 4 x 4:
-                grey = np.repeat(np.repeat(np.asarray(grey), GATE_SHARP, 0), GATE_SHARP, 1)                                                              # sharp edges, and the 4 x 4 compression blocks hold one colour each
+            # The legacy 4x nearest-neighbour gate boost is for SD signs only.
+            # Authored HD signs already have the detail; never multiply them into 4K/8K textures.
+            gate_sharp = min(GATE_SHARP, max(1, 1024 // max(grey.shape[:2]))) if un_ else 1
+            if gate_sharp > 1:
+                if hole is not None and hole.shape == grey.shape[:2]:
+                    hole = np.repeat(np.repeat(hole, gate_sharp, 0), gate_sharp, 1)
+                grey = np.repeat(np.repeat(np.asarray(grey), gate_sharp, 0), gate_sharp, 1)
             dbl_ = three_ and mode == 'classic' and hole is None and not un_      # seen from both sides (lightside.py, material key '|3'): written once per side, single-sided, each side with its own normal
             if not dbl_ and three_: both = True                       # (a '|3' that cannot be doubled is drawn two-sided like the rest)
             if bump_of(key) > 0 and hole is None:                    # RELIEF TEST: a normal map made from the tile's own picture; the picture itself brighter (the real sun lights an upright wall weakly)
@@ -1462,7 +1485,7 @@ def add_scenery(f, sta_gfx, faces, mode, lv, trees=False, rd=None):
                 grey = np.clip(g3_.astype(np.float32) * BUMP_GAIN, 0, 255).astype(np.uint8)
             if ROAD_RECIPE and hole is None and str(key) in ROAD_TILES: road_mats.append(mat_id)
             if OWN_SHADER and hole is None and (str(key) in OWN_SHADER or __import__('overlay_bake').ORIGIN.get(str(key), str(key)) in OWN_SHADER): own_mats.append(mat_id)
-            TEXMAP[0xc1a50000 + gi] = dict(tile=str(key), cut=hole is not None, unlit=bool(un_), unlit_gain=float(UNLIT_GAIN), sharp=int(GATE_SHARP if un_ else 1), vivid=list(VIVID) if VIVID else None,
+            TEXMAP[0xc1a50000 + gi] = dict(tile=str(key), cut=hole is not None, unlit=bool(un_), unlit_gain=float(UNLIT_GAIN), sharp=int(gate_sharp), vivid=list(VIVID) if VIVID else None,
                                            gain=None if (un_ or SCENE_GAIN is None) else [float(q) for q in np.asarray(SCENE_GAIN, float).ravel()])
             if hole is not None:                                          # cut-out: DXT5 alpha + alpha-tested two-sided material
                 if hole.shape == grey.shape[:2] and (~hole).any():        # see-through texels take the picture's mean colour: no dark fringe when the texture is filtered

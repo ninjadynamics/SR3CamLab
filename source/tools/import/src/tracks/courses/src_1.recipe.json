@@ -37,11 +37,15 @@
       "sign",
       "tree",
       "crown"
-    ]
+    ],
+    "finish_banner_clearance": 0.05
   },
   "round": {
     "round": 4,
-    "round_slide": false
+    "round_slide": false,
+    "round_crease": 80,
+    "round_tol": 2,
+    "round_cap": 1.5
   },
   "build": {
     "light_split": 0.72

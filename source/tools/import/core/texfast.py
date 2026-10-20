@@ -53,6 +53,8 @@ def refresh(slot_dir, log=print, force=False):
     changed = {n for n in set(now) | set(was) if now.get(n, '') != was.get(n, '')}                 # saved again, added or taken away since this track's pictures were written
     changed = {n for n in changed if BC.hd_tile(n) is not None or n in was}                         # (an untouched copy of the original is no change)
     if not changed and not force: return 0
+    if M.get('engine_compaction'):
+        raise RuntimeError('This slot uses shared texture IDs. Rebuild with the coverage_updater and engine packing step recorded in texmap.json before installing changes.')
     pix = Pix(BC, OB, M['recipes']); done = 0; t0 = time.time()
     for part, fn in FILES.items():
         todo = {int(k): v for k, v in M.get(part, {}).items() if force or (pix.base(v['tile']) & changed)}
