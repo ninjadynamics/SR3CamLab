@@ -1,0 +1,57 @@
+{
+  "note": "Mountain R4 Low: accepted v20 geometry/art and R4B, sun elevation 48 degrees at unchanged azimuth; isolated alternative, 2026-10-21.",
+  "common": {
+    "light_contrast": 0.01,
+    "light_dir": [
+      0.0,
+      -7.428475080718247,
+      6.688629005644433
+    ],
+    "scene_gain": [
+      0.7065,
+      0.7135,
+      0.7425
+    ],
+    "fill": false,
+    "handfill": false,
+    "handmodel": false,
+    "roofs": false,
+    "seal": false,
+    "verge": false,
+    "lower_trees": false,
+    "unsmear": false,
+    "mirror_groups": [],
+    "road_verbatim": true,
+    "road_under": 0.0,
+    "surface_default": "tarmac",
+    "lit_sides": false,
+    "seen_sides": true,
+    "stitch": true,
+    "lm_cutouts": [
+      "tex_s1_x0960_y0576_64x128_c10D_t",
+      "tex_s1_x0960_y0576_64x128_c10F_t"
+    ],
+    "patch": true,
+    "patch_clean": true,
+    "flat_lit_classes": [
+      "sign",
+      "tree",
+      "crown"
+    ],
+    "finish_banner_clearance": 0.05
+  },
+  "round": {
+    "round": 4,
+    "round_slide": false,
+    "round_crease": 80,
+    "round_tol": 2,
+    "round_cap": 1.5
+  },
+  "build": {
+    "light_split": 0.72
+  },
+  "bake": {
+    "quality": "slow",
+    "compose": 0.34
+  }
+}

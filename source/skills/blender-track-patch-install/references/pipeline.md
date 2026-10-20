@@ -55,7 +55,7 @@ Current stack entrypoint:
 python source/tools/import/stack.py src 1 --steps light,rt,build --name <unique-run> --threads <workers>
 ```
 
-Configure `SR3_SETTINGS` with the isolated `work_root`, correct game/content roots, ROM source and tool paths. The v20 wrapper also redirects `common.courses_dir` to the staged courses, maps the already extracted ROM source/texture data, and wraps child Python calls so they inherit those overrides. Merely redirecting the top-level process does not isolate children that import `common` again. Reuse or adapt the demonstrated wrapper rather than changing global settings in place.
+Configure `SR3_SETTINGS` with the isolated `work_root`, correct game/content roots, ROM source and tool paths. The v20 wrapper also redirects `common.courses_dir` to the staged courses, maps the already extracted ROM source/texture data, and wraps child Python calls so they inherit those overrides. Merely redirecting the top-level process does not isolate children that import `common` again. Reuse or adapt the demonstrated wrapper rather than changing global settings in place. Also seed the complete verified extracted-ROM cache in the isolated `build/tmp/m2`: `crowd.py` resolves its own path there, independently of an `i960.M2` override. An unseeded Low run stopped before RT because its `maincpu.bin` was absent; copying the accepted extracted cache fixed preparation without changing the installed game.
 
 Example retained wrapper and logs: `work/research/mountain-v20-r4b-20261021/{run.py,driver.py,settings.json}`. Their v20 paths and identifiers are examples, not a generic turnkey installer. Copy to a new run, replace explicit identifiers and validate every destination before execution. Never rerun the v20 install script against a new build unchanged.
 
@@ -134,3 +134,12 @@ The owner accepted v20 in game on 2026-10-21. Canonical source: 86,838 triangles
 - `source/skills/blender-uv-retexture/`: UV density and repeat seams.
 - `source/skills/faithful-texture-upscaling/`: faithful art and HD consumer validation.
 - `source/skills/facade-relief-mapping/`: reviewed semantic height maps.
+
+
+### Installed 48-degree lighting alternative
+
+The maintained alternative recipe is `source/tools/import/src/tracks/courses/src_1.low.recipe.json`. Copy it to the isolated run's `src_1.recipe.json`; the normal recipe remains the accepted high-sun R4. This is a complete v20 recipe snapshot, so when advancing geometry/configuration compare it with the new accepted recipe and carry forward only its intended sun override.
+
+The 2026-10-21 run `work/research/mountain-r4-low-20261021/` records the exact installation and final validation. It occupies `Main_release/track2/Desert4`, title **Mountain R4 Low**, alongside the unchanged **Mountain R4** in track1. Both native lighting sets and the RT collect use 48 degrees at the old azimuth. The pre-R4 dump matches accepted v20 byte-for-byte. Final positions, UVs, topology, groups and bounds also match; lighting normals and their derived tangents intentionally change. All 22 lightmap pages were freshly extracted. The main relief-page pins/receipt and original shader/YAML remain intact; the alternative contains the same reviewed family gains/exclusions at installation and shares the global +/- shader control. Its family-map payload is a separate installed snapshot; the existing main-slot relief page does not automatically rebuild this alternative when family gains change.
+
+Do not demand whole mesh-chunk equality after changing the sun. `build_classic.py` encodes target brightness into vertex normals against the actual light vector and derives tangents from those normals. Verify every byte outside those known fields instead: position/UV/index data, headers, bounds and reference/fixup tables must remain identical. In this run, 570 scenery meshes changed normals and 509 changed tangents. Legacy object mesh `0x4ec27d47` has three LOD headers and 36-byte vertices; only the normal fields of LODs 1 and 2 changed. Inspect all LOD headers rather than assuming the first vertex array covers the whole chunk. Never restore old normals just to pass a byte comparison under a different sun.
