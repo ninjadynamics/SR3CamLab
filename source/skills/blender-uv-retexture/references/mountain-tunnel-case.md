@@ -32,3 +32,11 @@ Overhead and opposing oblique textured views confirmed the crown and side flow. 
 - A tool timeout did not mean the backup/export failed; files existed and had to be checked before retrying.
 - NumPy pickle compatibility caused an avoidable transfer issue; plain Python numeric payloads resolved it.
 - Overlays were disabled for the preview and accidentally saved that way. After reopening v19, the user could not see face-selection feedback. Restoring Show Overlays fixed the viewport state. Deliver future files ready for editing.
+
+## Follow-up: repeating edges and geometric wedges
+
+The later in-game v19 inspection exposed a visible repeat boundary in the otherwise coherent mapping. UV density/anisotropy checks did not establish tileability. v20 uses alternating reflected cells on the existing rock image. Each triangle is clipped at integer U/V boundaries first; reflecting only vertex UVs on an unsplit triangle would stretch or collapse the interpolation. The operation retains feature scale and all outside-scope mappings. The reviewed 2,231 source triangles become 3,253 triangles after the repeat splits.
+
+RT also revealed physical corrugated strips in the source mesh. Those required a separately authorized bounded geometry repair; UV changes alone cannot remove a geometric shadow caster. Do not describe a combined shape-and-UV operation as UV-only. Preserve the accepted v19 source and provide a new version, with displacement measurements and protected-road checks.
+
+When checking a normal/parallax renderer, remember that mirrored coordinates also mirror the tangent frame. Inspect decoded diffuse and relief behavior at seams; matching border colors alone is insufficient for directional materials. Current v20 has offline checks; gameplay confirmation is a separate step.

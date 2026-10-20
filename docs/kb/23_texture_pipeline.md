@@ -140,3 +140,9 @@ After the authored-label lighting repair described in [17](17_mountain_build_not
 Do not call duplicate consolidation “atlas packing”: no sampled texture layout or artwork resolution was changed by merging identical chunks. Each alias must retain source identity, canonical texture ID, and all explicit reference rewrites. A later differing edit must rebuild from the unshared semantic stage before compaction. The current direct fast updater deliberately refuses compacted slots to prevent partial or cross-aliased updates.
 
 For future budgets, sum all relevant **unpacked** track files, mip chains and expected runtime allocations; do not compare compressed disk bytes or only `master_gfx` against the track heap. The approximately 96.88 MiB difference between the final seven files and 384 MiB is not a measurement of total runtime peak headroom. Power-of-two/mip checks and memory checks solve different problems; both are required.
+
+### 2026-10-21: apparent alpha failure was contaminated opaque ivy RGB
+
+v20 repairs two palette variants of `tex_s1_x1664_y0000_256x256_*_t.png`. Camera/UV probes traced the black/green artifacts to gray atlas gutter and abnormal colored pixels with alpha=255. The correction changes a 1.927% RGB mask, preserves alpha exactly and rebuilds composed cliff recipes before compaction. Do not erase black pixels or change alpha to fix an unverified "transparency" diagnosis. See [v20 build evidence](17_mountain_build_notes.md#2026-10-21--v20-tunnel-tree-and-ivy-repairs).
+
+For native relief builds, install the updated clean track and texmap into `work/pom-native-inputs`, refresh its pins and the reviewed-family manifest, and update the native receipt/baseline transactionally. Otherwise the settings page can restore stale geometry. The shader library, approved scalar maps, YAML gains and runtime binaries remain unchanged by this visual repair.

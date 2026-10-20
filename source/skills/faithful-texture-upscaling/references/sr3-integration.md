@@ -87,3 +87,15 @@ For an actual project update, prefer current maintained sources and KB over copy
 - `source/tools/import/core/build_classic.py`, `buildpixels.py`, `texfast.py`, `course.py`, `stack.py`, `rtbake/rt_bake_game5.py` and `source/standalone/runtime.c`: current implementation.
 
 Preserve accepted handling, watchdog OFF and the user's launch/test preferences during texture work. Do not start a live game or a rebake merely because this skill has been read.
+
+## v20: opaque ivy contamination and durable relief-page inputs
+
+The October 20 screenshots showed black rectangles with bright green/pink fragments on ivy-covered cliffs. Exact camera/UV probes traced them through `bake_9fff0b0a` / `bake_b0c14c6b` to `tex_s1_x1664_y0000_256x256_c1A6_t.png` and its c1D6 palette sibling. The affected source pixels were opaque; alpha coverage had not been lost. Gray extraction gutter and abnormal colored fragments had entered the accepted HD art.
+
+The authorized deterministic repair restores only the contaminated RGB mask plus its small halo from corresponding alpha-normalized SD samples. It changes 11,366 pixels (about 1.927%) per 768-square image, preserves alpha byte-for-byte, and leaves all other HD pixels unchanged. These mask colors/tolerances belong to this diagnosis; they are not a rule to erase gray, green, or dark pixels from another asset. Rebuild all overlay consumers from the repaired unshared source, then deduplicate/pack and inspect the decoded consumer at the original UV.
+
+The v20 stage retains all 178 source images, rebuilds facade/overlay/sky consumers, and extracts 22 RT lightmaps. After native relief integration the seven SBFs total about 323.07 MiB before compression under the separately established 384 MiB arena. Neither a passing PNG test nor the compressed disk size establishes this budget.
+
+Native POM settings remain in `config/mountain-pom-depth.yaml`. `stage_pom_wide.py --hd-dir ... --review-export ...` permits verified isolated build inputs; hashes remain mandatory. Source edits do not authorize changing approved heights/depth gains. After installation, refresh `work/pom-native-inputs/clean-rt.sbf`, its `review-track/` files, `pins.json`, and the YAML-referenced reviewed-family manifest. Keep the original clean shader library. Also update `pom-native-install.json` and accepted-baseline hashes transactionally. This prevents the Mountain relief page from reapplying the previous track when only a slider changes.
+
+The accepted smooth runtime is a separate invariant. The user confirmed smooth gameplay before visual work; preserve its binary, affinity/settings, native shader code, global depth and exceptions. Do not launch the game when the user has reserved testing for later. Offline material/geometry/alpha checks do not constitute an in-game play test.

@@ -20,18 +20,18 @@ sha=lambda p:hashlib.sha256(Path(p).read_bytes()).hexdigest()
 family=lambda n:re.sub(r'_c[0-9A-Fa-f]+(?:_t)?(?:_dk)?$','',n)
 
 def main():
- ap=argparse.ArgumentParser();ap.add_argument('--workspace',type=Path,required=True);ap.add_argument('--out',type=Path,required=True);ap.add_argument('--base-main',type=Path);ap.add_argument('--track-dir',type=Path,help='Verified staged track folder, including its texmap.json; defaults to installed track');ap.add_argument('--fresh-facades',action='store_true');ap.add_argument('--tuning',type=Path);a=ap.parse_args()
+ ap=argparse.ArgumentParser();ap.add_argument('--workspace',type=Path,required=True);ap.add_argument('--out',type=Path,required=True);ap.add_argument('--base-main',type=Path);ap.add_argument('--track-dir',type=Path,help='Verified staged track folder, including its texmap.json; defaults to installed track');ap.add_argument('--fresh-facades',action='store_true');ap.add_argument('--tuning',type=Path);ap.add_argument('--hd-dir',type=Path,help='Verified HD inputs for an isolated new track build');ap.add_argument('--review-export',type=Path,help='Matching reviewed-family manifest for an isolated new track build');a=ap.parse_args()
  r=a.workspace.resolve();out=a.out.resolve();track=a.track_dir.resolve() if a.track_dir else r/'game/Rally/Main_release/track1/Desert4'
  assert (track/'texmap.json').is_file() and track.is_dir(),'Track metadata required'
  assert r in out.parents and 'scratchpad' in out.parts and not out.exists(),'New scratchpad stage required'
  out.mkdir(parents=True);(out/'maps').mkdir();(out/'review').mkdir()
- hd=r/'content/classic/courses/src/course1_mountain/textures_hd';sd=hd.with_name('textures')
+ sd=r/'content/classic/courses/src/course1_mountain/textures';hd=a.hd_dir.resolve() if a.hd_dir else sd.with_name('textures_hd')
  tune={};gains={};height_dir=None;excluded_variants=set()
  if a.tuning:
   from pom_native_config import load as load_tuning
   config=load_tuning(a.tuning);gains=config['families']
   excluded_variants=set(config['excluded_variants'])
-  export=json.loads((r/config['review_export']).read_text());height_dir=r/config['height_directory']
+  export=json.loads((a.review_export or r/config['review_export']).read_text());height_dir=r/config['height_directory']
   assert sha(track/'desert4_master_gfx_xdata.sbf')==export['main_sha256']
   for row in export['families']:
    for name,h in row['source_hashes'].items():assert sha(hd/name)==h,('Changed source',name)

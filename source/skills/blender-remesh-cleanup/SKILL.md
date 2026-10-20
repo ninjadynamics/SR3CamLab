@@ -12,6 +12,7 @@ Read [the technical procedure](references/remesh-procedure.md) when implementing
 ## Establish the actual starting point
 
 - Inspect the connected Blender's file, active object, mode, visible objects, selection, and unsaved state. The filename alone does not prove that its contents match an earlier snapshot. A user can delete faces and save under the same filename while you work.
+- For an in-game screenshot, read embedded camera/track metadata and ray-test the decoded installed geometry at the marked pixels. Compare source, pre-rounding chain, and packed build from that view; do not diagnose a lighting or texture defect from its shape alone.
 - Capture the current view before moving it. Identify the exact patch using the selected face, annotated image, surface connectivity, and materials. Do not guess scope from a shared texture or from an object named "1995 course"; that object may contain original and replacement geometry together.
 - Snapshot the current geometry and custom data before editing. Preserve manual work in a recoverable file. Compute off-line from that snapshot when practical, then verify the live input still matches before applying results. If it changed, rebase the operation on the new state instead of overwriting it.
 - Declare protected surfaces. For Ultimate Race Lab, the gameplay road is strictly protected; pavement is protected unless explicitly in scope. Do not remove road triangles because an overlap detector flagged them. Keep the castle itself out of island-wall remeshing.
@@ -28,6 +29,8 @@ Read [the technical procedure](references/remesh-procedure.md) when implementing
 ## Join the perimeter deliberately
 
 Use shared vertex indices at genuine existing contacts. Coincident positions alone do not establish connectivity. Where allowed, split adjacent cliff faces on their existing edges, preserving their planes, winding, UVs, and materials. Avoid changing protected road or pavement topology merely to remove a pre-existing T-junction.
+
+For a repaired assembly that disappears after rebuilding, compare its faces at source, after patch application, after overlap cleanup, and after export. Adding the replacement is insufficient when legacy slices remain beneath it and cleanup removes the repair. Remove only the spatially verified legacy assembly before adding the complete replacement; assert thin trunks and other required parts survive. Keep intentional opposite-facing cutout panels distinct from accidental copies.
 
 Classify exposed boundaries before filling anything. A legacy coastline may intentionally have an open perimeter. Compare old and new surface coverage and boundary location; do not turn every free edge into a patch. If the task asks to mark new fills pink, identify those faces separately and preserve their intended production material mapping.
 
@@ -53,6 +56,8 @@ State what was actually verified. "No duplicate replacement triangles" does not 
 ## Acceptance and delivery
 
 Verify geometry and inspect at least the affected region in textured, flat/solid, and wire views. Include a deselected Object Mode view with wire display off to catch stray edges. Inspect perimeter joins and silhouette from oblique angles as well as overhead.
+
+Distinguish a corrected input mesh from an improved rounding algorithm. If R4 parameters and implementation are unchanged, say so. A local fairing operation may reduce baked wedges without proving every coarse feature is gone. Reinspect the rebuilt output.
 
 Report source and output files, old/new target face counts, measured deviation, coverage differences, boundary joins, remaining intentional open boundaries, loose-geometry counts, and protected-surface verification. Distinguish sampled deviations from proven bounds and numeric equality from byte identity.
 

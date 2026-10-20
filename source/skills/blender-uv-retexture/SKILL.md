@@ -22,7 +22,8 @@ Read [mapping-and-validation.md](references/mapping-and-validation.md) for densi
 2. Unwrap a temporary copy of the requested surface. Reconnect imported duplicate seam vertices in the working copy only where they represent the same surface.
 3. Align charts to the original material orientation and normalize their scale uniformly. Choose seams and phase deliberately; avoid independently scaling each face.
 4. Apply only the approved source UV loops. Keep unrelated surfaces and detached objects out of scope.
-5. Verify unchanged geometry, materials, and all UVs outside scope. Inspect overhead and opposing oblique views with the existing textures.
+5. Inspect a tiled preview as well as the single texture. Coherent UVs can still expose discontinuous image borders. For nondirectional natural rock, alternating mirrored repeats is an option when appropriate: split triangles at integer UV boundaries before reflecting each cell so interpolation never crosses a fold. Preserve density, winding, per-corner material identity, and surface coverage. Avoid this treatment for text, directional features, or unreviewed relief-map orientations.
+6. Verify unchanged geometry, materials, and all UVs outside scope. Inspect overhead and opposing oblique views with the existing textures.
 
 Do not promise distortion-free mapping on arbitrary curved surfaces. Balance visible stretching, seams, orientation, and density; inspect outliers rather than trusting averages.
 

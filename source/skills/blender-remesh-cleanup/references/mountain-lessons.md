@@ -39,3 +39,15 @@ Lessons to carry forward:
 4. Reinspect the user's current state before diagnosing; do not treat an earlier screenshot or saved report as live evidence.
 5. Preserve current manual edits. Cleanup snapshots and comparisons must use the current state, not restore a previous face count.
 6. Separate what was checked from what was assumed. When a test missed visible debris, correct the explanation and the acceptance test.
+
+## v20 visual regression repair — 2026-10-21
+
+Screenshot PNGs in `screenshots/` carried `SR3Lab` JSON with eye/forward/up/FOV. The annotations were located on decoded installed triangles, then compared with v19 and the pre-R4 chain. The tunnel's repeated narrow wedges were already geometric before RT. A bounded exterior fairing preserved fixed boundary contacts; the separate gameplay road was excluded. R4 B itself was unchanged. Record that distinction when discussing an "algorithm improvement."
+
+The old v13 tree repair still existed exactly in v19. Rebuilding kept legacy baked slices beneath it; overlap cleanup then dropped eight of its twelve repaired trunk faces. The fix explicitly removes legacy polygons in the two identified tree blade-plane assemblies before the complete replacements are added. The regression check requires 84 faces, including twelve trunk faces, in each assembly at source, after the chain, and after cleanup. These counts and axes are case-specific, not general selection rules.
+
+The local tunnel/ridge edits are shape repairs, not zero-deviation remeshing: measured control-vertex displacement was about 1.0 m at the tunnel and 1.5 m at the narrow ridge, with fixed shared boundaries. The tunnel repeat split increased 2,231 triangles to 3,253 without changing the interpolated mapped surface. Final source cleanup removed 1,161 unused vertices and joined 8,367 new corners only at exact matching positions; original vertices were not globally welded. Surface position/UV/material/winding/shading bytes stayed identical through this index cleanup.
+
+`bl_dump.py` stores arrays as `('nd', dtype, shape, bytes)` for NumPy compatibility. Decode them before measuring or indexing: `len(serialized_array)` is four, not a vertex count. Use `check_build.load_pkl` or an equivalent explicit decoder. Use bulk RNA reads for large equality checks; repeated per-corner RNA access can become needlessly slow.
+
+Offline Blender reconstruction does not automatically reproduce game rendering. In particular, the material's `gbUberDSIDE` switch alone did not reproduce SR3's raster culling in the diagnostic render: applying it as a Blender backface rule created false missing triangles. Separate source/encoded geometry and alpha proofs from renderer approximation. In-game visual acceptance remains pending until the owner tests this build.

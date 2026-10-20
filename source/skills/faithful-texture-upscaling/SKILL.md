@@ -62,6 +62,7 @@ Task authorization may already cover necessary deterministic steps; do not ask r
 ## Finish without losing identity
 
 - Align HD structure with SD at corresponding normalized coordinates, using low-frequency structural evidence and visual confirmation. Validate transforms, not just their correlation score.
+- Diagnose apparent alpha failures by sampling the exact source/composite UV and alpha. An opaque black/neon fragment may be contaminated atlas RGB even when alpha is correct. Do not make dark pixels transparent or change all black colors as a shortcut.
 - Remove atlas gutter/edge contamination. For opaque natural material and with user authorization, a small crop/zoom of the clean HD interior can remove smudged margins. It is unsuitable for clipping lettering, architecture, road markings, or cutout silhouettes.
 - Match source tone/contrast with restrained, spatially uniform transforms. Do not transfer a low-resolution color field into rocks; this can create mottled patches and amplify noise.
 - Preserve cutout shape, holes, and coverage. Inspect alpha against both light and dark backgrounds and after mip/compression. Foreground RGB should extend under transparent edges without adding visible halos.
@@ -74,6 +75,8 @@ Task authorization may already cover necessary deterministic steps; do not ask r
 Build visual SD/HD comparisons at matched display size, with filenames, actual pixel dimensions, and visible image boundaries. Inspect every pair in the delivered/affected set; broader read-only diagnosis does not authorize unrelated edits. Use native-size crops for fine detail and tiled/alpha views for the applicable assets. Log inspected filenames and unresolved issues. Large pages or contact sheets are not evidence of inspection unless they were actually viewed.
 
 Keep annotation identity and ordering stable, including group-level notes and inherited “same as above” context. After a correction, review the modified family and all composed consumers. Do not overwrite later accepted corrections with an older finalization script.
+
+When a configuration page can rebuild installed content, refresh its pinned clean input track and matching recipe/source manifest with the new build. Otherwise a later settings Apply can silently restore old geometry. Preserve approved family depths, exceptions, and height maps; update provenance hashes only after verifying the new inputs. Never bypass mismatch assertions.
 
 If installation is authorized, back up the current live set and metadata, build a complete stage, validate encoded outputs and memory budgets, install while the relevant game is closed, and read back hashes. Diagnose engines with their actual loader rules: valid PNGs or standards-compliant DDS files do not prove the game can load them. Preserve unrelated handling/runtime/settings changes.
 
