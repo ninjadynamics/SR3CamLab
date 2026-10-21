@@ -104,7 +104,7 @@ Static checks: `python tools/import/core/check_classic.py src <N>` reads the bui
 | Desert | 84% (16% is wider than 14 m) | 0.12 m | 46 | matches | < 1.5 m |
 | Lake Side | 100% | 0.05 m | 535 (the 1995 road is narrower than 14 m: banks stand in the SR3 road) | matches | < 1.5 m |
 | Forest | 100% | 0.07 m | 0 | matches | < 0.8 m |
-Walls: the collision corridor follows the SR3 road edges at 7 m, not the classic barriers. Scenery standing inside the
+Walls (original prototype): the collision corridor followed the SR3 road edges at 7 m, not the classic barriers. Mountain now uses variable-width protected road edges and the exact footprint boundary described in 06_boundary_collision.md (2026-10-21). Scenery standing inside the
 road is drawn but has no collision.
 
 ---
@@ -262,3 +262,26 @@ Copy `work\out\step99_daytona_threeseven_desert4\Desert4\` (10 files) to `Main_r
 `{"dir": "<k>", "title": "Daytona: Three Seven Speedway"}` to `tracks\_SR3Extras\classic.json` and write `switch.json`
 again (extras.ps1 `Write-SwitchFile`); in game: first menu, Classic highlighted, View Change until the title shows. Uninstall:
 delete the folder, remove the entry, write `switch.json` again. The course plays the slot's music.
+
+
+## Daytona banking correction (2026-10-21)
+
+The original 30 cm visible/coprocessor height filter produced false outer road
+edges on twisted banked asphalt. The unchanged width algorithm reproduces those
+accepted pinches within 0.000030 m, so they are importer errors rather than a
+car handling problem. The course now overrides only the outer-side comparison:
+`edge_visual_right: 0.4`; inner `edge_visual: 0.3` and `max_left: 25` stay intact.
+The optional override defaults to `None` and is reset for every other course.
+Upright blockers still terminate support at the outer wall. Full-resolution union
+boundaries eliminate the previous four-slice chords and 0.5 m inset.
+
+For the already installed course, use `daytona/tracks/repair_support.py` to stage
+only the physical-support/blob/BSP changes. It preserves existing interior road
+records, route, all drawn geometry and every texture/material chunk. New outer
+heights follow the actual installed rendered asphalt; 144 rows gain support where
+asphalt was already present, with no inner-side changes. Uniform road-page bounds
+are checked and extended only where required. The original full-import
+`road_height_visible` setting remains separate from this targeted installed-file
+repair; its generic height adjustment must not be confused with the width filter.
+Detailed validation, staged hash and installation mapping: `06_boundary_collision.md`,
+Daytona Big Curve section, and `work/research/daytona-boundary-20261021/`.

@@ -150,7 +150,7 @@ def stage_build(cfg, variant, name):
     BC.LM_TERRAIN_CUTOUTS = set()
     BC.STITCH = bool(cfg.get('stitch', False)); BC.LM_CUTOUTS = set(cfg.get('lm_cutouts', ())); BC.CAR_SHADE = cfg.get('car_shade'); BC.CAR_SHADE_DUMP = cfg.get('car_shade_dump'); BC.ROAD_VERBATIM = variant == 'classic' and bool(cfg.get('road_verbatim', False)); BC.ROAD_UNDER = float(cfg.get('road_under', -0.02)); BC.SURF_DEFAULT = cfg.get('surface_default', 'gravel'); BC.ROAD_CUT = bool(cfg.get('road_cut', False)); BC.ROAD_RECIPE = cfg.get('road_recipe', False)
     BC.VARIABLE = variant == 'classic' and cfg.get('variable_width', True)        # mixed / allsr3 (frozen lane) keep the constant 14 m road
-    BC.Y_SLOPE = float(cfg.get('road_height_slope', 0.35)); BC.EDGE_VISUAL = cfg.get('edge_visual'); BC.SURF_TILES = dict(cfg.get('surface_tiles', {})); BC.MAX_HALF_WIDTH = int(cfg.get('max_half_width', 16)); BC.CHECKER_ALPHA = int(cfg.get('checker_alpha', 128)); BC.MAX_SIDE[:] = [cfg.get('max_left'), cfg.get('max_right')]; BC.RESOLVE_ROUNDS = int(cfg.get('resolve_rounds', 10)); BC.Y_VISIBLE = (None if cfg.get('road_height_visible') is None else float(cfg['road_height_visible'])); BC.ATLAS = bool(cfg.get('atlas', False))
+    BC.Y_SLOPE = float(cfg.get('road_height_slope', 0.35)); BC.EDGE_VISUAL = cfg.get('edge_visual'); BC.EDGE_VISUAL_RIGHT = cfg.get('edge_visual_right'); BC.SURF_TILES = dict(cfg.get('surface_tiles', {})); BC.MAX_HALF_WIDTH = int(cfg.get('max_half_width', 16)); BC.CHECKER_ALPHA = int(cfg.get('checker_alpha', 128)); BC.MAX_SIDE[:] = [cfg.get('max_left'), cfg.get('max_right')]; BC.RESOLVE_ROUNDS = int(cfg.get('resolve_rounds', 10)); BC.Y_VISIBLE = (None if cfg.get('road_height_visible') is None else float(cfg['road_height_visible'])); BC.ATLAS = bool(cfg.get('atlas', False))
     if 'coplanar' in cfg: __import__('overlay_bake').COPLANAR = float(cfg['coplanar'])     # course setting coplanar (m): faces this close to each other's plane are resolved IN the plane (composed tiles) instead of being moved apart. Daytona: its tyre marks lie 5 cm over the asphalt      # (build_classic, next to the defaults)
     __import__('overlay_bake').ON_SURFACE = bool(cfg.get('resolve_on_surface', False))      # course setting resolve_on_surface: the resolver's pieces of a twisted face stay on its drawn surface (overlay_bake._on_surface)
     log('importing road'); rd = BC.import_road(); log(name)
@@ -179,7 +179,7 @@ def stage_build(cfg, variant, name):
             for cid in ids:
                 if cid not in have: c = src[cid].copy(); c.gap = None; f.chunks.insert(0, c); have.add(cid)
         log('       road layers: tarmac %s %08x + %08x, loose %s %08x + %08x' % (A3.ROAD_TARMAC + A3.ROAD_DIRT))
-    BM.add_walls(f, BT.td_rows(model), surf, wi, fi, terrain=True)
+    BM.add_walls(f, BT.td_rows(model), surf, wi, fi, terrain=True, every=cfg.get('boundary_step', 4), inset=float(cfg.get('boundary_inset', 0.5)), footprint_boundary=bool(cfg.get('boundary_union',False)))
     bake = variant == 'classic' and cfg.get('overlays', 'bake') == 'bake'      # course JSON "overlays": "bake" (default) | "lift" (the old 2 / 4 cm offsets)
     BC.OVERLAY_MODE = 'bake' if bake else 'lift'; BC.FAR_MODE = 'view' if bake else 'near'; BC.BAKED.clear(); BC._TILES.clear(); BC.TEX_OF.clear()
     BC.BAKE_DIR = os.path.join(WORK, 'tmp', 'bake_%s_%s' % (cfg['game'], cfg['name']) + ('_' + PRIVATE[0] if PRIVATE[0] else ''))

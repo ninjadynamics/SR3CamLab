@@ -25,6 +25,8 @@ Verify the correct Blender instance/file before using live MCP. Prefer a backgro
 
 The gameplay road is protected. Compare the separate road object and gameplay payload against the accepted baseline. Include collision/checkpoint data, handling, and banner placement in the preservation checks relevant to the build.
 
+For an authorized collision-boundary repair, preserve the gameplay road byte-for-byte and allow only the identified boundary chunk to change. Check the serialized boundary against both edges and the supported road footprint; centre-line probes alone miss inward offsets and barriers formed by folded edges. See the reference for the Mountain boundary repair and its residual visual gap.
+
 Use the current CPU budget, including inherited affinity for child processes when responsiveness matters. This project's latest heavy-build preference is all logical processors minus two; earlier requests for “all cores” meant minus one. Resolve against current instructions and machine topology. Serial stages need not reach 100% utilization.
 
 ## Extract the complete patch

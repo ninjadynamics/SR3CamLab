@@ -70,7 +70,7 @@ def main(game, crs, variant='classic'):
     PN.TRACKS = OUT; P, M, _ = PN.read(os.path.join(name, 'Desert4')); sp = [m['start'] for m in M if (m['a'], m['b']) == (0, 5)]; nt = [m['start'] for m in M if m['props']]
     say(sp == sorted(sp) and all(0 <= v < 1 for v in sp), '%d sector splits in order at lap fractions %s' % (len(sp), [round(v, 3) for v in sp]))
     say(nt == sorted(nt), '%d pace notes, in order' % len(nt))
-    say(r.u32(0x34) != 0 and r.u32(8) != 0, 'boundary BSP present (corridor 0.5 m inside both SR3 road edges)')
+    say(r.u32(0x34) != 0 and r.u32(8) != 0, 'boundary BSP present (see recipe boundary_step / boundary_inset for road-edge alignment)')
     print('RESULT', 'no warnings' if ok else 'see WARN lines'); return ok
 
 if __name__ == '__main__':

@@ -108,7 +108,13 @@ def audit_materials(workspace, track_path, config, report_path, texmap_path):
     return {"active_materials": len(active), "excluded_materials": len(disabled),
             "excluded_material_ids": disabled, "families": len(config["families"])}
 
-def verify(workspace):
+def verify(workspace, verified_files=None):
+    """Check YAML/receipt; reuse only hashes computed by this same launch.
+
+    The optional map is internal launcher input, never a disk/mtime cache.
+    Standalone callers still hash every receipt file, and missing map entries
+    fall back to a full content hash. Every digest is compared to the receipt.
+    """
     r = Path(workspace)
     config = load(r / "config/mountain-pom-depth.yaml")
     receipt = json.loads((r / "config/pom-native-install.json").read_text())
@@ -116,7 +122,11 @@ def verify(workspace):
         "POM family values/exceptions changed. Restage maps with stage_pom_wide --tuning, "
         "then integrate_pom_library; installed maps must match YAML.")
     for name, value in receipt["files"].items():
-        assert sha(r / "game/Rally" / name) == value, f"Native POM file changed: {name}"
+        actual = (verified_files or {}).get(name)
+        if actual is None:
+            actual = sha(r / "game/Rally" / name)
+        assert isinstance(actual, str) and re.fullmatch(r"[0-9a-fA-F]{64}", actual), "Invalid launch digest"
+        assert actual.lower() == value.lower(), f"Native POM file changed: {name}"
     print(f"PASS native POM YAML: {len(config['families'])} families, exclusions match; "
           f"startup {config['global_depth_initial']}x, live tuner {config['live_tuner']}. No game launched.")
 

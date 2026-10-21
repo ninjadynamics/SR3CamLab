@@ -421,3 +421,153 @@ Only standalone modded/Rally/Main_release/car1 was installed, with hash-verified
 No runtime/plugin or stock/Realism files changed; SRC port remains disabled, force model stays 2. Owner driving validation
 of this candidate remains pending. TEST-STEERING.ps1 records the next lap; restore-yaw.ps1 accepts the backup directory
 and refuses to overwrite files changed since the candidate installation.
+
+
+## SRC opponent power mismatch (2026-10-21)
+
+The owner accepted the current SRC player handling, but reported that the Lancia
+opponent had excessive acceleration/top speed. The old race-wide native profile
+contains a 2.5x torque multiplier. The accepted player now uses the separate SRC
+planar drivetrain; the opponent's Tyre_AI_Rally branch keeps native SR3 power,
+including native catch-up torque and gearing. Sharing the same car1 files therefore
+no longer guarantees equivalent propulsion. Do not weaken the approved player to
+compensate for this mismatch.
+
+The common car-object vtable 0x6ED0C8 does NOT identify a human. `player_driver()`
+in the legacy bridge scans that class for several records; the Tyre_Road guard
+prevents the AI's SRC rewrite. Proven controller identity is `[record+0x300]`,
+with controller+4 and car+0x7E4 pointing back to the record:
+
+| Controller role | Vtable | Meaning |
+| --- | --- | --- |
+| 1 | 0x6ED488 | Local hardware input |
+| 2 | 0x6ED158 | Offline AI |
+| 3 | 0x6ED49C | Local network human |
+| 4 | 0x6ED49C | Locally simulated network AI |
+| 5/6/7 | varies | Remote/playback; excluded |
+
+`src_ai_pace.h` brackets only the fresh native CVehicle step for proven local AI,
+with active-race/SRC gates and a positively identified local human using four
+Tyre_Road wheels. The existing race-wide flavor synchronization supplies SRC
+files to the opponent too. Unknown vehicle/controller/engine/gearbox ownership,
+native SR3 handling, observation/disabled mode, reverse, and cached-force replay
+are excluded. No guessed record field is used as a handling-folder identifier.
+
+Native update 0x5EA08F repeatedly writes engine peak from car+0x8700 multiplied by
+1+car+0x86FC, so a one-time patch would be overwritten. During a fresh native step
+the adapter temporarily uses min(current peak, original cached peak) times 0.4:
+this removes the old SRC 2.5x file boost and positive native catch-up power, while
+retaining negative AI pacing. It also cancels positive catch-up overdrive by
+temporarily raising gearbox+0x28 to at least 1. Both fields are restored exactly
+after native force calculation; native steering, brakes, path choice, contact and
+position integration remain responsible for AI motion. Replay consumes the
+native corrected force cache once, without rescaling it.
+
+An initial fairness setting smoothly tapers positive engine power between 195
+and 205 km/h, close to the approved player's approximately 204.92 km/h level-road
+fixture equilibrium. This is not a body-velocity clamp: inertia and downhill
+motion can exceed it. It is a starting balance setting requiring an owner race,
+not a claim of equal lap times or a full AI physics port.
+
+Offline checks exercise the compiled role/profile guards, exact raw restoration,
+actual native fresh engine/gear calculation and cached-force replay, plus the
+combined candidate wrapper. The full player/collision regressions remain required.
+Combined build evidence: `work/research/src-contact-repair-20261021/final-build/`.
+No game was launched during this change.
+
+
+### Owner retest and bounded opponent diagnostics (2026-10-21)
+
+The owner accepted the player steering and low-speed wall response, but reported
+that the Lancia still accelerates/drives too fast, apparently unchanged. Do not
+record the earlier opponent adapter as an accepted fix. The latest run
+`scratchpad/runs/steering/20261021-111501-37b051` proves that candidate blob
+`881dd7ee10c51b1897d6a8cc15467fe037ea78727568fcb76354ed010f06ac74`
+was installed, but its recording contains player telemetry rather than AI force
+telemetry. All 4,255 recorded player samples above 20 km/h meet the local SRC tyre
+gate. Static inspection also confirms the controller/vehicle ownership offsets;
+no failed live guard has yet been demonstrated.
+
+The new build adds a bounded 444-byte diagnostics block and one read each second
+in the existing recorder. It records calls, rejected guards, controller roles,
+native classes, original/limited engine power, speed, and native engine and drive
+torque. The next ordinary SRC race writes these to
+`scratchpad/runs/steering/<run>/candidate.ai.jsonl`. There is no additional hook,
+UI overlay, input injection or per-frame file I/O. Player control, wall response,
+engine curve and the existing AI pace constants are unchanged. Unknown objects
+still fail closed. This is diagnosis, not another claimed pace correction.
+
+Validation: 161 AI adapter/native-engine checks and 36 accepted-player checks
+pass. A separate comparison of 4,200 straight/turning samples at 30/60/120 Hz is
+exactly equal to the installed accepted player. The native-engine fixture stops
+at 0x44F608: it proves engine/cache behavior, not the complete downstream AI tyre
+and propulsion path. Use the next real-race diagnostic to determine whether the
+adapter is skipped or another propulsion path bypasses the reduced torque before
+changing further pace values. Evidence and staged candidate:
+`work/research/startup-daytona-install-20261021/`.
+
+
+### Actual SRC opponent speed envelope (2026-10-21)
+
+Owner completed a full SRC race and still reported the Lancia too fast; startup
+was accepted with no blue screen, and Daytona remains untested. The recorded run
+`scratchpad/runs/steering/20261021-122852-3f4b46` proves the AI correction was
+active: role 4, valid object links, 15,185 applied fresh calls. The Lancia reached
+245.899 km/h while its temporary engine peak was zero. Do not call this a failed
+ownership gate or keep reducing the same power scalar. Native engine+0x1C is
+combustion **plus clutch feedback**, not an isolated propulsion measurement.
+The complete downstream source of that speed was not conclusively isolated.
+
+A definite adapter inconsistency was found: 0x467DF2 reads gearbox+0x28 inside
+the constraint solver on both fresh and cached-force replay passes. The earlier
+adapter raised that value only for the fresh pass. All gearbox writes have now
+been removed; native gearing is consistent across prediction/replay. The fresh
+combustion-peak correction is retained, but is no longer treated as sufficient.
+This supersedes the earlier claim that cached-force replay required no further
+opponent correction.
+
+The production wrapper now calls `src_ai_pace_govern()` after the native vehicle
+step. It limits actual forward speed gain for positively identified local AI
+roles 2/4 only when the local human establishes the active SRC profile. It uses
+native SetVelocity 0x45A120, which also updates linear momentum at body+0x158.
+There is no new hook. Human handling, angular velocity, lateral/vertical motion,
+braking/contact speed losses, native SR3, remote/playback, reverse and airborne
+vehicles are excluded/preserved. At least two valid upward contact planes are
+required. The calculation is stateless: collision retries use their incoming
+velocity and cached native timestep, never a stale pre-impact speed or a second
+limiter clock. Source change to the accepted player wrapper is one added call;
+the player planar solver, SRC kernel and suspension equations are unchanged.
+
+The opponent acceleration envelope is deliberately conservative relative to the
+accepted player's level-road fixture. It tends to 200 km/h on level ground,
+allows gravity on slopes, and settles existing overspeed gradually rather than
+snapping velocity to a constant. It never speeds up a slower opponent. This is
+an explicit opponent balance adjustment, not a claim to port original SRC AI
+physics or to establish equal lap times. Owner race acceptance remains pending.
+
+Validation: 161 engine/guard/cache checks, 852 output-envelope checks and all 36
+accepted-player regressions pass. A synthetic independent native drive source
+of 40 m/s^2 is injected after engine calculation: the actual compiled wrapper
+limits its launch to 1.8 s to 100 km/h and reaches ~199.84 km/h at 12 s, across
+30/60/120 Hz and repeated collision passes. The previous installed build fails
+that output regression. These are controlled fixtures, not a full native race.
+All 4,200 accepted-player straight/turning comparison samples are exactly equal.
+
+Diagnostics v2 is 588 bytes, retaining the original 444-byte prefix and appending
+six 24-byte pace records: evaluated/limited counts, incoming/native/output
+forward speeds and acceleration allowance. The reader supports v1 and v2 and
+still reads only once per second. No extra overlay or per-frame file I/O.
+Evidence, staged files and validation: `work/research/src-ai-pace-envelope-20261021/`.
+No game was launched for this work. Preserve accepted startup, timer, wall,
+Mountain R4 Low, shader settings, and untested Daytona boundary installation.
+
+
+### Owner acceptance (2026-10-21)
+
+Bruno tested the installed SRC opponent envelope and confirmed: "it's finally
+fixed". The excessive Lancia acceleration/top-speed issue is accepted as fixed.
+This supersedes the pending owner-validation status above; the installed blob is
+`dd5326fc43b5e531c0495316012c260aa90761b541999c7cb8253518512d640e`.
+Keep the accepted player handling and wall response unchanged. Startup was also
+accepted with the blue screen gone. Daytona's invisible wall is confirmed gone;
+other Daytona track work is explicitly deferred at the owner's request.

@@ -110,3 +110,129 @@ quads it overlaps. Stepped, not sloped like the original chunks. Checks in the b
 - Where the corridor stands for an imported course and what has no collision: 14_importer.md (last lines).
 - Not a collision fault: the crash at 0x5DE16C "when a wheel touches the road" came from missing grass arrays
   (02_track_files.md).
+
+
+## Mountain wall offset repair (2026-10-21)
+
+User evidence: `screenshots/SR3_20261021_085226.png`, car position
+(327.3574, 16.1926, 50.7400), forward (-0.4752, -0.0147, 0.8798).
+This race used native SR3 handling, so the displaced collision wall is separate
+from the SRC handling fixes. The screenshot alone does not prove a particle-emitter bug.
+
+The old importer used `corridor_lines(..., every=4, inset=0.5)`: a wall half a metre
+inside the physical road, connected by chords that skipped three road slices.
+On the rightward ray at the screenshot, the installed BSP was 1.811791 m from the
+car reference point. The first visible vertical stone wall was 2.630698 m away:
+0.818907 m of visible-wall/BSP separation. The native car hull is separate from
+this point ray; do not interpret these as car-body-to-wall clearances.
+
+Mountain's recipes now use `boundary_step: 1`, `boundary_inset: 0.0`, and
+`boundary_union: true`. The boundary follows the outer footprint of the existing
+TrackDeform road triangles. It does not widen or move any road vertex. Raw edge
+polylines fold over themselves at two tight bends: simply increasing their sampling
+still left 13 real classification errors in near-edge probes. `road_footprint.py`
+splits the existing triangle-edge arrangement and keeps only pieces separating
+supported road from outside, avoiding internal collision walls at those folds.
+The union path rejects overlapping road decks separated by more than 1 m instead
+of flattening overpasses. Mountain checked 1,617 such plan-near pairs: no separated
+decks overlapped. Legacy recipes retain their old defaults; rebuilding the installed
+original with those defaults reproduced its 802,092-byte BSP and fixups exactly.
+
+Corrected ray distance: 2.469959 m, leaving 0.160740 m between the protected road edge
+and visible wall. This residual is explicit: do not push the collision wall farther
+out without proving the wheel-contact footprint remains supported. No car hull,
+particle emitter, physics road, rendered wall, texture, shader, or RT lightmap changed.
+The likely particle-position improvement from aligning its collision surface still
+requires an in-game check; no gameplay was launched during this repair.
+
+Validation and reproducibility:
+
+- `rebuild_boundary.py SOURCE STAGED --report REPORT` refuses in-place writes,
+  changes only BSP chunk `b0d1e001`, independently parses/reserializes it, then rereads
+  the staged SBF and checks every other chunk's data, type, fixups, refs and flags.
+- Road `44e94c8c` SHA-256 remains
+  `dd9240f9eda8f669f05f6d9fea83d9f1c041f7f939f981f849b412ee13d9b101`.
+- 52,635 tests against the serialized BSP: both sides of every edge at 2 cm / 10 cm,
+  plus samples across every slice. Zero mismatches against the actual road footprint.
+- 3,510 centre/interior tests free; their below-floor / above-ceiling probes solid.
+- 1,667 non-boundary chunks unchanged in the native-POM game file; 1,523 unchanged
+  in each clean/review source. New BSP has 7,013 wall segments, max/mean search depth
+  37/19.3 (old 29/16.5); performance still needs gameplay confirmation.
+- Seven regression cases include preserving legacy edge sampling, rejecting invalid
+  widening, overlap/fold handling, separated-deck refusal and keeping the C triangle
+  buffer alive after `build_corridor` returns. The returned oracle previously kept
+  only its raw pointer, making post-return checks unreliable after memory reuse.
+- Staging reports and installation mapping: `work/research/collision-boundary-20261021/`.
+  Update BOTH clean/review POM pins, their `pins.json`, and only `main_sha256` in the
+  reviewed-family export. A later relief-page Apply must preserve the corrected BSP.
+  Keep YAML family gains, notes, exceptions and material settings unchanged.
+
+
+## Daytona Big Curve: false support edges (2026-10-21)
+
+The owner reported invisible walls in the middle of the visible banking. This is
+not just the Mountain-style wall inset: Daytona's physical road itself had false
+width pinches. `classic_edges` compared the coprocessor collision mesh with the
+visible asphalt using a 30 cm height tolerance. Different triangulations of
+banked, twisted quads disagree by 31-39 cm in a few places. Those asphalt points
+were mistaken for the outer edge; the 3.5 m minimum width and adjacent-slice width
+limiter spread the resulting pinches along the western curve. Re-running that
+rule on the accepted road reproduces its widths within 0.000030 m.
+
+The reviewed course recipe keeps the inner curb's 30 cm rule and 25 m cap, and
+sets `edge_visual_right: 0.4` for the positive-column/outer side. 40 and 50 cm
+produce the same outer widths; 35 cm still produces false pinches. Upright-wall,
+raised-ground and collision-support checks remain active. `boundary_step: 1`,
+`boundary_inset: 0.0`, `boundary_union: true` then follow the corrected support
+without coarse chords cutting back across it. At slice 1200 the former BSP wall
+was 4.978 m from the reference line and old support ended at 6.000 m; corrected
+support/wall reaches 10.500 m under the asphalt already drawn there. These are
+reference-line distances, not native car-body clearances. The existing conservative
+width walk/rate limiter still leaves approximately 0.6 m to the drawn outer barrier
+at that section; no zero-clearance or particle-emitter fix is claimed.
+
+`source/tools/import/daytona/tracks/repair_support.py SOURCE STAGED --report REPORT`
+is the offline repair for the accepted installed Daytona. It refuses in-place
+writes and requires the 1,548-slice road plus reproduction of the old width
+profile. It extends only the 144 affected outer rows, samples new heights from
+the INSTALLED rendered opaque ground, retains collapsed edge duplicates exactly,
+and keeps all 47,205 strictly interior vertex records and the reference line
+byte-identical. This avoids changing the approved interior surface and AI route.
+It does not redraw, widen or remesh the visible scenery. The only changed chunks
+are road `44e94c8c`, its undeformed blob `8d245f33`, and boundary `b0d1e001`;
+834 other chunks are exact, including all image/material/scenery chunks.
+Road page 12/13 bounds expand only after both referenced images decode as uniform;
+no nonuniform lightmap is remapped and no image pixels change. Maximum native row
+size remains 78 records against the proven 132-record limit (38 quads maximum).
+
+Offline checks of staged SHA-256
+`49f67d08da74ce6903d1f86ba990d9de57aaddbe932e7282556384f5a20438b8`:
+
+- 244,584 supported road samples: 32,342 obstructed by the old wall BSP, zero new.
+- 24,010 supported 4.5 x 1.8 m test rectangles at -30/0/+30 degrees: 2,247 old
+  blocked poses, zero new. Nine support points per pose; not native hull emulation.
+- 23,220 near-edge/across-road classifications: zero mismatches; 1,548 floor,
+  ceiling and center probes pass. 1,973 plan-near pairs contain no separated decks.
+- 6,033 samples on 2,011 nondegenerate changed support triangles match drawn ground
+  within 3.69 cm (99th percentile 2.18 cm); no unsupported probes, page UV overflows
+  or vertical slivers. Seven zero-area triangles are intentional collapsed edges.
+- The banking-aware below/above validation distances include crossfall. This only
+  corrects the validator: rebuilding Mountain's boundary in memory remains byte-
+  and fixup-identical, and its installed file is unchanged.
+- Nine boundary regressions pass, including the false asphalt-edge reproduction
+  and banked floor probes. Live gameplay still requires owner confirmation.
+
+Evidence and image: `work/research/daytona-boundary-20261021/`. Install only the
+`support-stage` candidate, not the earlier boundary-only experiment. Both the
+Classic catalog and switch list refer directly to `track5/Desert4`; there is no
+second Daytona catalog artifact. Keep stock `tracks/Desert4`, Mountain `track1`,
+all route files and both catalog JSON files unchanged. The installation manifest
+records source/staged hashes and the protected files. No game was launched here.
+
+
+### Daytona owner validation (2026-10-21)
+
+Bruno confirmed the invisible wall is no longer present. The installed Big Curve
+collision repair is accepted for that issue. Daytona still needs other track
+work, which the owner explicitly deferred; do not treat this as approval of the
+whole track or start additional Daytona changes automatically.

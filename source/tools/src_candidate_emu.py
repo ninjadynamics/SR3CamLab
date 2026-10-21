@@ -1,14 +1,19 @@
 """Offline integration tests for the test-only SRC bridge. No live process access."""
-import json,math,sys
+import argparse,json,math,sys
 from pathlib import Path
 workspace=Path(__file__).resolve().parents[2]
+arguments=argparse.ArgumentParser()
+arguments.add_argument('--candidate',type=Path)
+arguments.add_argument('--game')
+options=arguments.parse_args()
 candidate=workspace/'content/handling/src-candidate.json'
 if not candidate.exists(): candidate=workspace/'SR3-investigation/steering-response/src-candidate.json'
-meta=json.loads(candidate.read_text())
+meta=json.loads((options.candidate or candidate).read_text())
 # Reuse the existing in-memory SR3 fixture, without executing its legacy tests.
 fixture=(Path(__file__).parent/'srcport_emu.py').read_text().split('npass = nfail = 0')[0]
 fixture=fixture.replace("blob, ENTRY, DATA, RELOCS, CLS = B.build(A.game)","blob, ENTRY, DATA, RELOCS, CLS = bytes.fromhex(meta['code']),meta['entry'],meta['data'],meta['relocs'],meta['surfaces']")
 fixture=fixture.replace('u.mem_map(CAVE, B.ALLOC)','u.mem_map(CAVE, meta["alloc"])')
+fixture=fixture.replace('A = ap.parse_args()', 'A = ap.parse_known_args()[0]')
 exec(compile(fixture,'srcport_emu_fixture','exec'),globals())
 
 def setup(**kwargs):
@@ -130,6 +135,66 @@ for car in (ca,cb):car.set((0,0,30),(0,0,0))
 va,wa=ca.step(.016);vb,wb=cb.step(.016)
 check('Collision retry does not advance committed SRC state',max(abs(x-y) for x,y in zip(va+wa,vb+wb))<1e-6)
 
+# A real capture showed beta +.47032 -> -1.38572 during a contact retry,
+# followed by -1.23588 on the next fresh step. The old adapter adds about
+# 7.47 rad/s of artificial yaw, then applies the same slip discontinuity again.
+# Reproduce those angles on a controlled plane, retaining native input yaw.
+def collision_sample(u,c,beta,yaw=1.1,replay=0,dt=.02,vertical=0.):
+    wu(u,VEH+0x48,replay)
+    c.set((math.sin(beta)*1.4,vertical,math.cos(beta)*1.4),(0,yaw,0))
+    return c.step(dt)
+
+u,c=setup();inputs(c,.6,throttle=0)
+collision_sample(u,c,.47032);collision_sample(u,c,.47032)
+vr,wr=collision_sample(u,c,-1.38572,replay=1);tr=telemetry(u)
+vf,wf0=collision_sample(u,c,-1.23588);tf=telemetry(u)
+check('Contact slip discontinuity adds no reverse yaw kick on retry or next prediction',
+      0<wr[1]<2 and 0<wf0[1]<2 and tr[37]==1 and tf[37]==1)
+# Replaying that fresh prediction must repeat its rebase, although the fresh
+# call already consumed the pending correction in committed time.
+vr2,wr2=collision_sample(u,c,-1.23588,replay=1)
+check('A rebased prediction and identical retry have identical motion',
+      max(abs(x-y) for x,y in zip(vf+wf0,vr2+wr2))<1e-6 and telemetry(u)[37]==1)
+
+# At high callback rates a fresh call can have no cabinet tick. Keep the
+# correction until the first real tick, and consume it exactly once.
+u,c=setup();inputs(c,.6,throttle=0)
+collision_sample(u,c,.47032)
+collision_sample(u,c,.47032,dt=.0001)
+collision_sample(u,c,-1.38572,replay=1,dt=.0001)
+zero_tick=telemetry(u)[30]==0;rebases=[];yaw_at_tick=None
+for i in range(20):
+    vv,ww=collision_sample(u,c,-1.23588,dt=.002)
+    tt=telemetry(u);rebases.append(tt[37])
+    if tt[30] and yaw_at_tick is None:yaw_at_tick=ww[1]
+check('Collision correction survives zero-tick calls and is consumed once',
+      zero_tick and sum(rebases)==1 and yaw_at_tick is not None and 0<yaw_at_tick<2)
+
+# Vertical/pitch/roll changes are native suspension corrections; they must not
+# suppress the approved planar slip damping or start a new collision rebase.
+u,c=setup();inputs(c,.4)
+collision_sample(u,c,.2);collision_sample(u,c,.2)
+wu(u,VEH+0x48,1);c.set((math.sin(.2)*1.4,3.,math.cos(.2)*1.4),(.2,1.1,.3));c.step(.02)
+native_only=telemetry(u)[37]==0
+collision_sample(u,c,.2)
+check('Vertical suspension and pitch/roll retries do not rebase planar slip',native_only and telemetry(u)[37]==0)
+
+u,c=setup();inputs(c,.4)
+collision_sample(u,c,.47032);collision_sample(u,c,.47032)
+collision_sample(u,c,-1.38572,replay=1)
+wu(u,0x7ECE10,0);collision_sample(u,c,-1.23588)
+wu(u,0x7ECE10,0x27);collision_sample(u,c,-1.23588)
+check('Leaving race state clears a pending collision correction',telemetry(u)[37]==0)
+
+# A retry that becomes native backwards motion must invalidate the old SRC
+# slip history before the next forward prediction resumes the bridge.
+u,c=setup();inputs(c,.6,throttle=0)
+collision_sample(u,c,.47032);collision_sample(u,c,.47032)
+wu(u,VEH+0x48,1);c.set((-.4,0,-.2),(0,1.1,0));c.step(.02)
+native_fallback=ru(u,CAVE+DATA+0xdc)==7
+vv,ww=collision_sample(u,c,-1.23588)
+check('A backwards native collision retry cannot restore stale SRC slip',native_fallback and 0<ww[1]<2)
+
 # A native front/rear load imbalance must not alter the SRC sprung-body model.
 a,ca=setup();b,cb=setup();V=(0.,0.,40.);W=(0.,0.,0.);same=True;peak=0
 for i in range(4):wf(b,OBJ+0x9000+0x100*i+0x50,.65 if i<2 else 1.35)
@@ -162,6 +227,31 @@ for frame in range(900):
     c.set(V,W);V,W=c.step(1/60);c.psi+=W[1]/60;px+=V[0]/60;pz+=V[2]/60
     finite &= all(math.isfinite(v) for v in V+W);errors.add(ru(u,CAVE+DATA+0xdc))
 check('Changing slopes, a missing wheel contact and braking stay finite without state reset',finite and errors=={0})
+
+# The bridge owns planar forces, while native SR3 owns vertical collision.
+# A native-grounded car descending a crest must not lose an axle of SRC grip.
+u,c=setup();inputs(c,0,throttle=0)
+for frame in range(240):c.set((0,0,0),(0,0,0));c.step(1/57.5)
+missing_front=missing_rear=repairs=0;peak_yaw=0
+for frame in range(90):
+    z=frame*40/60;ground=-.12*z
+    for i in range(4):wf(u,OBJ+0x6000+0x100*i+0x5C,0,1,.12,0)
+    wf(u,BODY+0x88,0,ground+.32,z)
+    inputs(c,.2);c.set((0,-4.8,40),(0,0,0));V,W=c.step(1/60)
+    t=telemetry(u)
+    if t[30]:
+        missing_front+=t[22]+t[23]<=0;missing_rear+=t[24]+t[25]<=0
+    repairs+=int(t[36]);peak_yaw=max(peak_yaw,abs(W[1]))
+check('Grounded downhill crest retains front and rear tyre support on every SRC tick',missing_front==0 and missing_rear==0)
+check('Ground reconciliation is exercised without an angular kick',repairs>0 and peak_yaw<1)
+print('Crest: missing front/rear ticks',missing_front,missing_rear,'corrections',repairs,'peak yaw',peak_yaw)
+# Rolling backwards in a FORWARD gear was previously admitted to forward-only
+# SRC equations; selected reverse alone is an insufficient exclusion.
+for speed in (-.2,-1,-5):
+    u,c=setup();wu(u,VEH+0x18,OBJ+0xD000);wu(u,OBJ+0xD008,2)
+    inputs(c,.8,throttle=0);c.set((.1,0,speed),(.1,.2,.3))
+    before=rf(u,BODY+0x170,6);c.step(1/60)
+    check('Forward gear rolling backwards at '+str(speed)+' m/s keeps native motion',rf(u,BODY+0x170,6)==before and ru(u,CAVE+DATA+0xdc)==7)
 
 print(sum(checks),'passed;',len(checks)-sum(checks),'failed')
 if not all(checks):raise SystemExit(1)

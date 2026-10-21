@@ -24,6 +24,31 @@ static float src_spring(float depth,float previous,float damper)
     return force>0?force:0;
 }
 
+/* The native body owns vertical collision/support. A private SRC spring mass
+   must not invent an airborne axle while ALL native wheels remain grounded.
+   Reconcile only that contradictory state, retaining attitude and all ordinary
+   spring dynamics. Seed compression to avoid manufacturing a damper impulse.
+   One original static wheel compression (mass/(4*spring)) is 1/12 metre. */
+static int src_reconcile_grounded(SrcSuspension *s,const int *on,
+    const float planes[4][4],float yaw,float native_vy)
+{
+    if(!(on[0] && on[1] && on[2] && on[3]))return 0;
+    float height[4],cw=fcos(yaw),sw=fsin(yaw);
+    for(int i=0;i<4;i++){
+        float b[3];src_wheel_point(i,s->pitch+s->wp,s->roll+s->wr,b);
+        float bx=b[0]*cw-b[2]*sw,bz=b[0]*sw+b[2]*cw;
+        height[i]=planes[i][3]-(planes[i][0]*bx+planes[i][2]*bz)/planes[i][1]-b[1];
+    }
+    float front=height[0]>height[1]?height[0]:height[1];
+    float rear=height[2]>height[3]?height[2]:height[3];
+    float limit=front<rear?front:rear;
+    if(s->y+s->vy<limit)return 0;
+    float supported=limit-1.0f/12.0f;
+    s->vy=native_vy;s->y=supported-s->vy;
+    for(int i=0;i<4;i++)s->c[i]=clampf(height[i]-supported,0,0.2f);
+    return 1;
+}
+
 /* planes[i] = normal in the current flat yaw frame, and ground height at
    the predicted centre. Return world-horizontal (yaw-local) normal forces,
    body torques, and predicted wheel displacements for original slip. */

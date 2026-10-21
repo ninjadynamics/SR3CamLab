@@ -86,7 +86,7 @@ def _area(poly):
 def _centroid(poly):
     return (sum(p[0] for p in poly) / len(poly), sum(p[1] for p in poly) / len(poly))
 
-def build_corridor(left, right, y0=-2.0, y1=10.0, surf_wall=0, surf_floor=0, surf_ids=(0,), kd_depth=4, max_segs=4, margin=30.0, heights=None, below=2.0, above=10.0):
+def build_corridor(left, right, y0=-2.0, y1=10.0, surf_wall=0, surf_floor=0, surf_ids=(0,), kd_depth=4, max_segs=4, margin=30.0, heights=None, below=2.0, above=10.0, footprint_boundary=False):
     """left/right: closed polylines [(x,z)] with the same number of points; the drivable corridor is the union of the quads
     (left[i], left[i+1], right[i+1], right[i]). Walls stand on both polylines; a floor at y0 and a ceiling at y1 close the
     tunnel (as in SEGA's data). y0/y1 may be arrays per point is NOT supported: flat limits only.
@@ -96,7 +96,8 @@ def build_corridor(left, right, y0=-2.0, y1=10.0, surf_wall=0, surf_floor=0, sur
     n = len(left); L = [tuple(map(float, p)) for p in left]; R = [tuple(map(float, p)) for p in right]
     quads = [(L[i], L[(i + 1) % n], R[(i + 1) % n], R[i]) for i in range(n)]
     T = array.array('d', [v for t in ([(q[0], q[1], q[2]) for q in quads] + [(q[0], q[2], q[3]) for q in quads]) for p in t for v in p]); ntri = 2 * n; pT = T.buffer_info()[0]
-    def in_corridor(pt):                                              # inside one of the triangles, 1e-9 of tolerance (bc_inside quotes the numpy it replaced)
+    # Retain the C array: callers validate this oracle after build_corridor returns.
+    def in_corridor(pt, _triangles=T):                                              # inside one of the triangles, 1e-9 of tolerance (bc_inside quotes the numpy it replaced)
         x, z = pt; return bool(FL.bc_inside(pT, ntri, float(x), float(z)))
     segs = []                                                         # (p, q, (a, b, c)), corridor on the positive side
     for i in range(n):
@@ -106,6 +107,13 @@ def build_corridor(left, right, y0=-2.0, y1=10.0, surf_wall=0, surf_floor=0, sur
             a, b = -ez / ln, ex / ln; c = -(a * p[0] + b * p[1])
             if a * other[0] + b * other[1] + c < 0: a, b, c = -a, -b, -c
             segs.append((p, q, (a, b, c)))
+    segment_sources = [i // 2 for i in range(len(segs))]
+    boundary_stats = None
+    if footprint_boundary:
+        from road_footprint import union_boundary, check_height_separation
+        height_check = check_height_separation(quads, heights) if heights is not None else None
+        segs, segment_sources, boundary_stats = union_boundary(quads, in_corridor)
+        boundary_stats["height_check"] = height_check
     x0 = min(p[0] for p in L + R) - margin; z0 = min(p[1] for p in L + R) - margin; x1 = max(p[0] for p in L + R) + margin; z1 = max(p[1] for p in L + R) + margin
     P3 = lambda ln: (ln[0], 0.0, ln[1], ln[2])
     floor = (0.0, 1.0, 0.0, -y0); ceil = (0.0, -1.0, 0.0, y1)
@@ -182,7 +190,7 @@ def build_corridor(left, right, y0=-2.0, y1=10.0, surf_wall=0, surf_floor=0, sur
     polys = []
     for k, (p, q, ln) in enumerate(segs):                             # wall quads as 2 triangles, like SEGA
         wy0, wy1 = y0, y1
-        if heights is not None: i = min(k // 2, n - 1); wy0 = float(qlo[i]) - below; wy1 = float(qhi[i]) + above
+        if heights is not None: i = segment_sources[k]; wy0 = float(qlo[i]) - below; wy1 = float(qhi[i]) + above
         a3 = (p[0], wy0, p[1]); b3 = (p[0], wy1, p[1]); c3 = (q[0], wy1, q[1]); d3 = (q[0], wy0, q[1])
         polys.append((P3(ln), [a3, b3, c3])); polys.append((P3(ln), [c3, d3, a3]))
     for i, qd in enumerate(quads):
@@ -192,7 +200,39 @@ def build_corridor(left, right, y0=-2.0, y1=10.0, surf_wall=0, surf_floor=0, sur
             v = [(p[0], y, p[1]) for p in qd]; polys.append((pl, [v[0], v[1], v[2]])); polys.append((pl, [v[2], v[3], v[0]]))
     data, fix = serialize(tree, polys, list(surf_ids))
     in_corridor.cells = cells_out
+    in_corridor.boundary_stats = boundary_stats
+    in_corridor.boundary_segments = segs
     return data, fix, tree, polys, stats, in_corridor
+
+def check_footprint_edges(parsed, left, right, heights, inside):
+    """Independent serialized-BSP checks against the union of protected road quads.
+
+    Probe both sides of every raw edge; use the footprint oracle rather than
+    assuming each raw edge is exposed (tight corners can fold over themselves).
+    Also sample across every road slice. Fail closed before writing a candidate.
+    """
+    checked = 0; bad = []
+    def test(x, y, z, label):
+        nonlocal checked
+        actual = parsed.nodes[classify(parsed, (x,y,z))][0] in (4,5)
+        expected = inside((x,z)); checked += 1
+        if actual != expected:
+            if len(bad) < 20: bad.append((label, (x,y,z), actual, expected))
+    n = len(left)
+    for side, line in enumerate((left,right)):
+        for i, p in enumerate(line):
+            q = line[(i+1)%n]; dx,dz = q[0]-p[0],q[1]-p[1]; length = math.hypot(dx,dz)
+            if length < 1e-6: continue
+            nx,nz = -dz/length,dx/length
+            y = (heights[i]+heights[(i+1)%n])/2+1
+            for delta in (-.1,-.02,.02,.1):
+                test((p[0]+q[0])/2+nx*delta,y,(p[1]+q[1])/2+nz*delta,('edge',side,i,delta))
+    for i, (p,q) in enumerate(zip(left,right)):
+        for t in (-.1,.02,.1,.5,.9,.98,1.1):
+            test(p[0]+(q[0]-p[0])*t,heights[i]+1,p[1]+(q[1]-p[1])*t,('slice',i,t))
+    if bad: raise ValueError('serialized boundary does not match supported road footprint: %s' % bad)
+    return dict(probes=checked, mismatches=0, edge_offsets_m=[-.1,-.02,.02,.1])
+
 
 def check_corridor(tree, in_corridor, bbox, y0, y1, n=20000, seed=3):
     """random points: tree says free <=> point inside the corridor and between floor and ceiling (numpy's random numbers: the

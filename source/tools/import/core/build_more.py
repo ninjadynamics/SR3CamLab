@@ -28,6 +28,10 @@ def set_boundary(f, data, fix, cid=0xb0d1e001):
 
 def corridor_lines(rows, every=4, inset=0.5, with_heights=False):
     """left/right wall polylines from road rows (vertex positions per slice): `inset` metres inside the road edges"""
+    if not isinstance(every, int) or isinstance(every, bool) or every < 1:
+        raise ValueError("boundary step must be a positive integer")
+    if not np.isfinite(inset) or inset < 0:
+        raise ValueError("boundary inset must be finite and nonnegative; widening the protected road is not allowed")
     L = []; R = []; ys = []; H = []
     for pos, off, A in rows[::every]:
         a, b = pos[0], pos[-1]; d = (b - a); d = d / np.linalg.norm(d)
@@ -36,35 +40,44 @@ def corridor_lines(rows, every=4, inset=0.5, with_heights=False):
     if with_heights: return L, R, min(ys), max(ys), H
     return L, R, min(ys), max(ys)
 
-def add_walls(f, rows, surf, wall_i, floor_i, every=4, terrain=False):
+def add_walls(f, rows, surf, wall_i, floor_i, every=4, terrain=False, inset=0.5, footprint_boundary=False):
     """terrain=True: floor/ceiling follow the road height cell by cell (2 m below the lowest, 10 m above the highest road
     point of the stretch a cell overlaps) instead of one floor and ceiling for the whole track."""
-    L, R, ymin, ymax, H = corridor_lines(rows, every, with_heights=True)
+    L, R, ymin, ymax, H = corridor_lines(rows, every, inset=inset, with_heights=True)
     y0, y1 = ymin - 2.0, ymax + 10.0
     hts = None; xfall = 0.0
     if terrain:
         lo = np.array([h[0] for h in H]); hi = np.array([h[1] for h in H])
         hts = (lo + hi) / 2.0; xfall = float((hi - lo).max())           # cross-fall of a slice widens the margins
     data, fix, tree, polys, stats, inc = bsp_build.build_corridor(L, R, y0=y0, y1=y1, surf_wall=wall_i, surf_floor=floor_i, surf_ids=surf,
-                                                                  heights=hts, below=2.0 + xfall / 2, above=10.0 + xfall / 2)
+                                                                  heights=hts, below=2.0 + xfall / 2, above=10.0 + xfall / 2, footprint_boundary=footprint_boundary)
     set_boundary(f, data, fix)
     # self checks: (1) random points agree with the geometry, (2) every road centre point 1 m above the road is free
     allp = np.array(L + R); bbox = (allp[:, 0].min() - 20, allp[:, 1].min() - 20, allp[:, 0].max() + 20, allp[:, 1].max() + 20)
     chk = bsp_build.check_corridor(tree, inc, bbox, y0, y1, n=6000) if not terrain else 'n/a (stepped floor/ceiling)'
     free = 0; tot = 0; under = 0; over = 0; span = (ymax - ymin) if not terrain else 0.0
+    # Terrain cells cover the full bank: a probe below the high edge must also
+    # clear that crossfall before it can test the floor under the low edge.
+    probe_margin = span + (xfall if terrain else 0.0)
+    under_distance, over_distance = 12.0 + probe_margin, 24.0 + probe_margin
     for pos, off, A in rows[::3]:
         e = pos[-1] - pos[0]; e = e / np.linalg.norm(e)
         for c in (pos[len(pos) // 2], pos[0] + e * 2.0, pos[-1] - e * 2.0):   # centre and 2 m inside both edges, 1 m above the road
             lf = bsp_build.classify_tree(tree, (c[0], c[1] + 1.0, c[2])); tot += 1; free += lf[0] == 'leaf'
-            under += bsp_build.classify_tree(tree, (c[0], c[1] - 12.0 - span, c[2]))[0] == 'solid'
-            over += bsp_build.classify_tree(tree, (c[0], c[1] + 24.0 + span, c[2]))[0] == 'solid'
+            under += bsp_build.classify_tree(tree, (c[0], c[1] - under_distance, c[2]))[0] == 'solid'
+            over += bsp_build.classify_tree(tree, (c[0], c[1] + over_distance, c[2]))[0] == 'solid'
     if terrain:
         gaps = [(b - a) for cell, a, b in inc.cells]; log('       terrain-following: %d free cells, tunnel height %.1f..%.1f m' % (len(gaps), min(gaps), max(gaps)))
-    log('       points 12 m below the road solid %d/%d, 24 m above solid %d/%d' % (under, tot, over, tot))
+    log('       points %.1f m below the road solid %d/%d, %.1f m above solid %d/%d' % (under_distance, under, tot, over_distance, over, tot))
     b = bsp.parse_bsp(sbfw.Ch(5, 1, data, fix, []))
+    edge_check = bsp_build.check_footprint_edges(b, L, R, (np.array(H).mean(axis=1)).tolist(), inc) if footprint_boundary else None
+    wall_count = len(inc.boundary_segments)
     log('       walls: %d wall segments, floor %.1f ceiling %.1f, nodes kd %d planes %d solid %d leaves %d polys %d, depth max/mean %s' %
-        (2 * len(L), y0, y1, b.nkd, b.npl, b.n3, b.nleaf, b.npoly, '%d/%.1f' % bsp_build.depth_stats(tree)[:2]))
-    log('       walls check: random points %s ; road points (centre + both sides) free %d/%d' % (chk, free, tot))
+        (wall_count, y0, y1, b.nkd, b.npl, b.n3, b.nleaf, b.npoly, '%d/%.1f' % bsp_build.depth_stats(tree)[:2]))
+    log('       walls check: random points %s ; road points (centre + both sides) free %d/%d; step %d, inset %.3f m' % (chk, free, tot, every, inset))
+    if free != tot or under != tot or over != tot:
+        raise ValueError('boundary validation failed: road must be free and the floor/ceiling solid')
+    return dict(step=every, inset=inset, wall_segments=wall_count, road_points=tot, free=free, under=under, over=over, under_distance=under_distance, over_distance=over_distance, polygons=b.npoly, footprint_boundary=footprint_boundary, footprint_stats=inc.boundary_stats, footprint_checks=edge_check)
 
 # ---------------------------------------------------------------- authored meshes
 TPL_MESH, TPL_MAT, TPL_TEX = 0x79d17eed, 0x7e9488ff, 0x4fd0d213

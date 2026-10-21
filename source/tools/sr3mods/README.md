@@ -106,3 +106,55 @@ The toolchain's 64-bit gcc as 32-bit code (`-m32 -march=pentium4 -msse2 -mfpmath
 `-fdata-sections`: the 32-bit link script puts `.bss.*` sections into `.data`, written out as zeros (493 KB instead of
 48 KB). The machine code is still the hex `sr3mods.ps1` carries (assembled with keystone on the author's PC); moving
 its assembly to gcc's own assembler, so it is built on the user's PC, is the next step for it.
+
+
+## Standalone boot presentation (2026-10-21)
+
+`boot_presentation.h` completely skips the cabinet-info screen's rendering. It
+preserves the native prologue/shared-update call, resets the display text queue,
+retains the lazy network getter and returns the native calibration/menu state.
+The guarded 56-byte body executes before any BeginScene, blue clear, text or
+Present. The first hold-only version still flashed blue; this replaces it.
+
+The owner's later blank-blue report exposed two independent calibration screens.
+State 10 keeps its complete native cabinet poll and status writes; only its
+63EE60 presentation helper becomes the original frame-counter increment and
+return. State 11 keeps shared update, suppresses its blue draw and immediately
+returns state 13 instead of holding another 120 updates. Both byte spans are
+checked together before writes; a failed second write rolls back the first.
+
+The DLL installs it synchronously before starting its worker. `startup_gate.h`
+still waits for genuine initialization, and the actual loader/initial loading
+logo are retained. Unknown bytes or unsuccessful write preserve the original
+behavior and produce a log line. This early standalone-only patch is intentionally
+absent from the later PowerShell/external attachment route.
+
+`build.py` always runs `test_boot_presentation.c` for guards and failure cases.
+Optional offline execution against the owner's original executable:
+
+    python source/tools/sr3mods/test_boot_presentation_flow.py --exe game/Rally/Rally.exe
+
+This requires pefile/unicorn and executes 385 original/patched full-handler cases,
+without launching the game. It checks that rendering is never called and update,
+network-getter, calibration routing and stack/register behavior are preserved.
+Evidence: `work/research/startup-fastpath-20261021/AGGRESSIVE-STARTUP-FINDINGS.md`.
+The original state-9 investigation remains in `NO-BLUE-FINDINGS.md`.
+
+
+## Native loader join repair (2026-10-21)
+
+`loader_join.h` repairs the captured white-screen deadlock after a second race:
+the main window thread waited for a progress helper that was synchronously
+sending that window a cabinet message. The actual resource load was complete.
+Only the two native resource-loader joins are redirected, after exact call-site
+and native ABI byte checks, synchronously before the boot loop. The helper waits
+for real thread completion while servicing sent messages, leaves posted input
+queued, then runs the original exit-code/handle cleanup. There is no frame hook.
+
+`build.py` always runs `test_loader_join.c`: a hidden message-only window and real
+Windows sender reproduce the old circular wait, then the compiled x86 thunk and
+native join bytes resolve it. The test checks three successive joins, completed
+threads, exit codes, closed handles, register/stack behavior, queued Enter and
+byte guards. Its bounded guard only exits its own hidden test process if a
+regression hangs. It does not start Rally. This early DLL-only fix is not installed
+by late PowerShell/external attachment; shared patchcore/live parity stays intact.

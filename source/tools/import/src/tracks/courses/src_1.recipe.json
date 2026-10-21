@@ -41,7 +41,10 @@
     "finish_banner_clearance": 0.05,
     "lm_terrain_classes": [
       "grass"
-    ]
+    ],
+    "boundary_inset": 0.0,
+    "boundary_step": 1,
+    "boundary_union": true
   },
   "round": {
     "round": 4,

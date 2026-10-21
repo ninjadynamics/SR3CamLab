@@ -473,3 +473,106 @@ The owner still experienced capped turning after the replay fix. Native tyre +0x
 Owner tested the independent-suspension candidate and reported: "it plays like a dream now", with possible later adjustments but an explicit request to keep this handling. Freeze this accepted baseline; do not tune it while repairing scenery/screenshots. Latest run `src-hd-20261016-143410/candidate.json` confirms installed=true, 17,094 telemetry rows, zero dropped, candidate SHA256 `9e8244e3c06f7ea642dc6524c79eaa1a6d7906134435f540fa3cc6990235b801`. This is user acceptance of feel, not proof of complete physics equivalence. The process-only candidate is installed by TEST-SRC-HD.ps1; the normal launcher still does not install it.
 
 The same run's START button reached the screenshot code twice (14:35:56 and 14:36:00), but both back-buffer requests timed out (1460). The screenshot patch is present; rendering readback needs investigation. The owner rejected the v12 tree repair: small composed faces remain misplaced around the crown/trunk. Keep that defect open; the cliff edit is accepted.
+
+
+## 17. Grounded crest steering and native collision inertia repair (2026-10-21)
+
+The owner reported brief unresponsive steering in the forest after the village,
+rare twitching, and violent low-speed/rollback wall impacts only in SRC mode.
+`screenshots/SR3_20261021_084659.png` locates the forest; that screenshot's run is
+the later native-SR3 comparison. Do not mislabel it an SRC telemetry capture.
+The SRC run is `scratchpad/runs/steering/20261021-083436-bec500`: 45,270 candidate
+rows, zero dropped, accepted blob `9e8244e3c06f7ea642dc6524c79eaa1a6d7906134435f540fa3cc6990235b801`.
+The capture's usual native forced-steering/impact flag remains clear. Changing
+that flag's timer is not justified by this evidence.
+
+Three adapter issues were repaired, without changing the original SRC kernel:
+
+1. Independent SRC sprung-body state can drift above the descending native road
+   while native SR3 still reports four contacting wheels. An entire front axle
+   then receives zero private spring compression and zero SRC tyre force. The
+   adapter now reconciles that contradictory state only when all four native
+   wheels are grounded and one axle would otherwise be unsupported. It retains
+   pitch/roll, uses native vertical speed, and seeds the prior compressions to
+   avoid creating a false damper impulse. The correction does not write native
+   position, vertical velocity, or collision state. Genuine native airborne and
+   missing-contact cases retain their existing fallback behavior.
+2. A forward gear does not prove forward travel: a car can roll backwards on a
+   slope. The forward-only SRC branch now yields to native motion below -0.1 m/s
+   forward velocity, in addition to the existing selected-reverse exclusion.
+3. `flavor_src.json` still carried the old native yaw-inertia experiment, 1.146
+   rather than 2.5. The accepted SRC adapter already computes its own yaw using
+   SRC's original 1146 inertia; the old native override only amplified native
+   collision/reverse rotation by 2.18 times for a fixed angular impulse. It is
+   removed. Rebuilt SRC files for all ten cars and Hornet differ from installation
+   only in rigid-body chunk 0, float +0x0C; the native value is restored from each
+   corresponding car. Engine, gears, clutch, tyre settings, hulls and grip remain
+   byte-identical. The SRC engine curve also remains byte-identical.
+
+The normal PLAY helper installs the process-only candidate for SRC/Tyre_Road.
+Older sections describing normal PLAY as not installing it are historical.
+`candidate_host.py` now records `contact_reconciliations` from previously unused
+telemetry slot 36. This can identify how often the correction runs in the next
+live capture without changing the ring's layout.
+
+Validation: all 30 compiled Unicorn adapter checks pass (the old accepted binary
+passes the prior 25 and fails all five added regressions). The new cases cover a
+grounded downhill crest without axle-support loss or a yaw kick, and backward
+travel in forward gear at -0.2, -1 and -5 m/s. Original frame-rate, launch, shift,
+turn/release, prediction/replay, invalid-contact and native-vertical gates pass.
+A separate replay of 10,955 coherent recorded samples, with 10,132 candidate
+applications, reduces private front/rear unsupported ticks from 836/580 to 0/0.
+The longest recorded front loss in that replay was 1.054 s; 112 reconciliations
+are used after repair. This replay feeds recorded states and stubs the native
+step: it proves the contact contradiction is corrected, not the future live
+trajectory or that every subjective handling symptom is resolved.
+
+Evidence and rollback snapshots: `work/research/src-contact-repair-20261021/`.
+`validation.json` records build/source/engine-curve hashes, replay and per-car
+changes. `build_src_candidate.py --curve-candidate` can reuse the exact original
+curve from a hash-verified previous candidate when the owner's ROM is elsewhere.
+No game was launched during this repair. Live handling acceptance is pending.
+
+Installed with the boundary/startup repairs after all offline checks. Combined transaction and verified rollback: work/research/gameplay-repair-20261021/20261021-095050/. PLAY -Check passed, native POM still reads 38 families and the 0.6 global depth with live controls. Accepted dinput8.dll, gameplay road, grip, settings and shader library hashes are preserved. No Rally process launched; live acceptance remains pending.
+
+
+## 18. Contact slip-history rebasing (2026-10-21)
+
+The owner accepted the section 17 steering repair as PERFECT/brilliant, but
+reported that even a very slow wall touch still acts like a violent spring.
+Preserve the accepted drive/steering model while repairing this adapter boundary.
+
+The subsequent capture `scratchpad/runs/steering/20261021-095400-2113b3/`
+contains 62,942 candidate rows without dropped records. At sequences 10434-10437,
+near world X/Z 148.11/186.61, a native collision replay changes local slip beta
+from +0.47032 to -1.38572. SRC's original yaw equation clamps its torque result
+before subtracting 0.07 times the slip-angle change. Feeding the external contact
+impulse into that slip history therefore adds 7.47056 rad/s of artificial yaw.
+The replay restores the committed pre-impact beta, so the following fresh
+prediction adds the discontinuity again: the equation predicts 12.21246 rad/s,
+matching the recorded approximately 12.17 rad/s spike. The native forced-hit flag
+is clear. Native restitution is already speed-tapered; changing it was not needed
+to explain or correct this measured amplification.
+
+The adapter now snapshots planar input velocity/yaw with the prediction. When a
+native contact retry changes that input, its first actual SRC tick seeds slip
+history from the current incoming angle. The next fresh prediction does likewise
+because final native contact integration can change that angle again. Pending
+rebases survive zero-tick callbacks, identical replays reproduce the prediction,
+and engine/suspension time still commits only once. Native Y velocity, pitch and
+roll alone do not trigger a planar correction. Changed retries that hand off to
+native backwards/impact motion invalidate old SRC slip before reentry. Mode,
+vehicle and invalid-state transitions clear stale markers.
+
+No native contact impulse is zeroed, no collision timer/body/road is changed, and
+the original SRC kernel/engine curve remain unchanged. Telemetry field 37 records
+`collision_slip_rebases` without changing the fixed ring layout.
+
+Independent compiled checks pass 36/36; the previously installed binary fails
+four new collision regressions. All 4,200 ordinary straight/turn samples per build
+at 30/60/120 Hz match exactly, including telemetry. In the controlled reproduction
+the retry yaw changes from -6.65657 to +0.81399 rad/s and next prediction from
+-6.05657 to +0.81089, while linear velocities are identical. These are offline
+adapter checks with a stubbed native physics step, not an in-game wall trajectory.
+Evidence and before/after logs: `work/research/src-contact-repair-20261021/collision-history/`.
+The owner will verify the remaining wall-contact feel in game.

@@ -205,3 +205,125 @@ OBSERVED: combined SRC/HD test crashed in `wmvdecod.dll+0x1AFA14` during state 4
 
 
 2026-10-16 owner reports watchdog ON still degrades performance and makes controls unresponsive/noisy compared with OFF. Do not consider watchdog regression resolved. Keep standalone test profile patches.watchdog: off and TEST-SRC-HD.ps1 --no-watchdog. Accepted handling remains frozen.
+
+
+## Startup presentation fast path (2026-10-21)
+
+The first version removed the blue cabinet-info screen's 120-update hold at
+`0x64A3F3`; the owner confirmed that startup was faster but the blue frame still
+flashed. The current version bypasses the screen's whole rendering body.
+
+Native state 4 (`0x64D900`) calls the synchronous loader at `0x64D956` and only
+returns state 9 after it completes. In state 9, the guarded first 20 bytes of
+`0x649E50` remain intact, including shared update `0x646CC0`. The next 56 bytes at
+`0x649E64` reset the display text count, retain lazy network getter `0x404070`, then
+return the original calibration/menu choice (10 or 13). No BeginScene, blue Clear,
+text draw, EndScene or Present executes. The skipped IP-info vector copies and
+address objects were display temporaries; they are no longer created or freed.
+
+The original render flags are never changed. The native initialization/loader,
+18 DirectShow graphs and initial loading logo remain intact; readiness is not
+faked. The optional patch runs synchronously before the DLL worker/boot loop; the
+late external-attach route is unchanged. Exact original/patched bytes are checked;
+foreign or partial bytes are refused. No changes to the accepted runtime, POM,
+affinity, watchdog or Rally.exe on disk.
+
+Validation: mandatory native byte-guard/idempotence/error checks plus 193 actual-x86
+full-handler executions offline. Fast runs call only shared-update and network-
+getter, preserve stack/registers/calibration routing, perform no blue rendering,
+and never construct the skipped display temporaries. Only the approved 56-byte
+span differs; initialization and retained functions are byte-identical. Windows
+and graphics callees are stubbed in the emulation. No game launch or new live
+visual/timing claim. Evidence: `work/research/startup-fastpath-20261021/NO-BLUE-FINDINGS.md`
+and `no-blue-flow-check.json`; earlier hold-only evidence remains in FINDINGS.md.
+
+
+## Second-race loader/message deadlock (2026-10-21)
+
+The owner finished a second Mountain race in the same standalone session and
+heard game-over audio, then the picture stayed white without touching controls.
+Before closing frozen PID 18864, 233 thread contexts, a small minidump and native
+state were captured. Main thread 28676 was waiting at `0x587802`, returning to
+`0x5C6D53` (the second loader join); helper thread 30072 was inside synchronous
+`SendMessageA(WM_COPYDATA)`, returning to `0x5C710C`. The loader object's done flag
+was 1 and abort flag was 0. The actual resource worker had already exited.
+
+Native `0x5C6C60` pumps window messages while work is unfinished, then blindly
+joins both workers. Its progress helper `0x5C2290` can still be sending the last
+cabinet message when the real worker marks done. In standalone mode, the cabinet
+connection `0x5C76E0` defaults to the game's own main window. The main thread
+waits for the sender; the sender waits for the main thread to receive its message.
+This is distinct from the known explicit load-abort infinite sleep and does not
+require pressing START during loading. It is also distinct from decoder or
+many-core loading failures. Accepted SRC steering was not involved.
+
+`source/tools/sr3mods/loader_join.h` guards the native ESI-based join ABI and
+replaces only calls at `0x5C6D44/0x5C6D4E`, before the startup loop. Its wait uses
+`MsgWaitForMultipleObjectsEx` with `QS_SENDMESSAGE`; `PeekMessage` services sent
+messages without removing queued input. When the thread really finishes, the
+unchanged native join retrieves its exit code, closes its handle and clears the
+native group. No fake readiness, timeout, gameplay polling or asset skipping.
+The old runtime, Rally.exe, affinity, shader and handling remain untouched.
+
+Mandatory `test_loader_join.c` reproduces the circular wait using real Windows
+threads and a hidden message-only window, then executes the real x86 thunk/native
+join bytes. Repeated waits, register ABI, exit codes/handle cleanup, queued-input
+preservation and byte guards pass. Full patch/live lockstep and checkpoint tests
+also pass. No game was launched for validation; owner second-race confirmation is
+pending. Evidence: `work/research/second-race-freeze-20261021/FINDINGS.md`,
+`validation.json` and `capture/`. Standalone startup installation only; late
+external attachment does not acquire this change.
+
+## Remaining blank-blue screen and PLAY startup cost (2026-10-21)
+
+Owner feedback after the cabinet-info body bypass: blue still appeared, now with
+no text. The earlier fix was limited to state 9. Independent state-10 and state-11
+calibration renderers use the same blue clear, and state 11 adds another fixed
+120-update dwell after calibration has completed.
+
+STATIC + ACTUAL-X86 OFFLINE: native state 10 at `0x64AB60` calls cabinet poll
+`0x62DED0` when `[0x9EB8CC]` is set. Status 19/21 advances to 11 and writes the
+original result globals `0x9C4398/0x9C439C`; pending statuses stay in 10. The entire
+handler is unchanged. Its only drawing calls target `0x63EE60`; that helper's
+9-byte prefix is replaced by its original display-counter increment and return.
+State 11 at `0x64AB40` keeps shared update `0x646CC0`, skips the independent
+`0x63ED10` blue drawing and returns 13 immediately, instead of waiting 120 updates.
+Exact guards cover both spans before either write. A failed second write rolls
+back the first. Pending hardware calibration still waits for the real result.
+
+Validation now executes 385 original/patched x86 handler runs: 193 state-9 runs,
+160 state-10 runs over enabled/disabled polling, completed/pending/error statuses
+and frame/alignment combinations, and 32 state-11 runs. Routing, result writes,
+display counter, stack/registers and shared update match; the patched paths never
+call blue Clear/Present. State 4, resource loader, videos, native readiness gate,
+accepted physical-core affinity, POM/YAML and second-race message-aware joins are
+unchanged. Full native build and mandatory regression suites pass.
+
+MEASURED OFFLINE: PLAY's two hidden redirected `Start-Process` helper launches
+blocked about 2845 and 2810 ms merely creating the child processes. Running the
+same harmless `--help` paths via direct hidden `Popen` took 2.6 and 2.8 ms; both
+completed within 57 ms and exited before any process search/attachment. Existing
+run logs showed the same approximately three-second spacing. New
+`tools/workspace/launch_session.py` starts both helpers this way, then waits only
+for `launch.exe` itself, never its Rally descendant. Argument vectors, scoped POM
+environment, logs, watchdog-off flag and failure cleanup are preserved. No helper
+is removed and no Python memory-attachment behavior is changed.
+
+PLAY still fully hashes all 31 accepted files each launch. Those actual digests
+are passed to the same-launch POM receipt verification, avoiding a second read of
+the 105 MB track and shader library. No mtime or persistent cache is used; absent
+entries still hash their contents. Warm `PLAY -Check` measured 169-190 ms versus
+235-236 ms before. A cold Python invocation occasionally took about 3 seconds;
+that cold/warm difference is not claimed as an optimization. Latest real native
+initialization logged 2437 ms; its loader is retained, not replaced by fake-ready
+flags. New `launch-timing.json` records preflight and each helper/launcher milestone
+for the owner's next launch.
+
+Ten mocked-process launch tests cover no-launch check mode, invalid relief,
+settings paths, exact child arguments, hidden flags, environment preservation,
+launcher-only wait, no-candidate mode and cleanup on child/launcher failures.
+YAML receipt tests cover full verification and freshly measured hash reuse.
+The agent did not launch Rally or install the staged DLL. Live visual and total
+startup-time confirmation remain pending. Evidence:
+`work/research/startup-fastpath-20261021/AGGRESSIVE-STARTUP-FINDINGS.md` and
+`aggressive-build-receipt.json`.

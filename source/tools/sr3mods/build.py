@@ -19,6 +19,7 @@ def main(argv):
     units = [(os.path.join(HERE, 'patchcore.c'), 'patchcore.o'), (os.path.join(HERE, 'pc_live.c'), 'pc_live.o'), (os.path.join(HERE, 'pc_json.c'), 'pc_json.o'),
              (os.path.join(HERE, 'pc_host.c'), 'pc_host.o'), (os.path.join(HERE, 'sr3mods_dll.c'), 'sr3mods_dll.o'), (os.path.join(HERE, 'sr3mods_exe.c'), 'sr3mods_exe.o'),
              (os.path.join(STAND, 'watch_launcher.c'), 'watch_launcher.o'), (os.path.join(STAND, 'settings.c'), 'settings.o'), (os.path.join(STAND, 'ucrt_stdio.c'), 'ucrt_stdio.o'), (os.path.join(TOOLS, 'x86', 'builtins.c'), 'builtins.o'),
+             (os.path.join(HERE, 'test_loader_join.c'), 'test_loader_join.o'),
              (os.path.join(HERE, 'livetest.c'), 'livetest.o')]                    # (livetest.exe: the live loop on fake games, for live_lockstep.py; never shipped)
     maps = ['-ffile-prefix-map=%s=.' % p for p in (out, HERE, STAND, os.path.join(TOOLS, 'x86'))]          # no build paths in the DLL
     o = {}
@@ -39,6 +40,15 @@ def main(argv):
     run(link + ['-mwindows', '-Wl,-e,_gate_entry', gate_obj, '-L', imp, '-lkernel32', '-o', gate_exe])
     run([os.path.abspath(gate_exe)])
     print('Startup readiness: all 16 checks passed.')
+    boot_obj = os.path.join(out, 'test_boot_presentation.o'); boot_exe = os.path.join(out, 'test_boot_presentation.exe')
+    run([GCC] + X86 + ['-I', HERE, '-c', os.path.join(HERE, 'test_boot_presentation.c'), '-o', boot_obj])
+    run(link + ['-mwindows', '-Wl,-e,_boot_test_entry', boot_obj, '-L', imp, '-lkernel32', '-o', boot_exe])
+    run([os.path.abspath(boot_exe)])
+    print('Boot presentation: byte guards, idempotence and failure paths passed.')
+    loader_exe = os.path.join(out, 'test_loader_join.exe')
+    run(link + ['-mwindows', '-Wl,-e,_loader_test_entry', o['test_loader_join.o'], o['builtins.o'], '-L', imp] + libs + ['-o', loader_exe])
+    run([os.path.abspath(loader_exe)])
+    print('Loader joins: real cross-thread send deadlock reproduced and resolved; repeated joins, native ABI/cleanup, input preservation and byte guards passed.')
     if '--no-lockstep' not in argv:                                     # the DLL must do exactly what sr3mods.ps1 does, or the build fails
         import lockstep, live_lockstep
         if lockstep.main(['--dll', dll]): raise SystemExit('lockstep: sr3mods.dll and sr3mods.ps1 differ; nothing is to be installed')

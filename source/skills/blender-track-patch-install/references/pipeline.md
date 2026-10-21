@@ -167,3 +167,35 @@ Promote exact accepted stage bytes, then update the main recipe, Classic/switch 
 For cleanup, distinguish authored inputs from regenerated outputs. Retain `.blend` work, canonical SD/HD images, all patch stages and material labels, semantic heights, current pinned clean track/library/review input, final lightmap PNGs, relevant logs/validation and failure traces. Large `lm.raw.npy`, page arrays, collect `.pkl`/`.npz`/`.scene`, staged SBF/DDS copies and old decoded shader `.ppm` dumps were the main redundant bytes in this case. Do not infer disposability from an extension outside verified generated directories. Check active YAML/pin dependencies and canonical copies first.
 
 Write an exact path/size inventory, verify resolved paths stay inside the intended workspace with no junction traversal, reject tracked/authored files, and fingerprint retained inputs. Record actual deleted bytes and validate protected hashes and launcher afterward. Old directories can retain scripts/reports/images without all cached binaries; describe that explicitly rather than continuing to promise an intact rollback. Current evidence: `work/research/checkpoint-cleanup-20261021/`, 20.95 GB removed with 6,083 protected files unchanged.
+
+
+### Collision outline versus the protected gameplay road
+
+The 2026-10-21 Mountain collision report exposed two distinct causes: the legacy
+builder inset walls by 0.5 m and sampled every fourth road slice, creating coarse
+chords. At the screenshot's lateral ray, the combined error left about 0.82 m
+between the BSP and visible stone wall. Mountain now explicitly uses
+`boundary_step: 1`, `boundary_inset: 0`, `boundary_union: true` in both recipes.
+Other courses retain their prior defaults. Union mode removes raw edge sections
+that lie inside the supported road footprint at local folds; it must reject
+height-separated overlaps rather than merge unrelated driving levels.
+
+`CORE/rebuild_boundary.py` rebuilds only the identified wall BSP in a separately
+staged SBF using its existing TrackDeform road. It does not require R4/RT rebaking.
+Prove all non-boundary chunks, including the road, scene, materials, textures and
+lightmaps, are exact. Independently parse/serialize the BSP, check center/interior
+and floor/ceiling points, and probe both sides of every edge and across slices.
+At a folded edge, membership in the union of supported road quads is the expected
+answer; assuming every raw edge is exposed recreates internal invisible walls.
+
+The safe road-edge repair reduces the example gap to approximately 0.16 m. The
+visible scenery can itself stand beyond the protected road. Do not enlarge the
+drivable corridor toward it without proving native wheel support, and do not
+claim the vehicle hull or spark origin has been aligned merely by moving the BSP.
+Keep those distinctions in the delivery and next live test.
+
+Update the pinned clean RT source, review track, pins manifest, accepted hashes
+and native POM receipt with the same boundary, then exercise a staged-only relief
+Apply. Otherwise the settings page can restore the old wall on its next rebuild.
+The accepted 45-degree lighting and geometry need no regeneration for this
+boundary-only correction. Evidence: `work/research/collision-boundary-20261021/`.

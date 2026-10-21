@@ -14,6 +14,8 @@
 #include <string.h>
 #include "patchcore.h"
 #include "startup_gate.h"
+#include "boot_presentation.h"
+#include "loader_join.h"
 #include "watch_launcher.h"
 
 #define EXPORT __declspec(dllexport)
@@ -116,6 +118,17 @@ EXPORT int __cdecl sr3mods_start(const char *settings_path) {
     if (!settings_path || !pc_load_cfg(settings_path, here, &cfg, err, sizeof err)) { pc_logf("Settings: %s", err); return 1; }
     if (!pc_prepare_cameras(&cfg, err, sizeof err)) { pc_logf("Cameras: %s", err); return 1; }
     if (!pc_check_sites(&inside, err, sizeof err)) { pc_logf("%s", err); return 2; }
+    /* sr3mods_start is called synchronously after CreateWindowExA, before the
+       native boot state loop. Do not move this into worker/live code. */
+    { int fast = startup_skip_info_screen(&inside);
+      pc_logf("Cabinet-info screen: %s; native startup remains intact.",
+              fast == 1 ? "fully bypassed" : fast == 2 ? "already bypassed" : "original (byte guard/write refused)"); }
+    { int fast = startup_skip_calibration_presentation(&inside);
+      pc_logf("Calibration presentation: %s; real cabinet polling retained.",
+              fast == 1 ? "blue frames and post-calibration dwell bypassed" : fast == 2 ? "already bypassed" : "original (byte guard/write refused)"); }
+    { int joined = loader_install_message_wait(&inside);
+      pc_logf("Resource-loader joins: %s; synchronous cabinet messages serviced while waiting.",
+              joined == 1 ? "message-aware wait installed" : joined == 2 ? "already installed" : "original (byte guard/write refused)"); }
     t = CreateThread(NULL, 0, worker, NULL, 0, NULL);
     if (!t) { pc_logf("Could not start the patch thread (%lu).", GetLastError()); return 3; }
     CloseHandle(t); return 0;

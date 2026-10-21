@@ -47,6 +47,7 @@ Y_SLOPE = 0.35                                                        # course s
                                                                       # of the centre's height (keeps bridges / ground above or below out). A banked oval needs more: Daytona's banking rises 0.6 m a metre
 EDGE_VISUAL = None                                                    # course setting edge_visual (metres): the drivable road also ends where the VISIBLE ground (lying opaque faces of the course
                                                                       # model) no longer lies on the collision surface within this. Daytona's collision runs on under its walls and 1 m kerbs
+EDGE_VISUAL_RIGHT = None                                             # optional tolerance for the positive-column side only (banked Daytona asphalt)
 SURF_TILES = {}                                                       # course setting surface_tiles {tile: collision code}: a road column whose visible ground is one of these tiles takes that code
                                                                       # (Daytona's collision has no surface field; its grass is told by the tile)
 Y_VISIBLE = None                                                      # course setting road_height_visible (m): the road heights from the drawn scenery within this of the collision (road_on_scenery)
@@ -215,7 +216,7 @@ def classic_edges(road, P, lat, yc, cap, vis=None):
                 if vis is not None:                                       # (vis = visual_ground(): the ground, the tile names, what stands)
                     qp = P[i] + lat[i] * (sg * (c - 0.25)); hv = vis[0].at2(q[0], q[2], y)
                     if vis[2].blocked(qp[[0, 2]], q[[0, 2]], y): break       # a wall, a kerb, a post: the road ends at its foot
-                    if hv and abs(hv[0] - y) <= EDGE_VISUAL: wv = c; miss = 0
+                    if hv and abs(hv[0] - y) <= (EDGE_VISUAL_RIGHT if s_ == 1 and EDGE_VISUAL_RIGHT is not None else EDGE_VISUAL): wv = c; miss = 0
                     elif hv: break                                         # visible ground off the collision surface (a raised verge)
                     else:
                         miss += 1                                          # no visible ground at all: a crack between polygons is crossed (1 m)
