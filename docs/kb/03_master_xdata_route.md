@@ -163,7 +163,7 @@ AUTHORED (step22): root +0x0C = 0 and +0x14 = 0, the camera lists, their holder 
 
 ## Checkpoints, time limit and time extension (VERIFIED code path; values = data)
 - The (0,5) markers are the CHECKPOINTS: 0x5AA130 turns each into a slice number relative to the start line (reversed for
-  direction < 0), sorts them (qsort, compare 0x5A9A00) and keeps them in the struct at 0x9DD60C (+4 + 4k slices, +0x1C
+  direction < 0), sorts them (qsort, compare 0x5A9A00) and keeps them in the struct at 0xB2A880 (getter 0x5AA380; +4 + 4k slices, +0x1C
   count). There is room for 6 and no bound check: a 7th marker would overwrite the count. Without markers: 4 equal parts.
   The same function then writes every checkpoint slice as a float to master_xdata root +0x78 + 4k: with more than 2
   markers this runs over root +0x80.. (Canyon and Alpine, 3 markers, overwrite +0x80), with 5 or 6 over +0x88 / +0x8C
@@ -232,3 +232,14 @@ file offset 0x30CD2C of Rally.exe (the owner's notes quote the formula; the rang
 spelled out there). It is consistent with "code = 17 x variant + type" above. VERIFIED (two independent derivations).
 `pacenotes.code_for_name` maps a 1995 sound-test name to a code: K (the 1995 call between Mid and Hairpin) becomes 90 LEFT
 / 90 RIGHT (GUESS); a leading C / Caution only sets a flag, because SR3 has no combined call.
+
+
+### Repeated-race diagnosis (2026-10-21)
+
+The checkpoint table owner is `0xB2A880` (getter `0x5AA380`); count is +0x1C and last checkpoint lap is +0x20. `0x9DD610` is the player's progress/lap state, not the checkpoint array. This corrects the older address above, verified against the installed executable.
+
+Owner reported the second Mountain race in one process timing out early. Saved telemetry `scratchpad/runs/steering/20261021-074010-735935/steering.csv` shows normal elapsed milliseconds against host time, a second race ending at about 51 seconds, and positions passing the first two authored checkpoint locations. It does not record the granted time or live checkpoint index, so a missed time extension is a hypothesis, not a proven observation. Original R4 and Low used identical `arcade_times.bin` bytes; the lighting change did not change allowances or route data.
+
+A separate verified loader defect was repaired: the selected timing block was applied only when track/slot changed, losing the request if the database was absent and not detecting same-address reloads. `Sync-ArcadeTimes` / `sync_arcade_times` now retain the requested block, verify writes, recheck at menu/race transitions and every 250 ms on the worker, and avoid restoration through stale pointers. Unsigned pointers support tables above 2 GiB. No clock, elapsed time, checkpoint state or physics memory is rewritten. Offline C/PS regression covers replay, delayed tables, same-address replacement, relocated high addresses and returning to vanilla. After testing, the owner reported no issues on 2026-10-21 and accepted the installation. This confirms the tested result; the original trace did not establish which reload or state transition caused the timeout.
+
+The existing read-only steering recorder now includes `time_limit_ms`, `checkpoint_next`, `checkpoint_count`, `checkpoint_last_lap`, `lap_index` and `game_mode` (schema 4). The latter five are sampled at most four times per second; the time limit was already being read. This distinguishes database reload, checkpoint progression and timer speed if the symptom persists. Do not compensate by increasing time values without identifying the cause.

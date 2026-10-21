@@ -32,6 +32,9 @@ PATH, DUMP = sys.argv[1], sys.argv[2]; FAST = (sys.argv[3] if len(sys.argv) > 3 
 OUT = sys.argv[4] if len(sys.argv) > 4 else PATH; STEP = int(os.environ.get('BAKE_STEP', '1')); OFF = int(os.environ.get('BAKE_OFF', '0')); MODE = int(os.environ.get('RTG2_MODE', '1')); TM_ = collections.Counter()
 NEAR = float(os.environ.get('RTG_NEAR', '6')); REACH = float(os.environ.get('RTG_REACH', '20')); FAR = float(os.environ.get('RTG_FAR', '0.75')); UNSEEN = float(os.environ.get('RTG_UNSEEN', '2')); MAXC = int(os.environ.get('RTG_MAXC', '256'))
 INSET = 0.04; LIFT = 0.02; SKIRT_MAX = 0.60; FILL = float(os.environ.get('RTG_FILL', '0.88'))
+CANOPY_STYLE = os.environ.get('RTG_CANOPY', 'legacy')
+if CANOPY_STYLE not in ('legacy', 'perforated'): raise ValueError('Unknown RTG_CANOPY: ' + CANOPY_STYLE)
+from rtbake.canopy_shadow import perforation_mask, project_uv
 PAGE = 2048                                                            # lightmap1995.PAGE (that module still imports numpy)
 # ---------------------------------------------------------------- the C side
 HERE = os.path.dirname(os.path.abspath(__file__)); import cbuild as _cb
@@ -180,7 +183,7 @@ def ball(centre, rh, rv):
     for a, b, c in tris:                                               # one subdivision: 80 faces
         ab, bc, ca = [tuple(s_ / nrm(s) for s_ in s) for s in (tuple(x_ + y_ for x_, y_ in zip(x, y)) for x, y in ((a, b), (b, c), (c, a)))]; out += [(a, ab, ca), (b, bc, ab), (c, ca, bc), (ab, bc, ca)]
     sc_ = (rh, rv, rh); return [tuple(tuple(centre[k] + v[k] * sc_[k] for k in range(3)) for v in tr) for tr in out]      # centre + v * sc_
-solid = []; canopy = []; ntree = nlamp = 0; TREES = []
+solid = []; canopy = []; canopy_uv = []; ntree = nlamp = 0; TREES = []
 for cl in clusters([i for i in range(NTRI) if is_tree[i]]):
     V = [corner(i, c) for i in cl for c in range(3)]; tr = [corner(i, c) for i in cl if tcls[i] == 'trunk' for c in range(3)]; cr = [corner(i, c) for i in cl if tcls[i] != 'trunk' for c in range(3)]
     src_ = tr if tr else V; ax = (mean([p[0] for p in src_]), mean([p[2] for p in src_])); y0 = min(p[1] for p in V); y1 = max(p[1] for p in V)      # (tr or V)[:, [0, 2]].mean(0)
@@ -189,18 +192,23 @@ for cl in clusters([i for i in range(NTRI) if is_tree[i]]):
         cy0 = min(p[1] for p in cr) if tr else y0 + 0.45 * (y1 - y0); rh = max(0.6, 0.8 * pct90([hypot(p[0] - ax[0], p[2] - ax[1]) for p in cr])); cc = (ax[0], (cy0 + y1) / 2, ax[1])
         if rh > 50.0:
             raise ValueError('Tree canopy radius %.1f m: check the authored course material labels before baking' % rh)
-        canopy += ball(cc, rh, max(0.6, (y1 - cy0) / 2)); solid += cylinder(ax[0], ax[1], y0, cc[1], 0.22); TREES.append((cc[0], cc[1], cc[2], rh, max(0.6, (y1 - cy0) / 2), y0))
+        crown = ball(cc, rh, max(0.6, (y1 - cy0) / 2)); canopy += crown
+        if CANOPY_STYLE == 'perforated': canopy_uv += project_uv(crown, cc, SUN)
+        solid += cylinder(ax[0], ax[1], y0, cc[1], 0.22); TREES.append((cc[0], cc[1], cc[2], rh, max(0.6, (y1 - cy0) / 2), y0))
     else: solid += cylinder(ax[0], ax[1], y0, y1, 0.22)
     ntree += 1
 for cl in clusters([i for i in range(NTRI) if is_lamp[i]]):
     V = [corner(i, c) for i in cl for c in range(3)]; solid += cylinder(mean([p[0] for p in V]), mean([p[2] for p in V]), min(p[1] for p in V), max(p[1] for p in V), 0.18, 8); nlamp += 1
-print('solids for the rays: %d trees (%d canopy faces, 25%% of rays pass), %d lamp posts' % (ntree, len(canopy), nlamp), flush=True)
+print('solids for the rays: %d trees (%d canopy faces, %s mask), %d lamp posts' % (ntree, len(canopy), CANOPY_STYLE, nlamp), flush=True)
 keep = array('B', [not (a_ or b_) for a_, b_ in zip(is_tree, is_lamp)]); NK = sum(keep); Tk = new('d', 9 * NK); TUk = new('d', 6 * NK); TMk = new('i', NK); ONEk = new('B', NK); lo = new('d', 3); hi = new('d', 3)
 LIB.rp_keep(NTRI, ad(keep), ad(T), ad(TU), ad(TM), ad(ONE0), ad(Tk), ad(TUk), ad(TMk), ad(ONEk), ad(lo), ad(hi)); lo = lo.tolist(); hi = hi.tolist(); ysea = -0.6      # T[keep] ... ; T[keep].reshape(-1, 3).min(0)
 SEA = [((lo[0] - 4000, ysea, lo[2] - 4000), (hi[0] + 4000, ysea, lo[2] - 4000), (hi[0] + 4000, ysea, hi[2] + 4000)), ((lo[0] - 4000, ysea, lo[2] - 4000), (hi[0] + 4000, ysea, hi[2] + 4000), (lo[0] - 4000, ysea, hi[2] + 4000))]
 nm = NM0; M_SOLID, M_CAN, M_SEA = nm, nm + 1, nm + 2; rng = random.Random(); rng.setstate(mt19937(7))      # np.random.RandomState(7)
 alb = [min(max(a_ * 8.0, 0.0), 0.85) for a_ in alb0] + [0.25, 0.2, 0.15, 0.12, 0.3, 0.08, 0.03, 0.12, 0.35]      # np.clip(alb0 * 8.0, 0.0, 0.85) + three rows
-holes = holes0 + [None, (64, 64, bytes(int(rng.random() < 0.25) for _ in range(64 * 64))), None]      # rng.rand(64, 64) < 0.25
+legacy_mask = (64, 64, bytes(int(rng.random() < 0.25) for _ in range(64 * 64)))
+canopy_mask = perforation_mask() if CANOPY_STYLE == 'perforated' else legacy_mask
+print('canopy holes: %.1f%% open, %s; sun-aligned through openings %s' % (100*sum(canopy_mask[2])/len(canopy_mask[2]), CANOPY_STYLE, CANOPY_STYLE == 'perforated'), flush=True)
+holes = holes0 + [None, canopy_mask, None]      # rng.rand(64, 64) < 0.25
 flat = lambda tris: [c_ for tr_ in tris for p_ in tr_ for c_ in p_]
 # ---------------------------------------------------------------- skirts under wall feet that hang over the ground (ray scene only)
 # A standing opaque polygon whose lower edge belongs to no other polygon and has ground up to SKIRT_MAX under both its ends lets the sun through
@@ -263,7 +271,7 @@ if os.path.exists(CUTP):
 ns_ = len(skirt)
 NTA = NK + len(solid) + len(canopy) + 2 + ns_      # TA = np.concatenate([T[keep], solid, canopy, SEA, skirt]) and its materials, uv (canopy: rng.rand), ONE flags
 TA = Tk + array('d', flat(solid) + flat(canopy) + flat(SEA) + flat(skirt)); TMA = TMk + array('i', [M_SOLID] * len(solid) + [M_CAN] * len(canopy) + [M_SEA] * 2 + skm)
-UVA = TUk + new('d', 6 * len(solid)) + array('d', [rng.random() for _ in range(6 * len(canopy))]) + new('d', 6 * (2 + ns_)); TONE = ONEk + new('B', len(solid) + len(canopy) + 2 + ns_)
+UVA = TUk + new('d', 6 * len(solid)) + array('d', canopy_uv if CANOPY_STYLE == 'perforated' else [rng.random() for _ in range(6 * len(canopy))]) + new('d', 6 * (2 + ns_)); TONE = ONEk + new('B', len(solid) + len(canopy) + 2 + ns_)
 TN = new('d', 3 * NTA); LIB.rp_normals(NTA, ad(TA), ad(TN))       # np.cross(TA[:, 1] - TA[:, 0], TA[:, 2] - TA[:, 0]), normalized
 sc = Scene(TA, NTA); sc.masks(TMA, UVA, holes)
 if sc.depth > 150 and MODE: print('the quick walks\' tree is %d deep (their stack is sized for 150): every ray goes through cast_one' % sc.depth, flush=True); MODE = 0

@@ -1,11 +1,11 @@
 {
-  "note": "Mountain R4 Low: accepted v20 geometry/art and R4B, sun elevation 48 degrees at unchanged azimuth; isolated alternative, 2026-10-21.",
+  "note": "Mountain R4 Low: accepted v20 geometry/art and R4B, sun elevation 45 degrees, perforated ray-only canopies and alpha grass receivers at unchanged azimuth; isolated alternative, 2026-10-21.",
   "common": {
     "light_contrast": 0.01,
     "light_dir": [
       0.0,
-      -7.428475080718247,
-      6.688629005644433
+      -7.068238818828918,
+      7.068238818828918
     ],
     "scene_gain": [
       0.7065,
@@ -38,7 +38,10 @@
       "tree",
       "crown"
     ],
-    "finish_banner_clearance": 0.05
+    "finish_banner_clearance": 0.05,
+    "lm_terrain_classes": [
+      "grass"
+    ]
   },
   "round": {
     "round": 4,
@@ -52,6 +55,7 @@
   },
   "bake": {
     "quality": "slow",
-    "compose": 0.34
+    "compose": 0.34,
+    "canopy": "perforated"
   }
 }

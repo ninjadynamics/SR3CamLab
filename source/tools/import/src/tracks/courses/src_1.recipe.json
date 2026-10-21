@@ -1,11 +1,11 @@
 {
-  "note": "How the stack builds Mountain (stack.py): the importer's --set values, in this order. 'collect' and 'build' are the two passes around the light bake; 'flat' replaces both when the light maps are off. Values are JSON, as --set takes them. This is the recipe of the installed R4 build (fast_all.sh / build_variant.sh with NO_SCENE_PATCH=1, 2026-10-15): light_split 0.72 = 27 % softer shadows, the owner's choice",
+  "note": "Accepted Mountain R4 Low: v20 geometry and artwork, R4B, 45-degree sun, perforated RT canopies and alpha grass lightmap receivers. Sole Mountain alternative in track1/Desert4, owner accepted 2026-10-21.",
   "common": {
     "light_contrast": 0.01,
     "light_dir": [
       0.0,
-      -9.4,
-      3.4
+      -7.068238818828918,
+      7.068238818828918
     ],
     "scene_gain": [
       0.7065,
@@ -38,7 +38,10 @@
       "tree",
       "crown"
     ],
-    "finish_banner_clearance": 0.05
+    "finish_banner_clearance": 0.05,
+    "lm_terrain_classes": [
+      "grass"
+    ]
   },
   "round": {
     "round": 4,
@@ -52,6 +55,7 @@
   },
   "bake": {
     "quality": "slow",
-    "compose": 0.34
+    "compose": 0.34,
+    "canopy": "perforated"
   }
 }

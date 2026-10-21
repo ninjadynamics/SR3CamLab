@@ -30,7 +30,10 @@ def main():
     extra_columns += ['body_'+name+'_'+axis for name in ('up','right','forward','velocity','angular_velocity','position') for axis in 'xyz']
     wheel_fields = ['contact','susp_28','susp_2c','susp_8c','susp_90','susp_a8','spin_rad_s','radius','surface_index','tyre_4c','tyre_50','plane_x','plane_y','plane_z','plane_d']
     extra_columns += [name+'_'+field for name in ('fl','fr','rl','rr') for field in wheel_fields]
+    extra_columns += ['time_limit_ms','checkpoint_next','checkpoint_count','checkpoint_last_lap','lap_index','game_mode']
     columns += extra_columns
+    # Low-frequency checkpoint context supplements the already-read time limit.
+    checkpoint_context = (None,) * 5; next_checkpoint_read = 0
     start = time.monotonic()
     try:
         with target.open('w',newline='') as out:
@@ -70,13 +73,16 @@ def main():
                 eng=parts['eng']; gears=parts['gears']
                 rpm=p.f32(eng+0x18)*60/(2*math.pi) if eng else None
                 gear=p.u32(gears+8)-1 if gears else None
+                if now >= next_checkpoint_read:
+                    checkpoint_context = tuple(p.u32(address) for address in (0x9EB388,0xB2A89C,0xB2A8A0,0x9DD610,0x728598))
+                    next_checkpoint_read = now + 0.25
                 coherent=int(floats(p,body+0x170,6)==velocity and p.u32(parts['rec']+0x1da0)==elapsed)
-                extras=[gas,brake,hb,gear,rpm,coherent,*axes,*velocity,*(floats(p,body+0x88,3) or (None,None,None)),*wheel_data]
+                extras=[gas,brake,hb,gear,rpm,coherent,*axes,*velocity,*(floats(p,body+0x88,3) or (None,None,None)),*wheel_data,limit,*checkpoint_context]
                 writer.writerow([round(now-start,6),elapsed,mode,(raw[1]-raw[0])/255,steering,lock,p.f32(vc+8),math.sqrt(dot(v,v))*3.6,vf,vs,dot(w,up),math.degrees(math.atan2(vs,vf)),*wheel_angles,hex(p.u32(fm)),p.u32(fm+0x24),p.f32(fm+0x28),hex(p.u32(0x678878)),*extras])
                 rows+=1; time.sleep(0.005)
     finally:
         R.k32.CloseHandle(p.h)
-        target.with_suffix('.json').write_text(json.dumps({'pid':pid,'rows':rows,'duration_s':time.monotonic()-start,'read_only':True,'schema_version':3,'snapshot_note':'sample_coherent checks velocity and elapsed time before/after; other fields are not atomically captured'},indent=2))
+        target.with_suffix('.json').write_text(json.dumps({'pid':pid,'rows':rows,'duration_s':time.monotonic()-start,'read_only':True,'schema_version':4,'snapshot_note':'sample_coherent checks velocity and elapsed time before/after; other fields are not atomically captured'},indent=2))
     print('%d samples saved to %s' % (rows,target))
 
 if __name__ == '__main__': main()

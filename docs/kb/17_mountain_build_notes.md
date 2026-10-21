@@ -266,3 +266,23 @@ Both encoded lighting sets measure 48 degrees, and the collected RT sun is the o
 Installed as **Mountain R4 Low**, `track2/Desert4`, with Mountain's MTN video and music metadata. Existing Classic alternatives and other environment slots remain unchanged. The shader/runtime binaries, YAML, global depth 0.6, +/- controls, 38 families and sixteen excluded material instances remain intact. Main Mountain relief-page rebuild pins and receipt remain attached to track1; the Low variant is an independent snapshot of current family tuning, with its own receipt retained in the research folder. The main page does not automatically restage the Low family maps after a later family-gain edit.
 
 Launcher `-Check` and installed-file hashes pass. No game launched; Low's in-game visual acceptance remains pending. Select Classic, then cycle View Change to **Mountain R4 Low**. Backup: `F:\Jogos\Ultimate Race Lab\work\texture-backups\before-mountain-r4-low-20261021-010250`. Evidence, scripts, logs, recipe and maps: `work/research/mountain-r4-low-20261021/`.
+
+
+## 2026-10-21 — Mountain R4 Low updated to 45 degrees and dappled canopy shadows
+
+Updated the existing `track2/Desert4` alternative; no new menu entry. New maintained recipe: 45-degree sun, perforated ray-only crowns, alpha grass receivers. Ground artwork, v20 patch chain, R4B shape, roads/gameplay, native shader library, smooth runtime, YAML family gains/exclusions, global 0.6 and +/- remain unchanged. Original Mountain R4 in track1 is byte-preserved.
+
+Source-chain pre-R4 hash remains `f2fc51f6007be0915d8996fc597e9b333a2ef08aece01bd840dfb38d7550c94a`. All 575 encoded shape chunks were validated. Expected lighting differences include normals/tangents, 127 lightmap-UV meshes and 132 material-page references. The grass mesh requires 84 vertices rather than 61 to represent lightmap seams; its expanded indexed positions, UV0, winding/topology and bounds match exactly. Material albedo and alpha flags were checked across changed groups. Gameplay files remain byte-identical. All 22 freshly encoded lightmaps and 553 texture chunks passed DDS/mip/reference validation. Native audit retains 38 families, 390 active material instances and 16 exclusions. Seven-SBF unpacked size: 323.0773 MiB.
+
+The two first bake startups stopped on a helper import path and a progress-print argument; both were corrected before the completed pass. The final slow bake completed in 184s and encoding in 71s. New receiver validation identifies exactly the 21 alpha grass faces and confirms the installed material uses a real page rather than white. The standalone actual-ray test confirms coherent sunlight through both canopy shell sides. Details and reusable guidance are in KB16 and the Blender-to-install skill.
+
+Installation and launcher `-Check` pass without starting the game. Visual acceptance pending. Evidence/scripts/maps: `work/research/mountain-r4-low45-20261021/`. Verified rollback backup: `F:\Jogos\Ultimate Race Lab\work\texture-backups\before-mountain-r4-low45-20261021-015858`.
+
+
+## 2026-10-21: accepted 45-degree build retained, redundant builds removed
+
+The owner accepted the 45-degree sun, perforated canopy shadows and grass receivers in game, and asked to keep only this Mountain. **Mountain R4 Low** is now the sole Mountain alternative in `Main_release/track1/Desert4`; the previous high-sun R4 and duplicate track2/Desert4 were removed. Daytona and other stage alternatives remain. The retained final main SBF is byte-identical to the accepted Low: `fd6213b29d694a4d7bd1642936fa34d77e6cab8e17694f0ac7c20fc36ac0c0d9`.
+
+Both main and low recipes now use the accepted 45-degree configuration. The main relief-page clean track/review pins, reviewed manifest and receipt were promoted together. A temporary family-gain change rebuilt all 390 active materials and 16 exclusions in staging; geometry, diffuse and lightmaps were preserved and live files were unchanged. That temporary tuning was never installed.
+
+Owner-authorized cleanup removed 2,090 generated/cache/obsolete binary files, totaling 20,951,880,398 bytes (20.95 GB / 19.51 GiB). Protected hashes checked 6,083 retained files: Blender sources, canonical content and patches, reviewed height maps, current relief inputs, final extracted lightmaps and the relevant race trace. Old build directories keep their scripts/reports/images but no longer contain complete runnable cached stages. Historical backup entries in old receipts describe prior installations; use the current accepted pins and maintained source to rebuild. Manifest and reports: `work/research/checkpoint-cleanup-20261021/`.

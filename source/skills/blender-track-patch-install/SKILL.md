@@ -48,6 +48,8 @@ Use an isolated work root and course copy. Seed the authored labels before the f
 
 Run collect, RT/composition, then final encoding. A changed sun, geometry, material label, ray-blocker input or rounding configuration invalidates the old lighting inputs. Prefer a new run name; do not trust the stack's partial cache signature to detect every changed recipe field.
 
+Diagnose missing shadows at both ends: verify the caster and the final receiving material. Transparent terrain must retain alpha while receiving a real lightmap; do not route it through sprite flat-lighting or building closure. For dappled stand-in canopies, use coherent world-scale openings that pass through both sides of the shell and test actual ray transmission. See the reference for the proven implementation.
+
 For accepted Mountain R4B, retain outward level 4, slide false, crease 80, tolerance 2 and cap 1.5 unless requested otherwise. Source fairing is not an algorithm improvement. RT quality, composition and scene gain are separate choices; do not compensate an unexplained shadow defect by brightening everything.
 
 Rebuild all HD consumers, including facade/overlay recipes and sky projections. Preserve albedo, cutout alpha, accepted lettering, texture scale and current height maps. Apply engine-compatible power-of-two/mip packing and exact-duplicate compaction after rebuilding unshared consumers. Do not update a compacted slot through an updater that does not understand its aliases.
@@ -61,6 +63,8 @@ Extract the lightmap PNGs from the **final encoded SBF** and record chunk IDs, d
 Inspect the rebuilt regions or representative views. Distinguish source defects, texture defects, baked lighting and renderer-specific culling. Offline Blender views do not prove the game's raster state or successful stage loading.
 
 Install transactionally while the game is closed, verify hashes, and preserve rollback data. For native relief, update the accepted receipt and any pinned clean-track/review-track inputs that belong to this slot so a later settings-page Apply cannot restore older geometry. Do not redirect the main slot's pins to an independent lighting alternative.
+
+When the user retires old alternatives or requests disk cleanup, follow the promotion and cache-cleanup guidance in the reference. Keep the accepted main slot and config-page inputs aligned before removing redundant stages.
 
 Run the launcher check without launching the game. Where the config-page build inputs changed, exercise a staged-only rebuild with a temporary gain change and verify both geometry preservation and that live files stayed untouched. Restore no settings that were never installed.
 

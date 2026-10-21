@@ -45,6 +45,8 @@ def main(argv):
         if live_lockstep.main(['--exe', os.path.join(out, 'livetest.exe')]): raise SystemExit('live lockstep: pc_live.c and sr3mods.ps1 differ; nothing is to be installed')
         run([sys.executable, os.path.join(HERE, 'test_delayed_card.py'), '--out', os.path.abspath(out)])
         print('Delayed Hornet: five-second acknowledgment binds video; C/PS traces match.')
+        run([sys.executable, os.path.join(HERE, 'test_checkpoint_reload.py'), '--out', os.path.abspath(out)])
+        print('Checkpoint lifecycle: C/PS replay, delayed table, same-address reload and restoration passed.')
     return dll
 if __name__ == '__main__':
     main(sys.argv[1:])

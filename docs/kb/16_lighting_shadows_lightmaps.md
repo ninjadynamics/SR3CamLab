@@ -274,3 +274,12 @@ The isolated v14 workspace generated automatic labels because the authored `src_
 - What `gfShadowParamsPs` x and w are; why spectators lose their shadows with the hard-edge settings.
 - Whether a partial mip chain is accepted (light map pages currently carry a full chain; deep levels mix unrelated places).
 - The exact response curve of a light map value.
+
+
+## 2026-10-21: transparent grass receivers and perforated tree stand-ins
+
+Missing grass shadows in `SR3_20261021_012526.png` were traced using the embedded camera metadata to `tex_s1_x0384_y0768_64x64_c104_t`. Its 21 terrain polygons were wrongly flat-lit because the material name ends `_t`; installed material `0xc1a60155` referenced white lightmap `0xc1af0002`. Alpha cutout and lightmap receiving are independent. Transparent terrain now enters `LM_TERRAIN_CUTOUTS`, separate from the existing building-only closure/duplicate-side mechanism. The final material is `0xc1ac0127`, referring to real page `0xc1ad0016`. The original texture/alpha bytes and raster alpha flags remain identical. There are 21 additional receiving polygons, none lost. Sampled raw direct-sun values cover 0–255, so this surface is no longer forced fully bright.
+
+At the owner's request Mountain R4 Low was rebaked with 45-degree sun and clustered holes through all 588 canopy stand-ins. The old 64x64 noise mask/random face UVs imposed independent tests at shell entry/exit, closing most gaps and filtering away tiny ones. New `rtbake/canopy_shadow.py` produces a deterministic periodic 256x256 mask, 36.04% open, world-space openings around 0.28–0.80m across, per-tree rotation/phase, projected perpendicular to the sun. Entry and exit agree for a direct sun ray. The actual closed-shell ray test transmits 36.64% of previously blocked rays and detects coherent 10cm patches; 19 sun samples still provide the existing penumbra. These stand-ins are bake-only and add no game-time shader cost. `bake.canopy=perforated` opts in; other recipes retain legacy masks.
+
+The 45-degree light vector is `[0,-7.068238818828918,7.068238818828918]` (travel direction); the collected toward-sun vector is its opposite. The full slow RT pass completed in 184s, final build in 71s on 30 logical processors. It generated 22 maps / 74.1M texels for 416,003 polygons; all maps changed and were extracted from the final encoded SBF. Runtime/shader/YAML and original Mountain R4 remain unchanged. Evidence: `work/research/mountain-r4-low45-20261021/`. Launcher and offline checks pass; in-game visual approval is pending.

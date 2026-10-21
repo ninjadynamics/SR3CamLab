@@ -147,6 +147,7 @@ def stage_build(cfg, variant, name):
             if key_ == 'tarmac': BC.TARMAC = ids_
             else: BC.GRAVEL = ids_
     ROAD_T_, ROAD_G_ = tuple(BC.TARMAC), tuple(BC.GRAVEL)
+    BC.LM_TERRAIN_CUTOUTS = set()
     BC.STITCH = bool(cfg.get('stitch', False)); BC.LM_CUTOUTS = set(cfg.get('lm_cutouts', ())); BC.CAR_SHADE = cfg.get('car_shade'); BC.CAR_SHADE_DUMP = cfg.get('car_shade_dump'); BC.ROAD_VERBATIM = variant == 'classic' and bool(cfg.get('road_verbatim', False)); BC.ROAD_UNDER = float(cfg.get('road_under', -0.02)); BC.SURF_DEFAULT = cfg.get('surface_default', 'gravel'); BC.ROAD_CUT = bool(cfg.get('road_cut', False)); BC.ROAD_RECIPE = cfg.get('road_recipe', False)
     BC.VARIABLE = variant == 'classic' and cfg.get('variable_width', True)        # mixed / allsr3 (frozen lane) keep the constant 14 m road
     BC.Y_SLOPE = float(cfg.get('road_height_slope', 0.35)); BC.EDGE_VISUAL = cfg.get('edge_visual'); BC.SURF_TILES = dict(cfg.get('surface_tiles', {})); BC.MAX_HALF_WIDTH = int(cfg.get('max_half_width', 16)); BC.CHECKER_ALPHA = int(cfg.get('checker_alpha', 128)); BC.MAX_SIDE[:] = [cfg.get('max_left'), cfg.get('max_right')]; BC.RESOLVE_ROUNDS = int(cfg.get('resolve_rounds', 10)); BC.Y_VISIBLE = (None if cfg.get('road_height_visible') is None else float(cfg['road_height_visible'])); BC.ATLAS = bool(cfg.get('atlas', False))
@@ -507,6 +508,11 @@ def stage_build(cfg, variant, name):
         if BC.LIGHT_K > 0:                                            # lighting experiment: smooth normals on natural ground (1995 rock / grass / dirt, the hand fill, the verge)
             import retex as _rs, overlay_bake as _OBn
             lab_ = {k_: v_[0] for k_, v_ in _rs.labels().items()}; nat_ = lambda fc: (not str(fc[0]).split('|')[0].endswith('_t')) and fc[1] != 'sea' and (str(fc[1]).startswith(('hf_', 'hm_', 'verge')) or lab_.get(_OBn.ORIGIN.get(str(fc[0]).split('|')[0], str(fc[0]).split('|')[0])) in ('rock', 'grass', 'dirt', 'sand', 'gravel'))
+            # Transparent terrain is a receiver, not a sprite. Keep alpha/geometry
+            # unchanged and do not put it in the building-only LM_CUTOUTS path.
+            terrain_classes = set(cfg.get('lm_terrain_classes', ['grass']))
+            BC.LM_TERRAIN_CUTOUTS = {k_ for k_, v_ in lab_.items() if k_.endswith('_t') and v_ in terrain_classes} | {b_ for b_, o_ in _OBn.ORIGIN.items() if b_.endswith('_t') and lab_.get(o_) in terrain_classes}
+            log('       alpha terrain lightmap receivers: %s' % ', '.join(sorted(BC.LM_TERRAIN_CUTOUTS)))
             BC.FLAT_LIT = {k_ for k_, v_ in lab_.items() if v_ in cfg.get('flat_lit_classes', ['sign'])} | {b_ for b_, o_ in _OBn.ORIGIN.items() if lab_.get(o_) in cfg.get('flat_lit_classes', ['sign'])}
             BC.SMOOTH_N = BC.smooth_normals([fc for fc in faces + sky + extra if nat_(fc)]); log('       lighting experiment: light_contrast %.2f, smooth normals on %d corners of natural ground' % (BC.LIGHT_K, len(BC.SMOOTH_N)))
         BC.MISSING_TEX[:] = []

@@ -111,7 +111,7 @@ class Run:
         if c != self.choice(): raise RuntimeError('the polygons to light were collected with %s, this run asks for %s: run the light step again' % (c, self.choice()))
         p = os.path.join(G, 'baked.json')
         if os.path.exists(p): os.remove(p)
-        self.py([os.path.join(CORE, 'rtbake', 'rt_bake_game5.py'), os.path.join(G, 'lm'), os.path.join(G, 'faces.pkl'), b.get('quality', 'slow')], os.path.join(G, 'bake.log'))
+        self.py([os.path.join(CORE, 'rtbake', 'rt_bake_game5.py'), os.path.join(G, 'lm'), os.path.join(G, 'faces.pkl'), b.get('quality', 'slow')], os.path.join(G, 'bake.log'), env=dict(self.env, RTG_CANOPY=b.get('canopy', 'legacy')))
         self.py([os.path.join(CORE, 'rtbake', 'rt_compose_game.py'), os.path.join(G, 'lm'), os.path.join(G, 'lmA'), str(b.get('compose', 0.34))], os.path.join(G, 'compose.log'))
         self.note('baked', c)
 

@@ -700,24 +700,45 @@ static int set_course_tune(const Tune *t) {
     return 1;
 }
 static void track_file(char *o, size_t cap, const char *slot_, int dir, const char *leaf) { char s[200]; snprintf(s, sizeof s, "Main_release\\track%c\\%s\\%s", dir, slot_, leaf); jp(o, cap, GAMEDIR, s); }
-static struct { int on; ll at; unsigned char b[0xC60]; } ARCADE_ORIG;
-static void set_arcade_times(const char *s, int dir) {  /* checkpoint times: an added track's arcade_times.bin, written into the loaded table while it is chosen */
+/* Cache the requested block independently of the loaded database. A new race can
+ * reload the table at the same address, or make it unavailable during selection.
+ * Never restore into a freed table; never rewrite the clock or grant extra time. */
+static struct { int on, wanted, ix, dir; ll table, at, next_check;
+    char slot[32]; unsigned char original[0xC60], desired[0xC60]; } ARCADE;
+static int arcade_same(ll at, const unsigned char *b) { unsigned char cur[0xC60]; return rd(at, cur, sizeof cur) && !memcmp(cur, b, sizeof cur); }
+static ll arcade_table(void) { ll p = gp(0xB2A850); return p ? gp(p + 0xC) : 0; }
+static void sync_arcade_times(int force) {
+    unsigned char now[0xC60]; ll tab, at, tick; int first;
+    if (!ARCADE.wanted || !(tab = arcade_table())) return;
+    tick = G->now(G);
+    if (!force && ARCADE.on && tab == ARCADE.table && tick < ARCADE.next_check) return;
+    ARCADE.next_check = tick + 2500000LL;  /* 250 ms, worker thread only */
+    at = tab + 4 + 0xC60LL * ARCADE.ix;
+    if (!rd(at, now, sizeof now)) return;
+    first = !ARCADE.on || tab != ARCADE.table;
+    if (first) { memcpy(ARCADE.original, now, sizeof now); ARCADE.table = tab; ARCADE.at = at; ARCADE.on = 1; }
+    if (memcmp(now, ARCADE.desired, sizeof now)) {
+        wr(at, ARCADE.desired, sizeof now, 1);
+        if (!arcade_same(at, ARCADE.desired)) return;  /* retry, not a successful install */
+        if (!first) pc_logf("Checkpoint times: reloaded block restored for %s.", ARCADE.slot);
+    }
+    if (first) pc_logf("Checkpoint times: %s uses the times of Main_release\\track%c\\%s.", ARCADE.slot, ARCADE.dir, ARCADE.slot);
+}
+static void set_arcade_times(const char *s, int dir) {
     static const char *const IX[6] = {"Tropical4", "Canyon4", "Alpine4", "Lakeside4", "Desert4", "Stadium4"};
-    char file[1100]; int ix = -1, i, p, tab; ll len; char *nb;
-    if (ARCADE_ORIG.on) { wr(ARCADE_ORIG.at, ARCADE_ORIG.b, 0xC60, 1); ARCADE_ORIG.on = 0; }
+    char file[1100]; int ix = -1, i; ll len, tab = arcade_table(); char *nb;
+    if (ARCADE.on && tab == ARCADE.table && arcade_same(ARCADE.at, ARCADE.desired))
+        wr(ARCADE.at, ARCADE.original, 0xC60, 1);
+    memset(&ARCADE, 0, sizeof ARCADE);
     for (i = 0; i < 6; i++) if (ieq(s, IX[i])) ix = i;
     if (dir == 's' || ix < 0) return;
     track_file(file, sizeof file, s, dir, "arcade_times.bin");
-    if (!exists(file)) return;
-    if (!(nb = slurp(file, &len))) return;
-    p = gi(0xB2A850); tab = p ? gi((ll)p + 0xC) : 0;
-    if (len != 0xC60 || !tab) { pc_logf("Checkpoint times: %s not used (size %lld, table %d).", file, len, tab); free(nb); return; }
-    { ll at = (ll)tab + 4 + 0xC60LL * ix;
-      if (!rd(at, ARCADE_ORIG.b, 0xC60)) { free(nb); return; }
-      ARCADE_ORIG.on = 1; ARCADE_ORIG.at = at;
-      wr(at, nb, 0xC60, 1); }
-    free(nb);
-    pc_logf("Checkpoint times: %s uses the times of Main_release\\track%c\\%s.", s, dir, s);
+    if (!exists(file) || !(nb = slurp(file, &len))) return;
+    if (len != 0xC60) { pc_logf("Checkpoint times: %s not used (size %lld, table %lld).", file, len, tab); free(nb); return; }
+    memcpy(ARCADE.desired, nb, 0xC60); free(nb);
+    ARCADE.wanted = 1; ARCADE.ix = ix; ARCADE.dir = dir;
+    snprintf(ARCADE.slot, sizeof ARCADE.slot, "%s", s);
+    sync_arcade_times(1);
 }
 static int dnum(const char *s, double *v) {             /* [double]::TryParse(s, Float, Invariant), NaN and the infinities refused (sr3mods.ps1 refuses them by range) */
     char *e;
@@ -1029,6 +1050,7 @@ static void watch_tracks(void) {
         }
         snprintf(key, sizeof key, "%s/%c", name, dir);
         if (_stricmp(key, times_now)) { set_arcade_times(name, dir); set_shadow_params(name, dir); set_shader_test(name, dir); set_road_hide(name, dir); snprintf(times_now, sizeof times_now, "%s", key); }
+        sync_arcade_times(was_menu != menu);
         cur = list ? &list->t[list->choice] : NULL;
         if (cur) snprintf(sound, sizeof sound, "%s/%s/%s", cur->snd[0], cur->snd[1], cur->snd[2]); else snprintf(sound, sizeof sound, "//");
         if (_stricmp(sound, sound_now)) {

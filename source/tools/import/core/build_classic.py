@@ -887,6 +887,7 @@ LM_TEST = False                                                        # EXPERIM
 SHARE = True                                                           # corners shared between the polygons of a mesh (share_corners)
 STITCH = False                                                         # course setting "stitch": seal1995.py closes the hairline gaps between polygons (pixels the game never drew: 4K screenshots of 2026-10-13)
 FLAT_LIT = set()                                                       # material names lit as flat ground whatever they face (signs)
+LM_TERRAIN_CUTOUTS = set()  # alpha-cut terrain still receives baked light; no building closure or duplicate geometry
 LM_CUTOUTS = set()                                                     # cut-out tiles that take baked light all the same (course setting lm_cutouts). Cut-outs are flat-lit by the owner's rule for sprites; a BUILDING drawn with a cut-out picture (the village church tower) stayed bright whichever way it faced (2026-10-13: "make an exception for the church tower")
 CAR_SHADE = None; CAR_SHADE_DUMP = None                                # the cars' sun / shadow pages (build_road_track): car_shade = file of pictures from the bake ; car_shade_dump = where the page list is written for the bake
 SMOOTH_N = {}                                                          # corner (x, y, z rounded to cm) -> unit normal, natural ground only (import_classic fills it when LIGHT_K > 0)
@@ -1021,7 +1022,7 @@ def _faces_to_mesh_numpy(faces, uv_mode, up_normals=False):
         sd_ = (sh_ / lh_ * 0.7071 + np.array([0.0, 0.7071, 0.0])) if lh_ > 1e-6 else np.array([0.0, 1.0, 0.0]); floor_ = 1.0 - 0.6 * LIGHT_K
         bright = lambda n_: floor_ + (1.0 - floor_) * np.clip((n_ @ sd_ + 0.2) / 0.907, 0.0, 1.0)
         I_ = bright(nv_); unsure = np.repeat(np.array(per_mat(lambda m_: str(m_).endswith('|4')), bool), 4); I_ = np.where(unsure, np.maximum(I_, bright(-nv_)), I_)
-        flat = np.repeat(np.array(per_mat(lambda m_: (lambda b_: (b_.endswith('_t') and b_ not in LM_CUTOUTS) or b_ in FLAT_LIT)(str(m_).split('|')[0])), bool), 4); I_ = np.where(flat, 1.0, I_)      # cut-out boards and signs: as flat ground
+        flat = np.repeat(np.array(per_mat(lambda m_: (lambda b_: (b_.endswith('_t') and b_ not in LM_CUTOUTS and b_ not in LM_TERRAIN_CUTOUTS) or b_ in FLAT_LIT)(str(m_).split('|')[0])), bool), 4); I_ = np.where(flat, 1.0, I_)      # cut-out boards and signs: as flat ground
         if BAKE_COLLECT is not None or BAKE_TABLE is not None: I_ = bake_light(v, nv_, I_, flat, unsure)
         if LM_COLLECT is not None:
             import round1995 as _r95; pid_, pab_ = _r95.patch_lookup(v['p'][:, :3].reshape(-1, 4, 3), back=np.array(per_mat(lambda m_: str(m_).endswith('|3')), bool))      # pieces of a rounded polygon lie in ITS rectangle (round1995.PATCH)
@@ -1098,7 +1099,7 @@ def _old_faces_to_mesh_numpy(faces, uv_mode, up_normals=False):
         sd_ = (sh_ / lh_ * 0.7071 + np.array([0.0, 0.7071, 0.0])) if lh_ > 1e-6 else np.array([0.0, 1.0, 0.0]); floor_ = 1.0 - 0.6 * LIGHT_K
         bright = lambda n_: floor_ + (1.0 - floor_) * np.clip((n_ @ sd_ + 0.2) / 0.907, 0.0, 1.0)
         I_ = bright(nv_); unsure = np.repeat(np.array([str(fc[0]).endswith('|4') for fc in faces], bool), 4); I_ = np.where(unsure, np.maximum(I_, bright(-nv_)), I_)
-        flat = np.repeat(np.array([(lambda b_: (b_.endswith('_t') and b_ not in LM_CUTOUTS) or b_ in FLAT_LIT)(str(fc[0]).split('|')[0]) for fc in faces], bool), 4); I_ = np.where(flat, 1.0, I_)      # cut-out boards and signs: as flat ground
+        flat = np.repeat(np.array([(lambda b_: (b_.endswith('_t') and b_ not in LM_CUTOUTS and b_ not in LM_TERRAIN_CUTOUTS) or b_ in FLAT_LIT)(str(fc[0]).split('|')[0]) for fc in faces], bool), 4); I_ = np.where(flat, 1.0, I_)      # cut-out boards and signs: as flat ground
         if BAKE_COLLECT is not None or BAKE_TABLE is not None: I_ = bake_light(v, nv_, I_, flat, unsure)
         if LM_COLLECT is not None:
             import round1995 as _r95; pid_, pab_ = _r95.patch_lookup(v['p'][:, :3].reshape(-1, 4, 3), back=np.array([str(fc[0]).endswith('|3') for fc in faces], bool))      # pieces of a rounded polygon lie in ITS rectangle (round1995.PATCH)
@@ -1184,7 +1185,7 @@ def _faces_to_mesh_buffer(faces, uv_mode, up_normals):
     import buildfaces, buildsmooth
     smooth = buildsmooth.Smooth(SMOOTH_N) if SMOOTH_N and up_normals and LIGHT_K > 0 else None
     vertices, count, clamp = buildfaces.faces_to_mesh(
-        faces, uv_mode, up_normals, LIGHT_K, LIGHT_ENV, smooth, FLAT_LIT, LM_CUTOUTS, LM_TEST)
+        faces, uv_mode, up_normals, LIGHT_K, LIGHT_ENV, smooth, FLAT_LIT, LM_CUTOUTS | LM_TERRAIN_CUTOUTS, LM_TEST)
     globals()['KEEP_T'] = None
     return vertices, count, clamp
 

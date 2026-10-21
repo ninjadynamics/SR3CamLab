@@ -411,3 +411,10 @@ Owner reported START no longer saved a picture. Run 14:34 detected two screensho
 
 ### START capture: queued timeout confirmed, frame hook replacement (2026-10-16)
 Owner still gets no screenshots. Run 16:02:53 records three error1460 / 2000ms / stage0 requests: never claimed by render thread. Timeout extension rejected as a fix. Capture now uses guarded game instruction 0x591C63 after EndScene, independent of D3D Present vtable; preserves original MOV and register/flags/floating-point state. Actual thunk and full native suite pass; race capture remains pending. Audit/backup: SR3-investigation/start-capture-framefix. Exact cause of old hook not servicing race requests remains unproven.
+
+
+### Timing block lifetime across races (2026-10-21)
+
+Track selection alone is not a sufficient lifetime key for ArcadeDatabase data. The old setter marked a missing table handled and did not notice a reload while the selected name/directory remained unchanged. Both `source/sr3mods.ps1` and `source/tools/sr3mods/pc_live.c` now cache the requested block independently, wait for a readable table, verify installation, and check its contents at race/menu transitions and at 250 ms intervals. Restore only into the current table if it still contains our own desired bytes; never restore into a cached freed address. Treat game pointers as unsigned. No elapsed timer/physics modifications or added time allowances.
+
+`test_checkpoint_reload.py` is a mandatory native build gate, in addition to the existing 17 camera and 13 live parity cases. It asserts the independently expected writes and vanilla restoration for immediate/delayed loads, same-address replacement and high-bit relocated tables, then compares C/PS traces. Installed DLL and TP EXE/script were synchronized. The accepted dinput8 smoothness binary, four-P-core game affinity, disabled watchdog, native relief and handling were preserved. The owner reported no issues after testing on 2026-10-21; the original timeout's precise causal sequence remains unproven. See `03_master_xdata_route.md`. Durable evidence and binary rollback: `work/research/checkpoint-cleanup-20261021/`.

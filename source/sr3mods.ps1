@@ -1,4 +1,4 @@
-<#
+﻿<#
   SEGA Rally 3 - SR3CamLab chase camera, in-memory edition
   -----------------------------------------------------------
   Rally.exe on disk is never modified. This script launches the game through
@@ -722,23 +722,50 @@ function Set-CourseTune($h, $tune) {
 # per track ([[0xB2A850] + 0xC] + 4 + 0xC60 x track; reader 0x661AA0, called at 0x5ABDF8 whenever a marker is crossed). An
 # added track with its own checkpoints brings arcade_times.bin (that block) in its folder; it is written into the loaded
 # table while the track is chosen and SEGA's block is put back when another one is. The file on disk is never touched.
-$script:ArcadeOrig = @{}
+$script:Arcade = $null
+function Get-ArcadeTable($h) {
+    $p = Read-GamePtr $h 0xB2A850
+    if ($p) { return (Read-GamePtr $h ($p + 0xC)) }
+    return 0
+}
+function Sync-ArcadeTimes($h, [bool]$force) {
+    $a = $script:Arcade
+    if (-not $a) { return }
+    $tab = Get-ArcadeTable $h
+    if (-not $tab) { return }
+    $tick = (Get-Now).Ticks
+    if (-not $force -and $a.On -and $tab -eq $a.Table -and $tick -lt $a.NextCheck) { return }
+    $a.NextCheck = $tick + 2500000L
+    $at = [long]$tab + 4 + 0xC60 * $a.Index
+    $nowBytes = [Sr3Mem]::Read($h, $at, 0xC60)
+    if ($null -eq $nowBytes) { return }
+    $first = -not $a.On -or $tab -ne $a.Table
+    if ($first) { $a.Original = $nowBytes; $a.Table = $tab; $a.At = $at; $a.On = $true }
+    if ([Convert]::ToBase64String($nowBytes) -ne [Convert]::ToBase64String($a.Desired)) {
+        [Sr3Mem]::Write($h, $at, $a.Desired, $true)
+        $verify = [Sr3Mem]::Read($h, $at, 0xC60)
+        if ($null -eq $verify -or [Convert]::ToBase64String($verify) -ne [Convert]::ToBase64String($a.Desired)) { return }
+        if (-not $first) { Log "Checkpoint times: reloaded block restored for $($a.Slot)." }
+    }
+    if ($first) { Log "Checkpoint times: $($a.Slot) uses the times of Main_release\track$($a.Dir)\$($a.Slot)." }
+}
 function Set-ArcadeTimes($h, [string]$gameDir, [string]$slot, [string]$dir) {
     $index = @{ Tropical4 = 0; Canyon4 = 1; Alpine4 = 2; Lakeside4 = 3; Desert4 = 4; Stadium4 = 5 }
-    foreach ($s in @($script:ArcadeOrig.Keys)) {
-        $o = $script:ArcadeOrig[$s]; [Sr3Mem]::Write($h, $o.At, $o.Bytes, $true); $script:ArcadeOrig.Remove($s)
+    $tab = Get-ArcadeTable $h; $a = $script:Arcade
+    if ($a -and $a.On -and $tab -eq $a.Table) {
+        $current = [Sr3Mem]::Read($h, $a.At, 0xC60)
+        if ($null -ne $current -and [Convert]::ToBase64String($current) -eq [Convert]::ToBase64String($a.Desired)) {
+            [Sr3Mem]::Write($h, $a.At, $a.Original, $true)
+        }
     }
+    $script:Arcade = $null
     if ($dir -eq 's' -or -not $index.ContainsKey($slot)) { return }
     $file = Join-Path $gameDir "Main_release\track$dir\$slot\arcade_times.bin"
     if (-not (Test-Path -LiteralPath $file)) { return }
     $new = [IO.File]::ReadAllBytes($file)
-    $p = Read-GameInt $h 0xB2A850; $tab = if ($p) { Read-GameInt $h ($p + 0xC) } else { 0 }
-    if ($new.Length -ne 0xC60 -or -not $tab) { Log "Checkpoint times: $file not used (size $($new.Length), table $tab)."; return }
-    $at = [long]$tab + 4 + 0xC60 * $index[$slot]
-    $old = [Sr3Mem]::Read($h, $at, 0xC60); if ($null -eq $old) { return }
-    $script:ArcadeOrig[$slot] = @{ At = $at; Bytes = $old }
-    [Sr3Mem]::Write($h, $at, $new, $true)
-    Log "Checkpoint times: $slot uses the times of Main_release\track$dir\$slot."
+    if ($new.Length -ne 0xC60) { Log "Checkpoint times: $file not used (size $($new.Length), table $tab)."; return }
+    $script:Arcade = @{ Desired = $new; Index = $index[$slot]; Dir = $dir; Slot = $slot; On = $false; Table = 0L; At = 0L; NextCheck = 0L; Original = $null }
+    Sync-ArcadeTimes $h $true
 }
 # Car shadows. The game's dynamic shadows are variance shadow maps; the pixel shaders read gfShadowParamsPs from four floats at
 # 0x9F1068 (set once at start-up by 0x594570): +4 = the smallest variance allowed (1/512), +8 = the power the result is raised
@@ -1207,6 +1234,7 @@ function Watch-Tracks($game, [string]$gameExe) {
                 $dirNow = $dir
             }
             if ("$name/$dir" -ne $timesNow) { Set-ArcadeTimes $h (Split-Path -Parent $gameExe) $name $dir; Set-ShadowParams $h (Split-Path -Parent $gameExe) $name $dir; Set-ShaderTest $h (Split-Path -Parent $gameExe) $name $dir; Set-RoadHide $h (Split-Path -Parent $gameExe) $name $dir; $timesNow = "$name/$dir" }
+            Sync-ArcadeTimes $h ($wasMenu -ne $menu)
             # ... and its sounds are the chosen track's, where the game has them
             $cur = if ($list) { $list[$choice[$name]] } else { $null }
             $sound = if ($cur) { "$($cur.Ambience)/$($cur.Music)/$($cur.Events)" } else { '//' }
