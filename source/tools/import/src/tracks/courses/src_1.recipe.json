@@ -1,11 +1,11 @@
 {
-  "note": "Accepted Mountain R4 Low: v20 geometry and artwork, R4B, 45-degree sun, perforated RT canopies and alpha grass lightmap receivers. Sole Mountain alternative in track1/Desert4, owner accepted 2026-10-21.",
+  "note": "Mountain R4: owner-corrected v22 source, R4B, original 70.114834886-degree sun and colours, perforated canopies and grass receivers. 2026-10-27.",
   "common": {
     "light_contrast": 0.01,
     "light_dir": [
       0.0,
-      -7.068238818828918,
-      7.068238818828918
+      -9.4,
+      3.4
     ],
     "scene_gain": [
       0.7065,

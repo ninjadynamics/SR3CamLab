@@ -19,7 +19,17 @@ L.rtc_road.restype = LL; L.rtc_road.argtypes = [Pv, LL, Ii, Pv, Pv, LL, Pv]
 L.rtc_pages.argtypes = [Pv, Ii, Ii] + [Pv] * 6 + [LL, Dd, Dd, Pv, Pv, Pv]; L.rtc_key.argtypes = [Pv, LL, Pv]
 road = npyio.Arr('|b1', (n,)); nroad = L.rtc_road(P.ptr(), n, k, N.ptr(), cen.ptr(), cen.shape[0], road.ptr())
 pages = npyio.Arr('|u1', (npg, side, side, 3)); over = LL(0); lsum = Dd(0)
-L.rtc_pages(RAW.ptr(), npg, side, *(K[f].ptr() for f in ('page', 'x0', 'y0', 'nu', 'nv')), road.ptr(), n, AMB, BOUNCE, pages.ptr(), ctypes.byref(over), ctypes.byref(lsum))
+args = [RAW.ptr(), npg, side, *(K[f].ptr() for f in ('page', 'x0', 'y0', 'nu', 'nv')), road.ptr(), n, AMB, BOUNCE, pages.ptr(), ctypes.byref(over), ctypes.byref(lsum)]
+if _os_.environ.get('RTG_LIGHTING_TONE'):
+    import json
+    from rtbake.lighting_tone import rgb
+    tone = json.loads(_os_.environ['RTG_LIGHTING_TONE'])
+    vectors = [(ctypes.c_double * 3)(*rgb(tone[k], k)) for k in ('sun', 'sky', 'reference')]
+    L.rtc_pages_toned.argtypes = L.rtc_pages.argtypes + [Pv, Pv, Pv]
+    L.rtc_pages_toned(*args, *vectors)
+    print('Lighting-only tone: ' + json.dumps(tone, sort_keys=True))
+else:
+    L.rtc_pages(*args)
 key = npyio.Arr('|V48', (n,)); L.rtc_key(P.ptr(), n, key.ptr())
 npyio.save(OUT + '.lm.pages.npy', pages)
 npyio.savez(OUT + '.lm.table.npz', K=key, **{f: K[f] for f in ('page', 'x0', 'y0', 'nu', 'nv')}, **({'ab': K['ab']} if 'ab' in K else {}))      # (ab: where a polygon's corners are in its rectangle - the pieces of a rounded polygon share one)

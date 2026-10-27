@@ -286,3 +286,28 @@ The owner accepted the 45-degree sun, perforated canopy shadows and grass receiv
 Both main and low recipes now use the accepted 45-degree configuration. The main relief-page clean track/review pins, reviewed manifest and receipt were promoted together. A temporary family-gain change rebuilt all 390 active materials and 16 exclusions in staging; geometry, diffuse and lightmaps were preserved and live files were unchanged. That temporary tuning was never installed.
 
 Owner-authorized cleanup removed 2,090 generated/cache/obsolete binary files, totaling 20,951,880,398 bytes (20.95 GB / 19.51 GiB). Protected hashes checked 6,083 retained files: Blender sources, canonical content and patches, reviewed height maps, current relief inputs, final extracted lightmaps and the relevant race trace. Old build directories keep their scripts/reports/images but no longer contain complete runnable cached stages. Historical backup entries in old receipts describe prior installations; use the current accepted pins and maintained source to rebuild. Manifest and reports: `work/research/checkpoint-cleanup-20261021/`.
+
+
+## 2026-10-21: replacement daylight and sunset bakes
+
+The retired 45-degree Mountain was replaced by **Mountain R4** (original 70.1148-degree sun, original colours, slot1) and **Mountain R4 Sunset** (35 degrees, warm peach/rose light from the left of the village road, slot2). v20/R4B geometry, road/collision data, albedo, relief YAML and accepted runtime are preserved. Both rebuilds and launcher/page checks passed; no game launched. Each has 22 extracted lightmaps. Details: [lighting record](16_lighting_shadows_lightmaps.md#2026-10-21-original-daylight-and-warm-village-sunset), `work/research/mountain-lighting-pair-20261021/`. Old 45-degree files and rollback copies were removed at the owner's request.
+
+
+## 2026-10-21: sunset rejected; original daylight retained
+
+The owner rejected the 35-degree sunset because it does not fit the art. **Mountain R4** in `track1/Desert4`, using the exact original 70.114834886-degree sun and unchanged lighting colours, is the only retained Mountain. The sunset menu entry, installed `track2/Desert4`, dedicated recipe, generated build, lightmaps and preview files were removed. `track2/Tropical4`, Daytona, the accepted runtime and native-relief settings/pins remain unchanged. Current editable geometry is `work/blender/mountain.patch3.v20.blend`; the next manual roof edit should be saved as v21. Cleanup and preserved-file verification: `work/research/mountain-sunset-retired-20261021/`. The previous pair installation notes are historical; do not restore sunset without a new request.
+
+
+### Owner-corrected v22 installed ? 2026-10-27
+
+Bruno inspected v22, corrected it manually, then approved making it the patch-3 source and rebuilding the complete chain. Source: `work/blender/mountain.patch3.v22.blend`, SHA256 `2cf672dafc99e9b309205152a6c64a9d7f3e6e4d77ea8504651f4f2786e98223`. This supersedes the earlier v22 inspection snapshot. Its 84,278 polygons export as 84,279 triangles; one quad uses Blender's existing loop triangulation without changing the saved scene.
+
+The loaded JSON removals/additions reconstruct all 84,279 canonical float32 triangles byte-identically: 8,065,812 bytes, SHA256 `3802d119e146d37bfea37690291e4e91c05a823fd2eedc31671609080e16e860`. Earlier stages/patches remain intact. All 2,092 triangles changed from v20 survive the actual importer and cleanup. Both repaired trees retain 84 faces, twelve trunk faces each. The source road object and installed gameplay/object/banner payloads are unchanged.
+
+The first chain audit caught two reverse-facing legacy facade slices overriding approved replacements and a destructive partial-overlap cleanup rule deleting an entire wall for a 0.127 m2 roof/wall intersection. Patch 3 now explicitly removes those two legacy slices with their original winding. The cleanup no longer deletes a whole authored `facade_` surface merely because it partly overlaps another surface; full containment cleanup remains. The final edit stage sets `preserve_authored_uv: true`: heuristic UV filling otherwise changed one coordinate of a near-collinear accepted sliver. Ordinary hand patches retain automatic UV repair. `core/test_patch_authored_uv.py` verifies both modes.
+
+Mountain R4 in `track1/Desert4` now contains v22 + R4B + fresh RT/lightmaps at the exact original 70.114834886-degree sun, original colours, perforated canopy blockers and grass receivers. Bake: 588 trees, 33 lamps, 72.8 million texels, 22 pages. Final native-relief footprint: 324.0385 MiB across seven SBFs. Current HD artwork, shader binary, YAML family depths/exclusions, 0.6 global depth and live +/- controls remain unchanged.
+
+The config-page clean RT source, review track, manifest, pins and native receipt were advanced together. A staged-only page Apply with a temporary family gain preserved all 561 existing non-material/non-texture chunks and left live files unchanged. Launcher `-Check` passed; the game was not launched. In-game acceptance of this installed rebuild remains for Bruno.
+
+Evidence: `work/research/mountain-v22-r4b-20261027/`, including `install-report.json`, source/chain proofs, `page-apply-check.json`, RT logs and extracted lightmap PNGs. Rollback: `work/texture-backups/mountain-before-v22-20261027-135440/`.

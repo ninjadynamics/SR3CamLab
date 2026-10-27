@@ -51,3 +51,22 @@ The local tunnel/ridge edits are shape repairs, not zero-deviation remeshing: me
 `bl_dump.py` stores arrays as `('nd', dtype, shape, bytes)` for NumPy compatibility. Decode them before measuring or indexing: `len(serialized_array)` is four, not a vertex count. Use `check_build.load_pkl` or an equivalent explicit decoder. Use bulk RNA reads for large equality checks; repeated per-corner RNA access can become needlessly slow.
 
 Offline Blender reconstruction does not automatically reproduce game rendering. In particular, the material's `gbUberDSIDE` switch alone did not reproduce SR3's raster culling in the diagnostic render: applying it as a Blender backface rule created false missing triangles. Separate source/encoded geometry and alpha proofs from renderer approximation. In-game visual acceptance remains pending until the owner tests this build.
+
+## Building simplification: facade and roof joins — 2026-10-25
+
+V22 was authored from a saved copy of the accepted v21 scene. This task explicitly allowed regularizing the buildings into broad wall panels and simple roof forms; it was not a shape-preserving terrain remesh. Each resulting rectangular facade panel has two triangles. Complex shared roof footprints still require several simple planes, and spires retain their pointed form.
+
+- Reconstruct wall and roof joins together. Removing facade subdivisions alone leaves old gables protruding through a new hip or cap. Conversely, lowering a wall without matching its roof leaves a visible opening.
+- Group UV fragments with care. Six source walls were divided at integer texture wraps. Their UVs differed by exactly one repeat although they belonged to the same physical facade. Enclosing each fragment independently created overlapping quads. Verify shared points, material and normal, align the integer UV offsets, then merge the source groups before replacement. Do not reuse those historical group IDs in another scene.
+- Do not select wall corners from an infinitesimal section at the projected extrema. A submillimetre outward floor vertex can make a full wall appear to end at ground level. Use bounded corner bands to find upper and lower anchors. If an overhanging eave extends beyond the floor, recover the actual low boundary rather than treating the eave tip as a ground corner.
+- Retain shared wall side lines, including small original leans. Independent vertical clipping of adjoining walls of different heights introduced narrow overlaps. Remove negligible endpoint cuts before they produce collapsed quads.
+- Classify inclined tower aprons as roof planes. Simplify them in their own plane rather than forcing the upright-wall method onto them.
+- Test polygon overlaps as well as duplicate triangles, and inspect projected wall coverage. A large coverage loss below the new eave is a hole; loss of a retired gable above the new eave may be intentional. Verify its roof replacement visually.
+- Triangulate concave roof caps with valid internal diagonals and an explicit quality criterion. Generic tessellation produced avoidable thin triangles even when the outline was correct.
+
+Evidence is under `work/research/mountain-v22-buildings-20261025/`. The saved inspection scene has 466 two-triangle facade panels; 2,710 old building triangles became 2,109. All 82,181 unrelated visual-course faces and the separate gameplay road were preserved, no new duplicate triangles were found, and the saved mesh has zero loose edges. The coplanar audit checks overlaps above 0.02 m²; it is not a proof that every conceivable intersection is absent. The v22 scene is not installed and still requires the user's inspection.
+
+
+### Accepted scene versus downstream cleanup ? 2026-10-27
+
+Bruno's corrected v22 supersedes the inspection snapshot above and is now the installed patch-3 source; current hash and full evidence are in `work/research/mountain-v22-r4b-20261027/`. Source geometry acceptance does not prove importer preservation. The actual chain initially dropped three approved facade triangles: two competed with reverse-facing legacy copies absent from the saved scene; a third had only a small partial roof/wall overlap. Explicit legacy removals and preserving partially overlapping facade surfaces fixed the losses without changing the accepted `.blend`. All 2,092 changed triangles and both repaired tree assemblies survive. Do not repair an apparent hole by editing the source until checking whether downstream cleanup created it.

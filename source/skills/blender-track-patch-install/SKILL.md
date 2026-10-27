@@ -42,6 +42,8 @@ Produce two independent proofs:
 
 The first proof does not substitute for the second. Legacy slices absent from the edited source can survive in the importer, causing cleanup to delete the correct replacement. Remove only the verified legacy assembly and prove the replacement survives the cleanup.
 
+For a fully mapped authoritative export, preserve its supplied UVs in the final stage; automatic unmapped-UV repair can alter near-collinear triangles. See the v22 regression in the pipeline reference.
+
 Do not describe `.blend` containers or the later quantized game meshes as byte-identical to JSON. State the exact payload and representation compared. Explain inherited degenerates or intentional importer-only surfaces separately; do not hide differences behind a loose tolerance.
 
 ## Build the requested stack
@@ -52,7 +54,7 @@ Run collect, RT/composition, then final encoding. A changed sun, geometry, mater
 
 Diagnose missing shadows at both ends: verify the caster and the final receiving material. Transparent terrain must retain alpha while receiving a real lightmap; do not route it through sprite flat-lighting or building closure. For dappled stand-in canopies, use coherent world-scale openings that pass through both sides of the shell and test actual ray transmission. See the reference for the proven implementation.
 
-For accepted Mountain R4B, retain outward level 4, slide false, crease 80, tolerance 2 and cap 1.5 unless requested otherwise. Source fairing is not an algorithm improvement. RT quality, composition and scene gain are separate choices; do not compensate an unexplained shadow defect by brightening everything.
+For accepted Mountain R4B, retain outward level 4, slide false, crease 80, tolerance 2 and cap 1.5 unless requested otherwise. Source fairing is not an algorithm improvement. RT quality, composition and scene gain are separate choices; do not compensate an unexplained shadow defect by brightening everything. For sun placement and coloured lighting without albedo changes, read [references/lighting-variants.md](references/lighting-variants.md).
 
 Rebuild all HD consumers, including facade/overlay recipes and sky projections. Preserve albedo, cutout alpha, accepted lettering, texture scale and current height maps. Apply engine-compatible power-of-two/mip packing and exact-duplicate compaction after rebuilding unshared consumers. Do not update a compacted slot through an updater that does not understand its aliases.
 

@@ -112,7 +112,12 @@ class Run:
         p = os.path.join(G, 'baked.json')
         if os.path.exists(p): os.remove(p)
         self.py([os.path.join(CORE, 'rtbake', 'rt_bake_game5.py'), os.path.join(G, 'lm'), os.path.join(G, 'faces.pkl'), b.get('quality', 'slow')], os.path.join(G, 'bake.log'), env=dict(self.env, RTG_CANOPY=b.get('canopy', 'legacy')))
-        self.py([os.path.join(CORE, 'rtbake', 'rt_compose_game.py'), os.path.join(G, 'lm'), os.path.join(G, 'lmA'), str(b.get('compose', 0.34))], os.path.join(G, 'compose.log'))
+        compose_env = dict(self.env)
+        if self.recipe.get('common', {}).get('lighting_tone'):
+            from rtbake.lighting_tone import bake_parameters
+            cfg = dict(self.cfg); cfg.update(self.recipe.get('common', {})); cfg.update(self.recipe.get('build', {}))
+            compose_env['RTG_LIGHTING_TONE'] = json.dumps(bake_parameters(cfg))
+        self.py([os.path.join(CORE, 'rtbake', 'rt_compose_game.py'), os.path.join(G, 'lm'), os.path.join(G, 'lmA'), str(b.get('compose', 0.34))], os.path.join(G, 'compose.log'), env=compose_env)
         self.note('baked', c)
 
     def build(self):

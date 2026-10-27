@@ -327,3 +327,31 @@ The agent did not launch Rally or install the staged DLL. Live visual and total
 startup-time confirmation remain pending. Evidence:
 `work/research/startup-fastpath-20261021/AGGRESSIVE-STARTUP-FINDINGS.md` and
 `aggressive-build-receipt.json`.
+
+
+## Extra Quick Race track cards ? 2026-10-27 investigation
+
+OFFLINE FEASIBILITY, not installed or live-tested: the native selector is not limited to three tracks. `0x600660` filters out records with nonzero node+0x0c; removing that branch only in Unicorn memory produces all six actual database entries. The native selector's AddEntry cap is 38; actual card builder `0x628f60` produces all six expected card resource names. The track scene at `0x62d225` builds children from this selector's count/data; interactive selection refills via `0x6067d0`. Both paths must be changed together before scene creation, as with the old car-list/card-count crash.
+
+Imported variants require their own UI identity mapped to an existing base track plus directory. Mountain/Daytona share Desert4 and Tropical 2/3 share Tropical4, so new cards cannot simply become arbitrary gameplay IDs or folder names. Confirmation at `0x666a11` currently reads cursor index through `0x606490`; a reordered-entry replay proves that differs from entry data (`0x606510`). Card construction also looks data up in the native track library and needs the corresponding resolver. The current `pc_live.c` stage watcher assumes count==3 and must use actual page identity for an expanded menu. Bind variant files/audio/timings before loading and reset selection for demo/new-game transitions.
+
+Prefer image cards initially. The widget already supports named textures; copying Hornet's extra video allocation hits the fixed 20-object pool (18 originals plus Hornet). Do not promise 38 animated cards from the selector capacity. Resource loading scope, named-record indexes, memory budget and live layout still need validation.
+
+Detailed proposal, current inventory, executable disassembly and actual-code replay: `work/research/track-cards-20261027/FINDINGS.md`, `prove_track_selector.py`, `offline-proof.json`. No game or installed files were changed. Quick Race is the recommended first scope; Daytona remains deferred by the owner.
+
+
+### Proposed Classic game/track submenus
+
+Owner requested a shared catalog: Quick Race lists all installed REVO and Classic/other-game tracks; Classic branches into source-game selection (SRC, SR2, Daytona USA, Daytona USA 2, Scud Race), then that game's tracks. Current ready content is SRC Mountain; Daytona is WIP. Recommendation: unavailable game cards remain visible but disabled until ready content exists.
+
+Static inspection confirms named XML pages/callbacks in the arcade frontend SBFs, with native handlers explicitly controlling page transitions and numeric race-flow states. New game/track pages therefore need registered native flow/callback handling, Back navigation and selection restoration in addition to XML/art. Reuse the same stable track catalog and valid base-slot/variant resolver across both modes; no duplicated track installs or arbitrary gameplay IDs. Extra-card machine-code replay passed; the submenu flow is still a design, not installed or live-tested. Full notes: `work/research/track-cards-20261027/FINDINGS.md`.
+
+
+### Video capacity is expandable, not a permanent product limit
+
+2026-10-27 STATIC follow-up: a 64/128-slot pool is feasible in principle. The current pool ends at `0xad4c00`, immediately occupied by `gfBump0UScale` state; raising only the allocator's 20*0x16c bound would corrupt adjacent globals. Relocate the pool and update initializer (`0x671d30`, count20), allocator (`0x4de430`), playback/access/frontend base references, named-video registration and plugin/startup/reopen helpers. Initial reference inventory is in `work/research/track-cards-20261027/video-pool-references.json`; no relocation is implemented yet.
+
+64 object records cost only 22.75 KiB, 128 cost45.5 KiB. The expensive part is retained decoder graphs/textures/threads in this 32-bit game. Prefer expanded capacity plus lazy loading, visible-card playback and proper eviction/release, with widget pointer lifetimes checked. Animated cards are therefore a viable target; the existing 20-slot pool is not a reason to rule them out permanently. Historical decoder memory findings are in KB20 section8.
+
+
+2026-10-27 owner direction: use a 32- or 64-slot video pool and load/free videos per menu. Proposed default is64. Keep shared/loading resources explicitly owned, coordinate release with menu transitions, and clear widget references before freeing video resources. This is the intended design, not an implemented feature.

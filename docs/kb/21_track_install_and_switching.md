@@ -124,3 +124,13 @@ must be closed, because it holds the files open. Details and limits: 23_texture_
 The built test tracks live in `work\out\<step>\<Slot>\`. `F:\Jogos\SEGA Rally 3\track ladder.ps1 -Step <folder>` /
 `-Step off` swapped a step into the slot during the first test rounds (work/out/README.txt). The ladder steps 0..24
 were deleted on 2026-10-07 after they had passed or been superseded; the scripts rebuild them.
+
+
+## 2026-10-21: current Mountain lighting alternatives
+
+Classic Mountain slots are now **Mountain R4**, track1/Desert4 (original 70.1148-degree sun), and **Mountain R4 Sunset**, track2/Desert4 (warm 35-degree light). The old 45-degree Low was retired and its bake files removed. Daytona remains track5. The main relief page is pinned to daylight; sunset is an independent family-map snapshot sharing global +/- controls. Both installed sets and a staged-only main-page rebuild passed validation without launching the game. Evidence: `work/research/mountain-lighting-pair-20261021/`.
+
+
+## 2026-10-21: sunset rejected; original daylight retained
+
+The owner rejected the 35-degree sunset because it does not fit the art. **Mountain R4** in `track1/Desert4`, using the exact original 70.114834886-degree sun and unchanged lighting colours, is the only retained Mountain. The sunset menu entry, installed `track2/Desert4`, dedicated recipe, generated build, lightmaps and preview files were removed. `track2/Tropical4`, Daytona, the accepted runtime and native-relief settings/pins remain unchanged. Current editable geometry is `work/blender/mountain.patch3.v20.blend`; the next manual roof edit should be saved as v21. Cleanup and preserved-file verification: `work/research/mountain-sunset-retired-20261021/`. The previous pair installation notes are historical; do not restore sunset without a new request.

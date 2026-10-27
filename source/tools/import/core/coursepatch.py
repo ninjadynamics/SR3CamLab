@@ -447,6 +447,8 @@ def apply(faces, path, ox, oz, export, log, fill_uv=True, applied=(), settings=N
         facadebake.apply(J['bake'], pixels, save, origin, log)
     add = [(f_['tile'], 'patch', [sr3(p) for p in f_['p']], [tuple(u) for u in f_['uv']]) for f_ in J['add']]
     add = [fc for fc in add if _area(fc[2]) > 1e-9]; cont = flat = 0
-    if fill_uv: cont, flat = continue_uv(add, faces, log)
+    # A verified scene export already owns its UVs, even on near-collinear slivers.
+    # Heuristic "unmapped" detection can otherwise alter those accepted float32 bytes.
+    if fill_uv and not J.get('preserve_authored_uv', False): cont, flat = continue_uv(add, faces, log)
     log('       patch %s: %d faces added (%.0f m2; %d had no mapping: %d continued from a neighbour, %d laid flat), %d corners of %d polygons moved' % (path.replace('\\', '/').split('/')[-1], len(add), sum(_area(fc[2]) for fc in add), cont + flat, cont, flat, sum(len(v) for v in moves.values()), len(moves)))
     return faces + add

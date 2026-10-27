@@ -295,8 +295,12 @@ def stage_build(cfg, variant, name):
                 if pq_(fi_) or pq_(fj_):                                  # solid on solid: the smaller one goes when it lies wholly inside the bigger and is the patch's
                     s_, b_ = (i_, j_) if area2_(fi_[2]) <= area2_(fj_[2]) else (j_, i_)
                     if pq_(faces[s_]) and inside_(faces[b_][2], faces[s_][2]): drop_.add(s_); cnt_['faces lying inside a bigger one left out'] += 1; ch_ += 1
-                    elif hard_ and pq_(faces[s_]) and area2_(faces[s_][2]) < 20.0: drop_.add(s_); cnt_['small patch faces half in another left out'] += 1; ch_ += 1
-                    elif hard_ and pq_(faces[b_]) and not pq_(faces[s_]) and area2_(faces[b_][2]) < 40.0: drop_.add(b_); cnt_['small patch faces half in another left out'] += 1; ch_ += 1
+                    # Authored facades can overlap slightly at a roof/wall junction. Removing
+                    # an entire wall for that partial overlap opens a hole (v22: 0.127/10.72 m2).
+                    # Full containment above still removes redundant facades; partial overlaps
+                    # remain for the later polygon resolver instead of deleting the wall.
+                    elif hard_ and pq_(faces[s_]) and not str(faces[s_][0]).startswith('facade_') and area2_(faces[s_][2]) < 20.0: drop_.add(s_); cnt_['small patch faces half in another left out'] += 1; ch_ += 1
+                    elif hard_ and pq_(faces[b_]) and not pq_(faces[s_]) and not str(faces[b_][0]).startswith('facade_') and area2_(faces[b_][2]) < 40.0: drop_.add(b_); cnt_['small patch faces half in another left out'] += 1; ch_ += 1
             faces = [fc for k_, fc in enumerate(faces) if k_ not in drop_]
             if not ch_:
                 if hard_: break
@@ -553,6 +557,9 @@ def stage_build(cfg, variant, name):
                     # Why: the track's light is a SEGA track's (lighting_from), 0.64 ambient against 1.14 sun. A car's shadow leaves the road at 37 % of its sunlit
                     # brightness and a car in a baked shadow hardly darkens on its sides (owner, 2026-10-13: "too tame compared to the baked shadows"). The flat-lit
                     # scenery and road are lit as lying surfaces, so they stay exactly as they were; only what the sun leaves in shadow gets darker.
+                if cfg.get('lighting_tone'):
+                    from rtbake.lighting_tone import apply_native
+                    apply_native(fl, cfg['lighting_tone'])
                 fr_ = cfg.get('fog_range', [20000.0, 40000.0, 20000.0, 40000.0])      # floats 10..13 of each set: the 1995 game has no fog (the fogged far edge of the sea sheet stood as blue bars on the horizon)
                 if fr_: fl[10:14] = fr_
                 s_.data = fl.tobytes()

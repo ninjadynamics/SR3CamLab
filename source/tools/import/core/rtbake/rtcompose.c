@@ -94,6 +94,54 @@ EXPORT void rtc_pages(const unsigned char *raw, int npg, int side, const int *pg
     }
 }
 
+EXPORT void rtc_pages_toned(const unsigned char *raw, int npg, int side, const int *pg, const int *x0, const int *y0, const int *nu,
+                      const int *nv, const unsigned char *road, i64 n, double AMB, double BOUNCE, unsigned char *pages,
+                      i64 *over, double *lsum, const double *sun, const double *sky, const double *reference) {
+    const float k255 = 255.0f, k4 = 4.0f, c1 = (float)(1.0 - AMB), cA = (float)AMB, c35 = 0.35f, c65 = 0.65f, cB = (float)BOUNCE,
+                c05 = 0.05f, w0 = 0.2126f, w1 = 0.7152f, w2 = 0.0722f, lim = 1.02f;
+    i64 npx = (i64)side * side; int p;
+    #pragma omp parallel for schedule(dynamic, 1)
+    for (p = 0; p < npg; p++) {
+        unsigned char *mask = (unsigned char *)calloc((size_t)npx, 1); const unsigned char *R = raw + (i64)p * npx * 7;
+        unsigned char *O = pages + (i64)p * npx * 3; i64 i, ov = 0; double ls = 0;
+        for (i = 0; i < n; i++) {
+            int ya, yb, xa, xb, y;
+            if (!road[i] || pg[i] - 1 != p) continue;
+            ya = y0[i]; yb = y0[i] + (nv[i] + 3) / 4 * 4; xa = x0[i]; xb = x0[i] + (nu[i] + 3) / 4 * 4;
+            if (yb > side) yb = side;
+            if (xb > side) xb = side;
+            for (y = ya; y < yb; y++) if (xb > xa) memset(mask + (i64)y * side + xa, 1, (size_t)(xb - xa));
+        }
+        for (i = 0; i < npx; i++) {
+            const unsigned char *r = R + 7 * i; float V = r[0] / k255, A = r[1] / k255, F = r[5] / k255, I = r[6] / k255, L[3], t1, t2;
+            int c;
+            if (!(I >= c05)) I = c05;
+            t1 = c1 * (V * F); t2 = cA * (c35 + c65 * A);
+            /* Road bounce stays achromatic; sunlight and sky retain their intended colour. */
+            float B[3];
+            for (c = 0; c < 3; c++) B[c] = cB * ((r[2+c] / k255) / k4);
+            if (mask[i]) { float lum = (B[0]*w0+B[1]*w1)+B[2]*w2; B[0]=B[1]=B[2]=lum; }
+            for (c = 0; c < 3; c++)
+                L[c] = ((t1*(float)sun[c] + t2*(float)sky[c]) + B[c]*(float)((sun[c]+sky[c])*0.5)) / (float)reference[c];
+            {
+                float v0 = L[0] / I, v1 = L[1] / I, v2 = L[2] / I, mx = v0 > v1 ? v0 : v1;
+                if (v2 > mx) mx = v2;
+                if (mx > lim) ov++;
+                for (c = 0; c < 3; c++) {
+                    float v = c == 0 ? v0 : c == 1 ? v1 : v2, l = L[c];
+                    v = v < 0.0f ? 0.0f : v > 1.0f ? 1.0f : v; O[3 * i + c] = (unsigned char)rintf(v * k255);
+                    ls += l < 0.0f ? 0.0 : l > 1.0f ? 1.0 : (double)l;
+                }
+            }
+        }
+        free(mask);
+        #pragma omp atomic
+        *over += ov;
+        #pragma omp critical
+        *lsum += ls / (double)(npx * 3);
+    }
+}
+
 /* The table's key of each polygon: its four corners to the millimetre (lightmap1995.key):
  *   np.round(P.reshape(-1, 12) * 1000.0).astype(np.int32)   (np.round = half to even, as rint) */
 EXPORT void rtc_key(const double *P, i64 n, int32_t *K) {

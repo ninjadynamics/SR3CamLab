@@ -199,3 +199,19 @@ and native POM receipt with the same boundary, then exercise a staged-only relie
 Apply. Otherwise the settings page can restore the old wall on its next rebuild.
 The accepted 45-degree lighting and geometry need no regeneration for this
 boundary-only correction. Evidence: `work/research/collision-boundary-20261021/`.
+
+
+### Current original daylight installation
+
+The later 2026-10-21 rebuild supersedes the historical Low/45-degree installation above. The owner then rejected sunset and requested deletion of its files. Only Mountain R4 with the exact original 70.114834886-degree sun remains in track1/Desert4. Keep the perforated canopy and grass receiver fixes. The later owner-corrected v22 installation below supersedes the v20 geometry source. Retirement and optional colour findings are in [lighting-variants.md](lighting-variants.md). Neither old 45-degree nor sunset outputs should be restored without a new request.
+
+
+### Owner-corrected v22 extraction and cleanup regression
+
+As of 2026-10-27, the authoritative source is `work/blender/mountain.patch3.v22.blend`, SHA256 `2cf672dafc99e9b309205152a6c64a9d7f3e6e4d77ea8504651f4f2786e98223`, installed as Mountain R4 in track1 with original 70-degree daylight. Evidence and reproduction scripts: `work/research/mountain-v22-r4b-20261027/`. Source proof covers 84,279 triangles / 8,065,812 canonical bytes; final native-relief heap is 324.0385 MiB with 22 fresh lightmaps. Launcher and staged-only config-page Apply passed; live acceptance remains separate.
+
+Replay the **loaded JSON removals and additions**, independently of the generation algorithm, before claiming source identity. Preserve the real source's current hash; an older inspection snapshot of the same version name may differ. One source quad was triangulated only for export using Blender's existing loop triangles.
+
+When an authoritative export already supplies UVs, set `preserve_authored_uv: true` on that final edit stage after checking its mapping. The default UV filler can classify a near-collinear triangle as unmapped and alter accepted coordinates. Do not disable filling on earlier patches that need it. Regression: `core/test_patch_authored_uv.py`.
+
+Trace cleanup's exact dropped face and partner when a changed triangle vanishes. Two near-identical reverse-facing legacy facade slices were explicitly removed using their own winding; deleting the approved replacement would hide the source error. Another wall lost 10+ m2 for only 0.127 m2 of roof/wall overlap. Partial-overlap cleanup now preserves authored `facade_` surfaces; full containment remains eligible. Leave partial facade intersections to the downstream resolver and report inherited overlap warnings; do not claim zero intersections merely because changed triangles survive.
