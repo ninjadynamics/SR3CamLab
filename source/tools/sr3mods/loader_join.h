@@ -47,7 +47,11 @@ static __attribute__((used,naked)) void loader_join_thunk(void) {
         "call _loader_pump_before_join\n\t"
         "addl $4, %esp\n\t"
         "popal\n\t"
+#ifdef LOADER_JOIN_TEST
+        "pushl _loader_test_native_join\n\t"
+#else
         "pushl $0x5877e0\n\t"
+#endif
         "ret\n\t");
 }
 static int loader_bytes_equal(const unsigned char *a, const unsigned char *b, unsigned n) {

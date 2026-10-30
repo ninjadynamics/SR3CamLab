@@ -1,5 +1,6 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <objbase.h>
 #include <stdint.h>
 #include <string.h>
 #include "patchcore.h"
@@ -12,10 +13,19 @@ typedef HRESULT (__stdcall *Control)(void *);
 typedef struct { DWORD touched,attempt,thread; int failed,thread_warning; } VideoUse;
 static VideoPool pool;
 static VideoUse use[VP_CAPACITY];
+static volatile LONG pinned[VP_CAPACITY];
 static unsigned char blank[VP_STRIDE];
 static GetFrame original_frame;
 static int ready;
 static DWORD last_sweep;
+/* Records registered for frontend cards. Only these are evicted; native
+   widgets can control their own videos outside GetFrame. */
+static unsigned char ours[VP_CAPACITY];
+static volatile LONG loading_at,loading_seen;
+static int loading(const unsigned char *p){
+    const char *path=(const char *)p+0xC,*file=strrchr(path,'\\');file=file?file+1:path;
+    return !_stricmp(file,"loading.wmv");
+}
 
 static unsigned *word(unsigned char *p,unsigned offset){return (unsigned *)(p+offset);}
 static unsigned char *record(int h){return (unsigned char *)(uintptr_t)(pool.base+(unsigned)h*VP_STRIDE);}
@@ -59,6 +69,8 @@ static uintptr_t __cdecl frame(int h,int pause,int flags){
     unsigned char *p;DWORD now=GetTickCount();char path[256];
     if(!pool.installed||h<0||(unsigned)h>=pool.capacity)return 0;
     p=record(h);use[h].touched=now;
+    /* The race loading screen draws this animation; the load guard watches it. */
+    if(loading(p)){InterlockedExchange(&loading_at,(LONG)now);InterlockedExchange(&loading_seen,1);}
     if(!*word(p,0x11C)){
         if(!p[0xC]||(use[h].failed&&(DWORD)(now-use[h].attempt)<1000))return 0;
         use[h].attempt=now;use[h].thread=GetCurrentThreadId();
@@ -66,11 +78,22 @@ static uintptr_t __cdecl frame(int h,int pause,int flags){
          * string copy overlapping source and destination buffers. */
         memcpy(path,p+0xC,sizeof(path));path[255]=0;
         if(!native_open(p,path)){
+            pc_logf("Frontend preview open failed: %s",path);
             close_video(h);use[h].failed=1;return 0;
         }
+        pc_logf("Frontend preview opened: %d %s",h,path);
         use[h].failed=0;
+        /* Native Open builds a stopped DirectShow graph. Its stock callers
+           explicitly Run it before GetFrame; our lazy-open path must request
+           that same stopped -> running transition on the first draw. */
+        if(h>=20)*word(p,0)=1;
     }else if(!use[h].thread)use[h].thread=GetCurrentThreadId();
-    return original_frame(h,pause,flags);
+    /* Native card pause flags describe the original scene's selection roles.
+       Reused submenu cards can carry a paused role before their first decoded
+       frame, which returns an unpopulated black texture forever. New previews
+       advance whenever the native renderer draws them. Original videos retain
+       their native pause policy. */
+    return original_frame(h,h>=20?0:pause,flags);
 }
 unsigned fe_video_memory_address(unsigned address,unsigned size){
     if(pool.installed&&address>=VP_ORIGINAL_BASE&&
@@ -109,29 +132,58 @@ int fe_video_install(GameMem *m){
     return 1;
 }
 void fe_video_ready(void){ready=1;last_sweep=GetTickCount();}
+void fe_video_menu(const int *handles,unsigned count){
+    unsigned i;LONG wanted[VP_CAPACITY]={0};
+    for(i=0;i<count;++i)if(handles[i]>=20&&(unsigned)handles[i]<VP_CAPACITY)wanted[handles[i]]=1;
+    for(i=20;i<VP_CAPACITY;++i)InterlockedExchange(&pinned[i],wanted[i]);
+}
+/* Frontend decoders currently holding a graph, texture and events. */
+int fe_video_open(void){
+    unsigned i;int n=0;
+    for(i=20;i<pool.capacity;++i)if(ours[i]&&*word(record((int)i),0x11C))++n;
+    return n;
+}
+unsigned fe_video_loading_age(void){
+    if(!pool.installed||!InterlockedCompareExchange(&loading_seen,0,0))return 0xFFFFFFFFu;
+    return GetTickCount()-(DWORD)InterlockedCompareExchange(&loading_at,0,0);
+}
+int fe_video_hooked(void){return pool.installed;}
 void fe_video_tick(void){
-    DWORD now=GetTickCount();unsigned i;
-    if(!ready||(DWORD)(now-last_sweep)<100)return;
-    last_sweep=now;
-    for(i=0;i<pool.capacity;++i){
-        unsigned char *p=record((int)i);const char *path=(const char *)p+0xC;
-        const char *file=strrchr(path,'\\');file=file?file+1:path;
-        /* The loading animation is shared with races; keep its decoder alive. */
-        if(*word(p,0x11C)&&_stricmp(file,"loading.wmv")&&
-           (DWORD)(now-use[i].touched)>750)close_video((int)i);
+    DWORD now=GetTickCount();unsigned i;int closed=0;
+    if(!ready)return;
+    /* Build graphs on the same rendering thread that serves GetFrame. Spread
+       graph creation across frames and retain all members of the current menu. */
+    for(i=20;i<pool.capacity;++i)if(InterlockedCompareExchange(&pinned[i],0,0)&&
+       !*word(record((int)i),0x11C)&&(!use[i].failed||(DWORD)(now-use[i].attempt)>=1000)){
+        frame((int)i,0,0);break;
     }
+    if((DWORD)(now-last_sweep)<100)return;
+    last_sweep=now;
+    /* Native widgets can issue playback controls outside GetFrame. Retain
+       their original descriptors; eviction belongs to our new menu videos.
+       A preview no longer drawn for 750 ms releases its graph, texture and
+       events. The frontend keeps this sweep running after its menus close
+       (fe_frame) until none remain, so none survive into a race load. */
+    for(i=20;i<pool.capacity;++i){
+        unsigned char *p=record((int)i);
+        /* The loading animation is shared with races; keep its decoder alive. */
+        if(ours[i]&&!InterlockedCompareExchange(&pinned[i],0,0)&&*word(p,0x11C)&&!loading(p)&&
+           (DWORD)(now-use[i].touched)>750&&close_video((int)i))++closed;
+    }
+    if(closed)pc_logf("Frontend videos: released %d unused preview decoder%s; %d still open.",closed,closed==1?"":"s",fe_video_open());
 }
 int fe_video_register(const char *path){
     unsigned i;size_t n;
     if(!pool.installed||!path||(n=strlen(path))==0||n>=256)return -1;
     /* Leave native boot and Hornet's reserved records 0..19 available. */
-    for(i=20;i<pool.capacity;++i)if(!_stricmp((const char *)record((int)i)+0xC,path))return (int)i;
+    for(i=20;i<pool.capacity;++i)if(!_stricmp((const char *)record((int)i)+0xC,path)){ours[i]=1;return (int)i;}
     for(i=20;i<pool.capacity;++i){unsigned char *p=record((int)i);if(*word(p,4))continue;
-        memcpy(p,blank,VP_STRIDE);memcpy(p+0xC,path,n+1);*word(p,4)=1;return (int)i;}
+        memcpy(p,blank,VP_STRIDE);memcpy(p+0xC,path,n+1);*word(p,4)=1;ours[i]=1;return (int)i;}
     return -1;
 }
 void *fe_video_texture(int h){
-    if(!frame(h,0,0))return 0;
+    uintptr_t result=frame(h,0,0);
+    if(!result)return 0;
     return (void *)(uintptr_t)*word(record(h),0x144);
 }
 void fe_video_reset(void){

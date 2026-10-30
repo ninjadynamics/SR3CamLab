@@ -3,6 +3,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include "patchcore.h"
+#define LOADER_JOIN_TEST
+static __attribute__((used)) unsigned loader_test_native_join;
 #include "loader_join.h"
 
 static unsigned char site[20], native[71];
@@ -34,6 +36,7 @@ static volatile LONG received, dispatched_keys, worker_done;
 static __attribute__((used)) volatile unsigned observed_native_exit;
 static HWND receiver;
 static HANDLE ready;
+static uintptr_t test_iat[3];
 static DWORD WINAPI sender(LPVOID arg) {
     COPYDATASTRUCT cd; unsigned payload=0x12345678u; (void)arg;
     cd.dwData=0x51u; cd.cbData=sizeof payload; cd.lpData=&payload;
@@ -96,13 +99,17 @@ void loader_test_entry(void) {
         reset_bytes(); native[i]^=1; CHECK(!loader_install_message_wait(&memory) && !writes,9);
     }
     /* Execute the guarded native success path in otherwise unused test VA. */
-    CHECK(VirtualAlloc((void *)0x580000,0x10000,MEM_RESERVE|MEM_COMMIT,PAGE_EXECUTE_READWRITE)==(void *)0x580000,10);
-    CHECK(VirtualAlloc((void *)0x670000,0x10000,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE)==(void *)0x670000,11);
-    for(i=0;i<71;++i) ((unsigned char *)LOADER_NATIVE_JOIN)[i]=loader_native_join_original[i];
-    *(uintptr_t *)0x6741C8=(uintptr_t)WaitForSingleObject;
-    *(uintptr_t *)0x6741C4=(uintptr_t)GetExitCodeThread;
-    *(uintptr_t *)0x674208=(uintptr_t)CloseHandle;
-    FlushInstructionCache(GetCurrentProcess(),(void *)LOADER_NATIVE_JOIN,71);
+    loader_test_native_join=(unsigned)(uintptr_t)VirtualAlloc(NULL,4096,MEM_RESERVE|MEM_COMMIT,PAGE_EXECUTE_READWRITE);
+    CHECK(loader_test_native_join!=0,10);
+    for(i=0;i<71;++i)((unsigned char *)(uintptr_t)loader_test_native_join)[i]=loader_native_join_original[i];
+    test_iat[0]=(uintptr_t)WaitForSingleObject;test_iat[1]=(uintptr_t)GetExitCodeThread;test_iat[2]=(uintptr_t)CloseHandle;
+    /* Only test-owned IAT operand addresses change; execute the same native
+       successful join bytes and register/stack contract at an ASLR-safe VA. */
+    for(i=0;i+6<=71;++i){unsigned char *p=(unsigned char *)(uintptr_t)loader_test_native_join+i;
+        if(p[0]==0xff&&p[1]==0x15){unsigned a=*(unsigned *)(p+2);int k=a==0x6741c8?0:a==0x6741c4?1:a==0x674208?2:-1;
+            CHECK(k>=0,11);*(unsigned *)(p+2)=(unsigned)(uintptr_t)&test_iat[k];}
+    }
+    FlushInstructionCache(GetCurrentProcess(),(void *)(uintptr_t)loader_test_native_join,71);
     guard=CreateThread(NULL,0,timeout_guard,NULL,0,NULL); CHECK(guard!=NULL,12); CloseHandle(guard);
     wc.lpfnWndProc=receive; wc.hInstance=GetModuleHandleA(NULL); wc.lpszClassName="SR3LoaderJoinRegression";
     CHECK(RegisterClassA(&wc)!=0,13);

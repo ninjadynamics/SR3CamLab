@@ -12,7 +12,11 @@ SLOTS = {'Tropical4': 0, 'Canyon4': 1, 'Alpine4': 2,
          'Lakeside4': 3, 'Desert4': 4, 'Stadium4': 5}
 GAMES = [('src', 'SEGA Rally Championship'), ('sr2', 'SEGA Rally 2'),
          ('daytona', 'Daytona USA'), ('daytona2', 'Daytona USA 2'), ('scud', 'Scud Race')]
+GAME_PREVIEWS = {key: f'URL_GAME_{key.upper()}.wmv' for key, _ in GAMES}
 GAME_IDS = {key for key, _ in GAMES} | {'sr3', 'revo'}
+# What the menus show, by internal source id. Installers, tunes and switch.json
+# keep the internal title: they find a track by it.
+LABELS = {'src:mountain': 'SEGA Rally Championship - Mountain'}
 
 
 def read(path, default):
@@ -60,7 +64,7 @@ def build_catalog(root):
         folder = game / 'Main_release' / ('tracks' if directory == 's' else 'track' + directory) / slot
         exists = installed(folder, slot)
         available = bool(ready and exists)
-        rows.append(dict(key=key, source_id=source_id or key, title=title, source_game=source_game,
+        rows.append(dict(key=key, source_id=source_id or key, title=LABELS.get(source_id, title), source_game=source_game,
                          slot=slot, native_id=SLOTS[slot], directory=directory, video=preview,
                          available=available, status='Ready' if available else 'Not installed' if not exists else 'WIP'))
 
@@ -97,7 +101,8 @@ def build_catalog(root):
     for key, title in GAMES:
         tracks = [row for row in rows if row['source_game'] == key]
         available = sum(row['available'] for row in tracks)
-        preview = next((row['video'] for row in tracks if row['available'] and row['video']), '')
+        dedicated = GAME_PREVIEWS[key]
+        preview = dedicated if (videos / dedicated).is_file() else next((row['video'] for row in tracks if row['available'] and row['video']), '')
         games.append(dict(key=key, title=title, available=bool(available), video=preview,
                           status='Ready' if available else 'WIP' if tracks else 'Not installed'))
     return dict(version=1, video_capacity=64, games=games, tracks=rows)

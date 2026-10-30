@@ -47,6 +47,12 @@ static HRESULT (WINAPI *systemCreateDevice)(IDirect3D9*,UINT,D3DDEVTYPE,HWND,DWO
 static HRESULT (WINAPI *systemReset)(IDirect3DDevice9*,D3DPRESENT_PARAMETERS*);
 static BOOL WINAPI cabinetRead(HANDLE,LPVOID,DWORD,LPDWORD,LPOVERLAPPED);
 static void *cabinetReadPointer=cabinetRead;
+static int (__cdecl *frontendInput)(const Sr3Input *);
+static int (__cdecl *frontendFrame)(void *);
+static void (__cdecl *frontendReset)(void);
+static void (__cdecl *frontendKey)(unsigned);
+static volatile LONG keyboardStartUntil;
+static volatile LONG menuKeyUntil[4];
 
 static void logline(const char *format,...) {
     char buffer[2048]; DWORD written; int size; va_list args;
@@ -137,7 +143,12 @@ static BOOL CALLBACK initialize(PINIT_ONCE ignored,PVOID parameter,PVOID *contex
     return TRUE;
 }
 static void ready(void) {InitOnceExecuteOnce(&once,initialize,NULL,NULL);}
-static int key(int vk) {return (GetAsyncKeyState(vk)&0x8000)!=0;}
+static int key(int vk) {
+    DWORD now=GetTickCount();int i=vk==VK_LEFT?0:vk==VK_RIGHT?1:vk==VK_UP?2:vk==VK_DOWN?3:-1;
+    return (GetAsyncKeyState(vk)&0x8000)!=0||
+      (vk==VK_RETURN&&(LONG)((DWORD)InterlockedCompareExchange(&keyboardStartUntil,0,0)-now)>0)||
+      (i>=0&&*(volatile unsigned char*)0x9d6e3c==1&&(LONG)((DWORD)InterlockedCompareExchange(&menuKeyUntil[i],0,0)-now)>0);
+}
 static unsigned trigger(Sint16 v) {return v>0?((unsigned)v*255+16383)/32767:0;}
 static int binding(int b) {
     return sr3_binding(b,padAxes,padButtons,settings.threshold);
@@ -195,6 +206,7 @@ static BOOL WINAPI cabinetRead(HANDLE file,LPVOID data,DWORD size,LPDWORD read,L
         if(!freeplay && coin && !coinWasDown && *(volatile unsigned char*)0xb41748<255) ++*(volatile unsigned char*)0xb41748;
         coinWasDown=coin;}
     } else coinWasDown=0;
+    if(frontendInput&&frontendInput(&in)){memset(&in,0,sizeof in);sr3_capture_request_overlay();}
     sr3_report(data,&in,deadzone);
     if(settings.curve){
         unsigned v=sr3_axis(in.steering,deadzone);
@@ -275,6 +287,12 @@ static LRESULT CALLBACK windowProc(HWND w,UINT msg,WPARAM wp,LPARAM lp) {
     if(msg==WM_ACTIVATE)SetCursor(LOWORD(wp)==WA_INACTIVE?LoadCursorA(NULL,IDC_ARROW):NULL);
     /* Session-only attenuation of approved per-material relief. No key repeat. */
     if(msg==WM_KEYDOWN && GetForegroundWindow()==w && !(lp & (1L<<30))) {
+        /* A short keyboard Start tap must survive the cabinet/frame polling
+           boundary. Only Start is stretched; driving axes/pedals are untouched. */
+        if(wp==VK_RETURN)InterlockedExchange(&keyboardStartUntil,(LONG)(GetTickCount()+80));
+        if(*(volatile unsigned char*)0x9d6e3c==1){int i=wp==VK_LEFT?0:wp==VK_RIGHT?1:wp==VK_UP?2:wp==VK_DOWN?3:-1;
+            if(i>=0)InterlockedExchange(&menuKeyUntil[i],(LONG)(GetTickCount()+80));}
+        if(frontendKey)frontendKey((unsigned)wp);
         if(wp==VK_OEM_PLUS || wp==VK_ADD){if(sr3_pom_native_adjust(1))sr3_capture_request_overlay();return 0;}
         if(wp==VK_OEM_MINUS || wp==VK_SUBTRACT){if(sr3_pom_native_adjust(-1))sr3_capture_request_overlay();return 0;}
     }
@@ -302,6 +320,12 @@ static HWND WINAPI createWindow(DWORD ex,LPCSTR cls,LPCSTR title,DWORD style,int
             int status=sr3_load_patches(module,settingsPath,mode,error,sizeof(error));
             if(status<0){logline("Patches: %s\n",error);MessageBoxA(result,error,"SR3Lab patches",MB_ICONERROR);ExitProcess(1);}
             logline("Patches: %s\n",status?"started":"disabled or absent (auto)");
+            {HMODULE plugin=GetModuleHandleA("sr3mods.dll");if(plugin){
+                frontendInput=(int (__cdecl *)(const Sr3Input *))GetProcAddress(plugin,"sr3mods_frontend_input");
+                frontendFrame=(int (__cdecl *)(void *))GetProcAddress(plugin,"sr3mods_frontend_frame");
+                frontendReset=(void (__cdecl *)(void))GetProcAddress(plugin,"sr3mods_frontend_reset");
+                frontendKey=(void (__cdecl *)(unsigned))GetProcAddress(plugin,"sr3mods_frontend_key");
+            }}
         }
     }
     return result;
@@ -316,11 +340,13 @@ static void presentation(D3DPRESENT_PARAMETERS *p) {
     p->PresentationInterval=settings.vsync?D3DPRESENT_INTERVAL_ONE:D3DPRESENT_INTERVAL_IMMEDIATE;
 }
 static HRESULT WINAPI resetDevice(IDirect3DDevice9 *self,D3DPRESENT_PARAMETERS *p) {
+    if(frontendReset)frontendReset();
     sr3_pom_native_reset();sr3_capture_request_overlay();presentation(p);return systemReset(self,p);
 }
 static void nativeControlsFrame(IDirect3DDevice9 *device) {
     int on,n;
     sr3_pom_native_frame(device);
+    if(frontendFrame&&frontendFrame(device))sr3_capture_request_overlay();
     /* Native shader construction may still be pending at initial device setup
        or Reset. Once applied, there is no per-frame callback until a key change. */
     sr3_pom_native_controls(&on,&n);

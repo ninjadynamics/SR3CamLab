@@ -21,17 +21,20 @@ def main(argv):
              (os.path.join(STAND, 'watch_launcher.c'), 'watch_launcher.o'), (os.path.join(STAND, 'settings.c'), 'settings.o'), (os.path.join(STAND, 'ucrt_stdio.c'), 'ucrt_stdio.o'), (os.path.join(TOOLS, 'x86', 'builtins.c'), 'builtins.o'),
              (os.path.join(HERE, 'test_loader_join.c'), 'test_loader_join.o'),
              (os.path.join(HERE, 'livetest.c'), 'livetest.o')]                    # (livetest.exe: the live loop on fake games, for live_lockstep.py; never shipped)
+    for unit in ('frontend', 'frontend_model', 'frontend_video', 'frontend_native', 'load_guard'):
+        units.append((os.path.join(HERE, unit + '.c'), unit + '.o'))
     maps = ['-ffile-prefix-map=%s=.' % p for p in (out, HERE, STAND, os.path.join(TOOLS, 'x86'))]          # no build paths in the DLL
     o = {}
     for src, name in units:
         op = os.path.join(out, name); run([GCC] + X86 + maps + ['-I', out, '-I', STAND, '-I', HERE, '-c', src, '-o', op]); o[name] = op
-    shared = [o[k] for k in ('patchcore.o', 'pc_live.o', 'pc_json.o', 'pc_host.o', 'watch_launcher.o', 'settings.o', 'ucrt_stdio.o', 'builtins.o')]   # patchcore: the one implementation both run
+    shared = [o[k] for k in ('patchcore.o', 'pc_live.o', 'pc_json.o', 'pc_host.o', 'watch_launcher.o', 'settings.o', 'ucrt_stdio.o', 'builtins.o')]
+    frontend = [o[k + '.o'] for k in ('frontend', 'frontend_model', 'frontend_video', 'frontend_native', 'load_guard')]
     imp = os.path.join(out, 'imp')
     if implib.main(['--out', imp] + sum((['--dll', d] for d in ('kernel32', 'user32', 'gdi32', 'ole32', 'shell32', 'ucrtbase')), []) + list(o.values())): raise SystemExit('implib: unresolved imports')
     libs = ['-l' + f[3:-2] for f in sorted(os.listdir(imp)) if f.startswith('lib') and f.endswith('.a')]
     link = [GCC, '-m32', '-nostdlib', '-nostartfiles', '-s', '-Wl,--no-insert-timestamp,--gc-sections']
     dll = os.path.join(out, 'sr3mods.dll'); exe = os.path.join(out, 'sr3mods.exe')
-    run(link + ['-shared', '-Wl,-e,_DllMain@12', '-Wl,--kill-at,--exclude-all-symbols,--image-base,0x63000000', o['sr3mods_dll.o']] + shared + ['-L', imp] + libs + ['-o', dll])
+    run(link + ['-shared', '-Wl,-e,_DllMain@12', '-Wl,--kill-at,--exclude-all-symbols,--image-base,0x63000000', o['sr3mods_dll.o']] + shared + frontend + ['-L', imp] + libs + ['-o', dll])
     run(link + ['-Wl,-e,_entry@0', o['sr3mods_exe.o']] + shared + ['-L', imp] + libs + ['-o', exe])
     run(link + ['-Wl,-e,_entry@0', o['livetest.o']] + shared + ['-L', imp] + libs + ['-o', os.path.join(out, 'livetest.exe')])
     print('sr3mods.dll: %d bytes, sr3mods.exe: %d bytes -> %s' % (os.path.getsize(dll), os.path.getsize(exe), out))

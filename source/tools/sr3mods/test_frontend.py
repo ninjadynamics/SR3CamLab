@@ -20,6 +20,8 @@ def main():
         ('frontend_video', 'frontend_video_test_entry', ['test_frontend_video.c']),
         ('frontend_model', 'frontend_model_test_entry',
          ['frontend_model.c', 'pc_json.c', 'test_frontend_model.c']),
+        ('frontend_native', 'frontend_native_test_entry',
+         ['frontend_model.c', 'pc_json.c', 'test_frontend_native.c']),
     ]:
         out = (args.out / name).resolve()
         out.mkdir(parents=True, exist_ok=True)
@@ -44,6 +46,9 @@ def main():
         build.run([str(exe)])
         print('PASS:', name)
     build.run([sys.executable, '-B', str(here / 'test_video_pool_emu.py')])
+    build.run([sys.executable, '-B', str(here / 'test_frontend_native_emu.py')])
+    build.run([sys.executable, '-B', str(here / 'test_frontend_carousel_emu.py')])
+    build.run([sys.executable, '-B', str(here / 'test_load_guard.py'), '--out', str((args.out / 'load_guard').resolve())])
     build.run([sys.executable, '-B', '-m', 'unittest', 'discover', '-s',
                str(source / 'standalone'), '-p', 'test_frontend_catalog.py'])
 

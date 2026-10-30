@@ -65,19 +65,32 @@ int fe_menu_count(const FeCatalog *c,const FeMenu *m){
 void fe_menu_begin(FeMenu *m,int classic){memset(m,0,sizeof(*m));m->classic=classic;m->page=classic?FE_GAME_MENU:FE_TRACK_MENU;m->track=-1;m->await_release=1;}
 int fe_menu_step(const FeCatalog *c,FeMenu *m,unsigned buttons,unsigned now){
     int count=fe_menu_count(c,m),edge=(int)buttons&~m->previous,direction=(buttons&FE_RIGHT)?1:(buttons&FE_LEFT)?-1:0;
-    m->previous=(int)buttons;
-    if(m->await_release){if(!buttons)m->await_release=0;return FE_IDLE;}
+    int tap=((buttons&FE_TAP_RIGHT)?1:0)-((buttons&FE_TAP_LEFT)?1:0);
+    m->previous=(int)buttons;m->moved=0;
+    if(m->await_release){if(!(buttons&(FE_LEFT|FE_RIGHT|FE_SELECT|FE_BACK)))m->await_release=0;return FE_IDLE;}
     if(m->pending||!m->page)return FE_IDLE;
     if(edge&FE_BACK){
+        m->queued=m->confirm=0;
         if(m->classic&&m->page==FE_TRACK_MENU){m->page=FE_GAME_MENU;m->cursor=m->game;m->await_release=1;return FE_CHANGED;}
         m->page=FE_NONE;return FE_CANCELLED;
     }
-    if(direction&&(direction!=m->direction||(int)(now-m->repeat_at)>=0)){
-        if(count)m->cursor=(m->cursor+direction+count)%count;
-        m->repeat_at=now+(direction==m->direction?120:350);m->direction=direction;return FE_CHANGED;
+    /* Every counted press is one card at once. A held direction repeats only
+       while the cards keep up, so releasing does not coast several cards on. */
+    if(tap){if(m->queued*tap<8)m->queued+=tap;m->direction=tap;m->repeat_at=now+350;}
+    else if(direction!=m->direction){m->direction=direction;m->repeat_at=now+350;}
+    else if(direction&&!m->queued&&!m->busy&&!(m->blocked&(direction>0?FE_RIGHT:FE_LEFT))&&(int)(now-m->repeat_at)>=0){m->queued=direction;m->repeat_at=now+120;}
+    if(edge&FE_SELECT)m->confirm=1;
+    if(m->queued&&count){
+        int d=m->queued>0?1:-1;
+        if(m->blocked&(d>0?FE_RIGHT:FE_LEFT))return FE_IDLE;
+        m->moved=d;m->queued-=d;
+        m->cursor=(m->cursor+d+count)%count;return FE_CHANGED;
     }
-    if(!direction)m->direction=0;
-    if((edge&FE_SELECT)&&count){
+    m->queued=0;
+    /* A Select pressed behind queued cards confirms the card they reach. */
+    if(m->confirm){
+        m->confirm=0;
+        if(!count)return FE_IDLE;
         if(m->page==FE_GAME_MENU){
             if(!c->games[m->cursor].available)return FE_IDLE;
             m->game=m->cursor;m->cursor=0;m->page=FE_TRACK_MENU;m->await_release=1;return FE_CHANGED;

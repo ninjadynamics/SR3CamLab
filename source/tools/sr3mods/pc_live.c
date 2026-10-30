@@ -24,6 +24,24 @@
 #include "blobs.h"
 #include "patchcore.h"
 #include "pc_json.h"
+#include "pc_frontend.h"
+
+/* Single atomic route word publishes slot/directory together. Only the live
+ * worker applies asset/audio/timing changes; the UI waits for its acknowledgment. */
+static volatile LONG FE_ENABLED, FE_ROUTE, FE_ACK, FE_FAILED, FE_READY;
+static unsigned FE_SERIAL;
+void pc_frontend_enable(void){InterlockedExchange(&FE_ENABLED,1);}
+int pc_frontend_enabled(void){return InterlockedCompareExchange(&FE_ENABLED,0,0)!=0;}
+unsigned pc_frontend_select(int id,char dir){
+    unsigned r=((++FE_SERIAL&0x7fff)<<16)|((unsigned)(id&255)<<8)|(unsigned char)dir;
+    InterlockedExchange(&FE_ROUTE,(LONG)r);return r;
+}
+void pc_frontend_cancel(void){(void)pc_frontend_select(255,'s');}
+int pc_frontend_status(unsigned r){
+    if(!InterlockedCompareExchange(&FE_READY,0,0))return 0;
+    if((unsigned)InterlockedCompareExchange(&FE_FAILED,0,0)==r)return -1;
+    return (unsigned)InterlockedCompareExchange(&FE_ACK,0,0)==r;
+}
 
 typedef long long ll;
 static GameMem *G;
@@ -984,6 +1002,8 @@ static const char *key_flavor(int vk) { return vk == 0x31 || vk == 0x61 ? "sr3" 
 #define WHITE_ 0xFFFFFFFFu
 static void popup(ll base, ll first, unsigned color, ll second) { wi(base + 0x50, first); wi(base + 0xE60, color); wi(base + 0x2268, second); wi(base + 0xFA0, 1); wi(base + 0x10, 20); }
 static void watch_tracks(void) {
+    unsigned fe_seen=0,fe_pending=0;char fe_name[32]="";
+    static const char *const fe_slots[]={"Tropical4","Canyon4","Alpine4","Lakeside4","Desert4","Stadium4"};
     StartSt st; ll base, text, tdcave = 0, shot_until = 0, label_until = 0; int cards_open, i, keys_down[8] = {0};
     char sound_now[120] = "//", tune_now[80] = "", name_was[32] = "", times_now[120] = "", shown[200] = "", shot_name[64] = "", l0[64] = "", l1[96] = "", dir_now = 's';
     char *shot_info_s = NULL; int shot_held = 0, pvs_held = 0, pvs_was = 0, mode_seen_on = 0, mode_seen = 0, mode_last_on = 0, mode_last = 0, classic_on = 0, classic_val = 0;
@@ -1004,6 +1024,7 @@ static void watch_tracks(void) {
     text = base + 0x2400;
     wstr(text + 0x40, "Press VIEW CHANGE to select alternative tracks", 64);
     for (i = 0; i < NSL; i++) SL[i].choice = 0;
+    if(pc_frontend_enabled() && (!NSL || tdcave))InterlockedExchange(&FE_READY,1);
     TUNE_OWN.on = 0; IDS.n = 0;
     jp(classic_file, sizeof classic_file, GAMEDIR, "Main_release\\tracks\\_SR3Extras\\classic_mode.txt");
     if (exists(classic_file)) { char t[64]; if (text_of(classic_file, t, sizeof t)) { const char *q = t[0] == '-' ? t + 1 : t; if (digits(q, 1, 10)) { classic_on = 1; classic_val = atoi(t); } } }
@@ -1028,7 +1049,7 @@ static void watch_tracks(void) {
         stage = stage && hi_name[0];
         hlist = stage ? slot(hi_name) : NULL;
         down = rd(0x9DBB0C, &vb, 1) && vb != 0;
-        if (hlist && down && !was_down) { hlist->choice = (hlist->choice + 1) % hlist->n; set_card_track(base, hlist, &hlist->t[hlist->choice], hlist->choice == 0); }
+        if (!pc_frontend_enabled() && hlist && down && !was_down) { hlist->choice = (hlist->choice + 1) % hlist->n; set_card_track(base, hlist, &hlist->t[hlist->choice], hlist->choice == 0); }
         mode = menu && !deep && count == 3 && classic;                                       /* Classic: its tracks (the Desert4 slot) are stepped through on the first menu */
         mode_val = gi(base + 0x2278);
         if (mode && mode_val != -1) { if (!mode_seen_on || mode_val != mode_seen) { pc_logf("Alternative tracks: first menu is on entry %d.", mode_val); mode_seen = mode_val; mode_seen_on = 1; } mode_last = mode_val; mode_last_on = 1; }
@@ -1038,8 +1059,27 @@ static void watch_tracks(void) {
         }
         if (name[0]) snprintf(name_was, sizeof name_was, "%s", name);
         if (mode && classic_on && mode_val != classic_val) mode = 0;
-        if (mode && down && !was_down) { classic->choice = (classic->choice + 1) % classic->n; set_card_track(base, classic, &classic->t[classic->choice], classic->choice == 0); }
+        if (!pc_frontend_enabled() && mode && down && !was_down) { classic->choice = (classic->choice + 1) % classic->n; set_card_track(base, classic, &classic->t[classic->choice], classic->choice == 0); }
         if (stage) snprintf(name, sizeof name, "%s", hi_name);                               /* the game reads the files of the chosen track */
+        if(pc_frontend_enabled()){
+            unsigned r=(unsigned)InterlockedCompareExchange(&FE_ROUTE,0,0);
+            if(r!=fe_seen){unsigned id=(r>>8)&255;char d=(char)r;Slot *s=NULL;int choice=-1,j;
+                fe_seen=r;fe_pending=0;fe_name[0]=0;
+                if(id==255){for(j=0;j<NSL;++j)SL[j].choice=0;InterlockedExchange(&FE_ACK,(LONG)r);}
+                else if(id<6){
+                    s=slot(fe_slots[id]);
+                    if(s){for(j=0;j<s->n;++j)if(s->t[j].dir==d){choice=j;break;}}
+                    else if(d=='s')choice=0;
+                    if(choice>=0){if(s)s->choice=choice;snprintf(fe_name,sizeof fe_name,"%s",fe_slots[id]);fe_pending=r;}
+                    else InterlockedExchange(&FE_FAILED,(LONG)r);
+                }else InterlockedExchange(&FE_FAILED,(LONG)r);
+            }
+            if(fe_name[0]){
+                Slot *s=slot(fe_name);int j;
+                if(s)for(j=0;j<s->n;++j)if(s->t[j].dir==(char)r){s->choice=j;break;}
+                snprintf(name,sizeof name,"%s",fe_name);
+            }
+        }
         list = slot(name);
         dir = list ? list->t[list->choice].dir : 's';
         if (tdcave) write_trackdir_table(tdcave);
@@ -1063,6 +1103,7 @@ static void watch_tracks(void) {
         }
         if (cur && cur->has_tune) snprintf(tune_key, sizeof tune_key, "%d/%lld/%lld/%lld", cur->tune.stream, cur->tune.off, cur->tune.bytes, cur->tune.loop); else tune_key[0] = 0;
         if (_stricmp(tune_key, tune_now) && set_course_tune(cur && cur->has_tune ? &cur->tune : NULL)) snprintf(tune_now, sizeof tune_now, "%s", tune_key);
+        if(fe_pending){InterlockedExchange(&FE_ACK,(LONG)fe_pending);fe_pending=0;}
         all_visible = !menu && dir != 's';                                                   /* an added track: every scenery node visible ([0xA65794]) */
         if (all_visible) { int v = gi(0xA65794); if (!pvs_held) { pvs_was = v; pvs_held = 1; } if (v != 1) wi(0xA65794, 1); }
         else if (pvs_held) { wi(0xA65794, pvs_was); pvs_held = 0; }

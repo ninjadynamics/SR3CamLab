@@ -1,5 +1,6 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <objbase.h>
 #include <stdint.h>
 #include <stdarg.h>
 #include <string.h>
@@ -34,9 +35,17 @@ static int fe_video_test_open(void *object,const char *path){
     *word(p,0x134)=1001+h*2;*word(p,0x138)=1002+h*2;*word(p,0x13c)=1;
     return !fail_open;
 }
-static uintptr_t __cdecl render_(int h,int pause,int flags){(void)pause;(void)flags;++rendered;return (uintptr_t)(record(h)+0x140);}
+static uintptr_t __cdecl render_(int h,int pause,int flags){
+    (void)flags;
+    /* Match the native playback-state transition, not just its return pointer.
+       Open alone leaves the graph stopped and cannot produce a video frame. */
+    if(h>=20&&!rendered&&(*word(record(h),0)!=1||pause))ExitProcess(93);
+    if(!pause)*word(record(h),0)=0;
+    ++rendered;return (uintptr_t)(record(h)+0x140);
+}
 static void reset_(void){
     memset(&pool,0,sizeof(pool));memset(use,0,sizeof(use));memset(data,0,sizeof(data));memset(blank,0,sizeof(blank));
+    memset(ours,0,sizeof(ours));loading_at=loading_seen=0;
     pool.base=(unsigned)(uintptr_t)data;pool.capacity=64;pool.installed=1;
     table[2]=(void*)release_;table[9]=(void*)stop_;original_frame=render_;
     opens=releases=events=uninit=rendered=0;clock_=0;thread_=1;fail_open=fail_stop=0;ready=0;
@@ -70,5 +79,18 @@ void frontend_video_test_entry(void){
     reset_();CHECK(fe_video_register("")==-1,20);
     for(j=20;j<64;++j){char name[]="video00.wmv";name[5]=(char)('0'+j/10);name[6]=(char)('0'+j%10);CHECK(fe_video_register(name)==j,21);}
     CHECK(fe_video_register("overflow.wmv")==-1,22);
+    reset_();h=fe_video_register("first.wmv");j=fe_video_register("second.wmv");
+    {int menu[]={h,j};fe_video_ready();fe_video_menu(menu,2);fe_video_tick();fe_video_tick();
+     CHECK(opens==2,23);clock_=2000;fe_video_tick();CHECK(releases==0,24);
+     CHECK(fe_video_open()==2,26);
+     fe_video_menu(NULL,0);clock_=2800;fe_video_tick();CHECK(releases==12&&fe_video_open()==0,25);}
+    /* A native record beyond 20 is never evicted, and does not keep the
+       release sweep alive; the loading animation's draws are timed. */
+    reset_();fe_video_ready();CHECK(fe_video_loading_age()==0xFFFFFFFFu,27);
+    memcpy(record(40)+0xC,"native.wmv",11);*word(record(40),4)=1;frame(40,0,0);CHECK(opens==1,28);
+    clock_=5000;fe_video_tick();CHECK(releases==0&&*word(record(40),0x11c)&&fe_video_open()==0,29);
+    strcpy((char *)record(41)+0xC,"C:\\Rally\\frontend\\PC\\Videos\\LOADING.WMV");*word(record(41),4)=1;
+    clock_=6000;frame(41,0,0);CHECK(fe_video_loading_age()==0,30);
+    clock_=6500;CHECK(fe_video_loading_age()==500,31);clock_=9000;fe_video_tick();CHECK(releases==0,32);
     ExitProcess(0);
 }

@@ -17,6 +17,9 @@
 #include "boot_presentation.h"
 #include "loader_join.h"
 #include "watch_launcher.h"
+#include "frontend.h"
+#include "frontend_video.h"
+#include "load_guard.h"
 
 #define EXPORT __declspec(dllexport)
 static char here[MAX_PATH];
@@ -34,12 +37,15 @@ static void to_log(const char *s) {
 /* ---------------------------------------------------------------- the game's memory, from inside */
 static int in_read(GameMem *m, unsigned va, void *dst, unsigned n) {
     MEMORY_BASIC_INFORMATION q; (void)m;
+    va=fe_video_memory_address(va,n);
     if (!VirtualQuery((void *)(uintptr_t)va, &q, sizeof q) || q.State != MEM_COMMIT || (q.Protect & (PAGE_NOACCESS | PAGE_GUARD))) return 0;
     if ((uintptr_t)va + n > (uintptr_t)q.BaseAddress + q.RegionSize) return 0;
     memcpy(dst, (void *)(uintptr_t)va, n); return 1;
 }
 static int in_write(GameMem *m, unsigned va, const void *src, unsigned n, int keep) {
-    DWORD old, x; (void)m;
+    unsigned char camera[32768];int adjusted;DWORD old, x; (void)m;
+    va=fe_video_memory_address(va,n);
+    if(n<=sizeof camera){adjusted=fe_video_adjust_camera(src,n,camera);if(adjusted<0)return 0;if(adjusted)src=camera;}
     if (!VirtualProtect((void *)(uintptr_t)va, n, PAGE_EXECUTE_READWRITE, &old)) return 0;
     memcpy((void *)(uintptr_t)va, src, n);
     if (!keep) VirtualProtect((void *)(uintptr_t)va, n, old, &x);
@@ -91,6 +97,7 @@ static DWORD WINAPI worker(LPVOID p) {
     }
     pc_logf("Native startup complete after %u ms; enabling mods.", (unsigned)(GetTickCount() - t0));
     if (!pc_install_cameras(&inside, &cfg)) return 0;
+    fe_video_ready();
     {   /* the watchdog with the game (patches.watchdog, on by default); the launcher's word wins: SR3LAB_WATCHDOG=0 (launch.exe
            --no-watchdog, play.ps1 -NoWatchdog) leaves it off, =1 (a watched launch) on, its host refusing a second one.
            Ctrl+Scroll Lock starts it either way. */
@@ -115,9 +122,11 @@ EXPORT int __cdecl sr3mods_start(const char *settings_path) {
       logh = CreateFileA(lp, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL); }
     pc_log = to_log; pc_init();
     pc_logf("sr3mods.dll started; settings %s", settings_path ? settings_path : "(none)");
+    lg_start(here);                                                         /* before any early return: a stall or stuck exit is recorded either way */
     if (!settings_path || !pc_load_cfg(settings_path, here, &cfg, err, sizeof err)) { pc_logf("Settings: %s", err); return 1; }
     if (!pc_prepare_cameras(&cfg, err, sizeof err)) { pc_logf("Cameras: %s", err); return 1; }
     if (!pc_check_sites(&inside, err, sizeof err)) { pc_logf("%s", err); return 2; }
+    if(fe_install(&inside,cfg.mod)<0)return 2;
     /* sr3mods_start is called synchronously after CreateWindowExA, before the
        native boot state loop. Do not move this into worker/live code. */
     { int fast = startup_skip_info_screen(&inside);
@@ -145,6 +154,10 @@ EXPORT int __cdecl sr3mods_plan(const char *settings_path, const char *out_path)
 }
 
 EXPORT const char *__cdecl sr3mods_source(void) { return pc_source(); }
+EXPORT int __cdecl sr3mods_frontend_input(const Sr3Input *input){return fe_input(input);}
+EXPORT void __cdecl sr3mods_frontend_key(unsigned key){fe_key(key);}
+EXPORT int __cdecl sr3mods_frontend_frame(void *device){return fe_frame(device);}
+EXPORT void __cdecl sr3mods_frontend_reset(void){fe_reset();}
 
 BOOL WINAPI DllMain(HINSTANCE self, DWORD why, LPVOID r) {
     (void)r;
